@@ -1,0 +1,30 @@
+# 编译生成的可执行文件
+delguard
+delguard.exe
+delguard-*
+
+# Go相关
+*.o
+*.a
+*.so
+_obj
+_test
+*.exe
+*.test
+*.prof
+*.out
+
+# 依赖目录
+/vendor/
+/Godeps/
+
+# IDE相关
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 操作系统相关
+.DS_Store
+Thumbs.db
