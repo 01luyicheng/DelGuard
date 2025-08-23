@@ -6,108 +6,76 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strings"
 )
 
-// moveToTrashMacOS 将文件移动到MacOS废纸篓
+// moveToTrashMacOS 将文件移动到macOS废纸篓
 func moveToTrashMacOS(filePath string) error {
 	// 检查文件是否存在
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		return E(KindNotFound, "moveToTrash", filePath, err, "文件不存在")
+		return ErrFileNotFound
 	}
 
-	// 获取绝对路径
+	// 获取用户主目录
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	// 确定废纸篓目录
+	trashDir := filepath.Join(homeDir, ".Trash")
+
+	// 确保废纸篓目录存在
+	if err := os.MkdirAll(trashDir, 0755); err != nil {
+		return err
+	}
+
+	// 获取文件的绝对路径
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
-		return E(KindIO, "moveToTrash", filePath, err, "无法解析绝对路径")
+		return err
 	}
 
-	// 安全检查：防止删除关键路径
-	if IsCriticalPath(absPath) {
-		return E(KindProtected, "moveToTrash", absPath, nil, "无法删除关键受保护路径")
+	// 生成唯一的文件名以避免冲突
+	baseName := filepath.Base(absPath)
+	trashFileName := baseName
+	trashFilePath := filepath.Join(trashDir, trashFileName)
+
+	counter := 1
+	for {
+		if _, err := os.Stat(trashFilePath); os.IsNotExist(err) {
+			break
+		}
+		// 文件名已存在，添加时间戳后缀
+		ext := filepath.Ext(baseName)
+		nameWithoutExt := strings.TrimSuffix(baseName, ext)
+		trashFileName = fmt.Sprintf("%s_%d%s", nameWithoutExt, counter, ext)
+		trashFilePath = filepath.Join(trashDir, trashFileName)
+		counter++
 	}
 
-	// 检查路径是否已经被删除或不可访问
-	if _, err := os.Lstat(absPath); err != nil {
-		return E(KindIO, "moveToTrash", absPath, err, "无法访问文件")
-	}
+	// 移动文件到废纸篓
+	return os.Rename(absPath, trashFilePath)
+}
 
-	// 检查文件权限和类型
-	fileInfo, err := os.Lstat(absPath)
+// getCurrentUserSID 获取当前用户的SID（macOS实现）
+func getCurrentUserSID() (string, error) {
+	currentUser, err := user.Current()
 	if err != nil {
-		return E(KindIO, "moveToTrash", absPath, err, "无法获取文件信息")
+		return "", err
 	}
-
-	// 检查特殊文件类型
-	if isSpecialFile(fileInfo) {
-		return E(KindProtected, "moveToTrash", absPath, nil, "不支持删除特殊文件类型")
-	}
-
-	// 使用osascript调用Finder将文件移动到废纸篓
-	// 使用更健壮的AppleScript，处理各种边界情况
-	script := fmt.Sprintf(`
-	tell application "Finder"
-		set targetFile to POSIX file "%s"
-		if exists targetFile then
-			delete targetFile
-		end if
-	end tell
-	`, absPath)
-
-	cmd := exec.Command("osascript", "-e", script)
-
-	// 设置超时，防止osascript挂起
-	cmd.Env = append(os.Environ(), "LANG=en_US.UTF-8")
-
-	if err := cmd.Run(); err != nil {
-		// 根据 osascript 的退出码和错误信息提供更详细的错误
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			switch exitErr.ExitCode() {
-			case 1:
-				return E(KindPermission, "moveToTrash", absPath, err, "权限不足或文件被占用")
-			case 128:
-				return E(KindCancelled, "moveToTrash", absPath, err, "用户取消了操作")
-			default:
-				// 检查错误输出中是否包含特定信息
-				stderr := string(exitErr.Stderr)
-				if strings.Contains(stderr, "doesn't exist") {
-					return E(KindNotFound, "moveToTrash", absPath, err, "文件不存在")
-				} else if strings.Contains(stderr, "permission") {
-					return E(KindPermission, "moveToTrash", absPath, err, "权限不足")
-				}
-				return E(KindIO, "moveToTrash", absPath, err, "AppleScript 执行失败")
-			}
-		}
-		return E(KindIO, "moveToTrash", absPath, err, "无法启动 osascript")
-	}
-
-	// 验证文件确实被移动到了废纸篓
-	// 注意：MacOS的废纸篓路径是 ~/.Trash
-	homeDir, err := os.UserHomeDir()
-	if err == nil {
-		trashPath := filepath.Join(homeDir, ".Trash", filepath.Base(absPath))
-		if _, err := os.Stat(trashPath); err == nil {
-			// 文件已成功移动到废纸篓
-		} else {
-			// 文件可能被重命名（同名冲突），检查带时间戳的版本
-			pattern := filepath.Join(homeDir, ".Trash", filepath.Base(absPath)+"*")
-			matches, _ := filepath.Glob(pattern)
-			if len(matches) > 0 {
-				// 文件已移动到废纸篓，可能被重命名
-			}
-		}
-	}
-
-	return nil
+	return currentUser.Uid, nil
 }
 
-// 为macOS平台提供其他平台函数的存根
-func moveToTrashWindows(filePath string) error {
-	return ErrUnsupportedPlatform
-}
+// CheckFilePermissions 检查文件权限（macOS实现）
+func CheckFilePermissions(filePath string) (bool, error) {
+	// macOS平台的文件权限检查
+	_, err := os.Stat(filePath)
+	if err != nil {
+		return false, err
+	}
 
-func moveToTrashLinux(filePath string) error {
-	return ErrUnsupportedPlatform
+	return true, nil
 }

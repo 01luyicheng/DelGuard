@@ -1,0 +1,106 @@
+{
+  "_comment": "DelGuard 安全配置模板 - 企业级安全设置",
+  "version": "2.0.0",
+  "security_level": "enterprise",
+  
+  "path_validation": {
+    "max_path_length": 4096,
+    "forbid_absolute_paths": false,
+    "forbid_system_paths": true,
+    "forbid_hidden_files": false,
+    "allowed_extensions": [
+      ".txt", ".doc", ".docx", ".pdf", ".xls", ".xlsx", ".ppt", ".pptx",
+      ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff",
+      ".mp3", ".mp4", ".avi", ".mov", ".wmv",
+      ".zip", ".rar", ".7z", ".tar", ".gz"
+    ],
+    "forbidden_extensions": [
+      ".exe", ".bat", ".cmd", ".com", ".scr", ".msi",
+      ".js", ".vbs", ".ps1", ".sh", ".py", ".pl",
+      ".dll", ".sys", ".drv", ".ocx"
+    ]
+  },
+
+  "file_integrity": {
+    "max_file_size": 1073741824,
+    "min_file_size": 1,
+    "verify_checksum": true,
+    "scan_for_malware": true,
+    "malware_signatures": [
+      "#!/bin/bash",
+      "eval(",
+      "system(",
+      "cmd.exe",
+      "powershell.exe",
+      "javascript:",
+      "vbscript:",
+      "<script",
+      "<?php",
+      "<%"
+    ]
+  },
+
+  "permissions": {
+    "require_admin_for_system": true,
+    "enable_uac_prompt": true,
+    "check_integrity_level": true,
+    "validate_file_ownership": true
+  },
+
+  "restore_security": {
+    "backup_existing_files": true,
+    "atomic_operations": true,
+    "verify_before_restore": true,
+    "create_restore_point": true,
+    "max_concurrent_restores": 10
+  },
+
+  "logging": {
+    "level": "info",
+    "security_events": "debug",
+    "audit_trail": true,
+    "log_file_path": "./logs/delguard-security.log",
+    "max_log_size": 104857600,
+    "log_retention_days": 30
+  },
+
+  "backup": {
+    "max_backup_files": 100,
+    "backup_location": "./backups",
+    "compress_backups": true,
+    "encrypt_backups": false,
+    "backup_retention_days": 90
+  },
+
+  "network": {
+    "enable_cloud_scan": false,
+    "cloud_api_endpoint": "",
+    "api_timeout": 30,
+    "max_retries": 3
+  },
+
+  "compliance": {
+    "enable_gdpr_mode": false,
+    "audit_logging": true,
+    "data_retention_days": 2555,
+    "anonymize_logs": false
+  },
+
+  "alerts": {
+    "enable_email_alerts": false,
+    "email_server": "",
+    "email_port": 587,
+    "email_username": "",
+    "email_password": "",
+    "alert_recipients": [],
+    "alert_threshold": "medium"
+  },
+
+  "advanced": {
+    "enable_sandbox_mode": false,
+    "machine_learning_detection": false,
+    "behavioral_analysis": false,
+    "zero_trust_mode": false,
+    "blockchain_audit": false
+  }
+}

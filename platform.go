@@ -1,32 +1,34 @@
 package main
 
-import (
-	"runtime"
-)
-
-// detectPlatform 检测当前操作系统平台
-func detectPlatform() string {
-	return runtime.GOOS
+// GetUseTrash 返回是否使用回收站
+func GetUseTrash() bool {
+	// 从配置中获取值
+	config, err := LoadConfig()
+	if err != nil {
+		// 出错时返回默认值
+		return true
+	}
+	return config.UseRecycleBin
 }
 
-// moveToTrashPlatform 根据平台调用相应的回收站移动函数
-func moveToTrashPlatform(filePath string) error {
-	switch detectPlatform() {
-	case "windows":
-		return moveToTrashWindows(filePath)
-	case "darwin":
-		return moveToTrashMacOS(filePath)
-	case "linux":
-		return moveToTrashLinux(filePath)
+// GetInteractiveDefault 返回默认的交互模式
+func GetInteractiveDefault() bool {
+	// 从配置中获取值
+	config, err := LoadConfig()
+	if err != nil {
+		// 出错时返回默认值
+		return false
+	}
+
+	// 根据配置返回交互模式
+	switch config.InteractiveMode {
+	case "always":
+		return true
+	case "never":
+		return false
+	case "confirm":
+		return true // confirm模式也启用交互
 	default:
-		return ErrUnsupportedPlatform
+		return false
 	}
 }
-
-// 以下函数在各平台特定文件中实现
-var (
-	// 这些变量仅用于编译时检查，确保各平台实现了所需函数
-	_ = moveToTrashWindows
-	_ = moveToTrashMacOS
-	_ = moveToTrashLinux
-)

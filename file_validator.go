@@ -1,259 +1,405 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"syscall"
-	"unicode/utf8"
 )
 
-// sanitizeFileName 验证和清理文件名，防止路径遍历和注入攻击
-func sanitizeFileName(path string) (string, error) {
-	if path == "" {
-		return "", fmt.Errorf(T("路径不能为空"))
-	}
-
-	// 检查路径长度限制
-	if len(path) > 32767 {
-		return "", fmt.Errorf(T("路径长度超过系统限制"))
-	}
-
-	// 检查空字节注入攻击
-	if strings.Contains(path, "\x00") {
-		return "", fmt.Errorf(T("路径包含非法空字节"))
-	}
-
-	// 检查控制字符
-	for _, char := range path {
-		if char < 32 && char != '\t' && char != '\n' && char != '\r' {
-			return "", fmt.Errorf(T("路径包含非法控制字符"))
-		}
-	}
-
-	// 平台特定的验证
-	switch runtime.GOOS {
-	case "windows":
-		// Windows 非法字符
-		invalidChars := []string{"<", ">", ":", "\"", "|", "?", "*"}
-		for _, char := range invalidChars {
-			if strings.Contains(path, char) {
-				return "", fmt.Errorf(T("路径包含Windows非法字符: %s"), char)
-			}
-		}
-
-		// Windows 保留文件名
-		reservedNames := []string{"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"}
-		baseName := strings.ToUpper(filepath.Base(path))
-		for _, reserved := range reservedNames {
-			if baseName == reserved || strings.HasPrefix(baseName, reserved+".") {
-				return "", fmt.Errorf(T("路径使用Windows保留文件名: %s"), reserved)
-			}
-		}
-
-		// 检查 Windows 设备路径
-		if strings.HasPrefix(path, "\\\\?\\") || strings.HasPrefix(path, "\\\\.\\") {
-			return "", fmt.Errorf(T("路径使用Windows设备路径格式"))
-		}
-
-	default:
-		// Unix/Linux/macOS 非法字符
-		if strings.Contains(path, "\\") {
-			return "", fmt.Errorf(T("路径包含非法反斜杠字符"))
-		}
-	}
-
-	// 检查路径遍历攻击
-	if strings.Contains(path, "..") || strings.Contains(path, "~") {
-		// 允许用户明确指定的路径遍历，但需要额外验证
-		absPath, err := filepath.Abs(path)
-		if err != nil {
-			return "", fmt.Errorf(T("路径解析失败"))
-		}
-		cleanPath := filepath.Clean(absPath)
-		if cleanPath != absPath {
-			return "", fmt.Errorf(T("路径包含潜在的遍历攻击"))
-		}
-	}
-
-	// 转换为绝对路径并清理
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return "", fmt.Errorf(T("无法转换为绝对路径: %v"), err)
-	}
-
-	cleanPath := filepath.Clean(absPath)
-	if cleanPath != absPath {
-		return "", fmt.Errorf(T("路径清理后不一致"))
-	}
-
-	return cleanPath, nil
+// FileValidationResult 文件验证验证结果
+type FileValidationResult struct {
+	FileName     string
+	IsValid      bool
+	Errors       []string
+	Warnings     []string
+	Suggestions  []string
+	FileSize     int64
+	FileType     string
+	IsHidden     bool
+	IsSystem     bool
+	IsExecutable bool
+	IsSymlink    bool
 }
 
-// isSpecialFile 检查是否为特殊文件类型（符号链接、设备文件等）
-func isSpecialFile(info os.FileInfo) bool {
-	if info == nil {
-		return false
+// FileValidator 文件验证器
+type FileValidator struct {
+	MaxFileSize       int64
+	AllowedExtensions []string
+	BlockedExtensions []string
+	BlockedPatterns   []string
+	BlockedFilenames  []string
+	AllowHiddenFiles  bool
+	AllowSystemFiles  bool
+	AllowSymlinks     bool
+}
+
+// NewFileValidator 创建新的文件验证器
+func NewFileValidator() *FileValidator {
+	return &FileValidator{
+		MaxFileSize:       1024 * 1024 * 1024, // 1GB 默认最大文件大小
+		AllowedExtensions: []string{".txt", ".doc", ".docx", ".pdf", ".jpg", ".png", ".gif", ".zip", ".rar"},
+		BlockedExtensions: []string{".exe", ".bat", ".cmd", ".scr", ".com", ".pif", ".app", ".msi", ".jar", ".js", ".vbs", ".wsf"},
+		BlockedPatterns:   []string{`\.\./`, `\.\.\\`, `^\s*$`}, // 路径遍历模式和空文件名
+		BlockedFilenames:  []string{"desktop.ini", "thumbs.db", ".ds_store", "icon\r", "icon\n"},
+		AllowHiddenFiles:  false,
+		AllowSystemFiles:  false,
+		AllowSymlinks:     true,
+	}
+}
+
+// ValidateFile 验证单个文件
+func (fv *FileValidator) ValidateFile(filePath string) (*FileValidationResult, error) {
+	result := &FileValidationResult{
+		FileName: filePath,
+		IsValid:  true,
+		Errors:   make([]string, 0),
+		Warnings: make([]string, 0),
+		Suggestions: make([]string, 0),
+	}
+
+	// 清理路径
+	cleanPath := filepath.Clean(filePath)
+	if cleanPath != filePath {
+		result.Warnings = append(result.Warnings, "路径包含冗余部分，已清理")
+	}
+
+	// 获取文件信息（包括符号链接本身的信息）
+	info, err := os.Lstat(cleanPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			result.Errors = append(result.Errors, "文件不存在")
+			result.Suggestions = append(result.Suggestions, "请检查文件路径是否正确")
+			result.IsValid = false
+			return result, nil
+		}
+		return nil, fmt.Errorf("无法获取文件信息: %v", err)
 	}
 
 	// 检查符号链接
-	if info.Mode()&os.ModeSymlink != 0 {
-		return true
-	}
-
-	// 检查设备文件
-	if info.Mode()&os.ModeDevice != 0 {
-		return true
-	}
-
-	// 检查命名管道
-	if info.Mode()&os.ModeNamedPipe != 0 {
-		return true
-	}
-
-	// 检查套接字文件
-	if info.Mode()&os.ModeSocket != 0 {
-		return true
-	}
-
-	return false
-}
-
-// checkFile极速 检查文件大小是否合理
-func checkFileSize(filePath string) error {
-	info, err := os.Stat(filePath)
-	if err != nil {
-		return fmt.Errorf("无法获取文件信息: %v", err)
-	}
-
-	// 检查文件大小限制（100GB）
-	const maxFileSize = 100 * 1024 * 1024 * 1024 // 100GB
-	if info.Size() > maxFileSize {
-		return fmt.Errorf("文件大小超过限制 (%.1fGB)", float64(info.Size())/1024/1024/1024)
-	}
-
-	// 检查空文件
-	if info.Size() == 0 {
-		return fmt.Errorf("文件为空")
-	}
-
-	return nil
-}
-
-// checkDiskSpace 检查磁盘空间是否充足
-func checkDiskSpace(filePath string) error {
-	absPath, err := filepath.Abs(filePath)
-	if err != nil {
-		return fmt.Errorf(T("无法获取绝对路径: %v"), err)
-	}
-
-	// Windows平台暂不实现磁盘空间检查，避免跨平台兼容性问题
-	if runtime.GOOS == "windows" {
-		return nil
-	}
-
-	// Unix/Linux/macOS平台使用syscall检查磁盘空间
-	// 使用条件编译避免Windows平台编译错误
-	if runtime.GOOS != "windows" {
-		var stat syscall.Statfs_t
-		err = syscall.Statfs(filepath.Dir(absPath), &stat)
-		if err != nil {
-			return fmt.Errorf(T("无法获取磁盘信息: %v"), err)
+	result.IsSymlink = info.Mode()&os.ModeSymlink != 0
+	if result.IsSymlink && !fv.AllowSymlinks {
+		result.Warnings = append(result.Warnings, "文件是符号链接")
+		if !fv.AllowSymlinks {
+			result.Errors = append(result.Errors, "不允许操作符号链接")
+			result.IsValid = false
 		}
+	}
 
-		// 计算可用空间（字节）
-		availableSpace := stat.Bavail * uint64(stat.Bsize)
+	result.FileSize = info.Size()
+	result.FileType = getFileType(info)
 
 	// 检查文件大小
-	info, err := os.Stat(absPath)
-	if err != nil {
-		return fmt.Errorf(T("无法获取文件信息: %v"), err)
+	if info.Size() > fv.MaxFileSize {
+		result.Errors = append(result.Errors, fmt.Sprintf("文件大小超过限制 (%s > %s)", 
+			formatBytes(info.Size()), formatBytes(fv.MaxFileSize)))
+		result.IsValid = false
 	}
 
-	fileSize := info.Size()
-
-	// 确保有足够的空间（文件大小的2倍作为安全缓冲）
-	if availableSpace < uint64(fileSize)*2 {
-		return fmt.Errorf(T("磁盘空间不足，需要 %.1fMB 可用空间"), float64(fileSize)*2/1024/1024)
-	}
-
-	return nil
-}
-
-// isHiddenFile 检查是否为隐藏文件
-func isHiddenFile(info os.FileInfo, filePath string) bool {
-	if info == nil {
-		var err error
-		info, err = os.Stat(filePath)
-		if err != nil {
-			return false
+	// 检查扩展名
+	ext := strings.ToLower(filepath.Ext(filePath))
+	
+	// 检查是否在阻止列表中
+	for _, blockedExt := range fv.BlockedExtensions {
+		if ext == strings.ToLower(blockedExt) {
+			result.Errors = append(result.Errors, fmt.Sprintf("不支持的文件类型: %s", ext))
+			result.IsValid = false
+			break
 		}
 	}
 
-	baseName := filepath.Base(filePath)
-
-	// Unix/Linux/macOS: 以点开头的文件
-	if strings.HasPrefix(baseName, ".") {
-		return true
-	}
-
-	// Windows: 检查隐藏属性
-	if runtime.GOOS == "windows" {
-		// 在Windows上，隐藏文件有特定的属性
-		absPath, err := filepath.Abs(filePath)
-		if err == nil {
-			ptr, err := syscall.UTF16PtrFromString(absPath)
-			if err == nil {
-				attrs, err := syscall.GetFileAttributes(ptr)
-				if err == nil && attrs&syscall.FILE_ATTRIBUTE_HIDDEN != 0 {
-					return true
-				}
+	// 如果有允许列表，检查是否在允许列表中
+	if len(fv.AllowedExtensions) > 0 {
+		allowed := false
+		for _, allowedExt := range fv.AllowedExtensions {
+			if ext == strings.ToLower(allowedExt) {
+				allowed = true
+				break
 			}
 		}
-	}
-
-	return false
-}
-
-// confirmHiddenFileDeletion 确认隐藏文件删除
-func confirmHiddenFileDeletion(filePath string) bool {
-	fmt.Printf(T("警告: 检测到隐藏文件: %s\\n"), filepath.Base(filePath))
-	fmt.Print(T("确认删除隐藏文件? [y/N]: "))
-
-	reader := bufio.NewReader(os.Stdin)
-	line, _ := reader.ReadString('\n')
-	line = strings.TrimSpace(strings.ToLower(line))
-
-	return line == "y" || line == "yes"
-}
-
-// validateUTF8 验证字符串是否为有效的UTF-8编码
-func validateUTF8(s string) bool {
-	return utf8.ValidString(s)
-}
-
-// checkFilePermissions 检查文件权限
-func checkFilePermissions(filePath string, info os.FileInfo) error {
-	if info == nil {
-		var err error
-		info, err = os.Stat(filePath)
-		if err != nil {
-			return err
+		if !allowed {
+			result.Errors = append(result.Errors, fmt.Sprintf("文件类型不在允许列表中: %s", ext))
+			result.IsValid = false
 		}
 	}
 
-	// 检查只读文件
-	if info.Mode().Perm()&0222 == 0 {
-		return fmt.Errorf(T("文件为只读"))
+	// 检查文件名
+	filename := strings.ToLower(filepath.Base(filePath))
+	for _, blockedName := range fv.BlockedFilenames {
+		if filename == strings.ToLower(blockedName) {
+			result.Errors = append(result.Errors, fmt.Sprintf("不允许操作系统文件: %s", filename))
+			result.IsValid = false
+			break
+		}
 	}
 
-	// 检查可执行文件（可能需要额外确认）
-	if info.Mode().Perm()&0111 != 0 {
-		return fmt.Errorf(T("文件为可执行文件"))
+	// 检查隐藏文件
+	isHidden, err := isHiddenFile(info, filePath)
+	if err != nil {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("检查隐藏文件属性时出错: %v", err))
+	} else {
+		result.IsHidden = isHidden
+		if isHidden && !fv.AllowHiddenFiles {
+			result.Warnings = append(result.Warnings, "文件是隐藏文件")
+			// 隐藏文件默认不阻止，除非配置明确禁止
+		}
+	}
+
+	// 检查可执行文件
+	result.IsExecutable = isExecutableFile(info, filePath)
+	if result.IsExecutable {
+		result.Warnings = append(result.Warnings, "文件是可执行文件")
+	}
+
+	// 检查系统文件（仅Windows）
+	isSystem, err := isSystemFile(info, filePath)
+	if err != nil {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("检查系统文件属性时出错: %v", err))
+	} else if isSystem {
+		result.IsSystem = isSystem
+		result.Warnings = append(result.Warnings, "文件是系统文件")
+		if !fv.AllowSystemFiles {
+			result.Errors = append(result.Errors, "不允许操作系统文件")
+			result.IsValid = false
+		}
+	}
+
+	// 检查路径遍历模式
+	for _, pattern := range fv.BlockedPatterns {
+		matched, err := regexp.MatchString(pattern, filePath)
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("检查路径模式时出错: %v", err))
+			continue
+		}
+		if matched {
+			result.Errors = append(result.Errors, fmt.Sprintf("文件路径包含非法模式: %s", pattern))
+			result.IsValid = false
+		}
+	}
+
+	// 检查路径长度
+	if len(filePath) > 260 { // Windows MAX_PATH 限制
+		result.Warnings = append(result.Warnings, "文件路径较长，可能导致兼容性问题")
+	}
+
+	return result, nil
+}
+
+// checkPathTraversal 检查路径遍历攻击
+func (fv *FileValidator) checkPathTraversal(filePath string) error {
+	// 检查相对路径遍历
+	cleanPath := filepath.Clean(filePath)
+	if strings.Contains(cleanPath, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("检测到路径遍历攻击模式")
+	}
+
+	// 检查正则表达式模式
+	for _, pattern := range fv.BlockedPatterns {
+		matched, err := regexp.MatchString(pattern, filePath)
+		if err != nil {
+			continue
+		}
+		if matched {
+			return fmt.Errorf("检测到非法路径模式: %s", pattern)
+		}
 	}
 
 	return nil
+}
+
+// checkMaliciousPatterns 检查恶意模式
+func (fv *FileValidator) checkMaliciousPatterns(filePath string) error {
+	// 检查文件名中的恶意模式
+	filename := filepath.Base(filePath)
+	maliciousPatterns := []string{
+		"dropbox", "mega", "gdrive", // 云存储相关
+		"password", "passwd", "credential", // 凭据相关
+		"wallet", "crypto", "bitcoin", // 加密货币相关
+		"key", "private", "secret", // 秘密相关
+	}
+
+	lowerFilename := strings.ToLower(filename)
+	for _, pattern := range maliciousPatterns {
+		if strings.Contains(lowerFilename, pattern) {
+			return fmt.Errorf("检测到可疑文件名模式: %s", pattern)
+		}
+	}
+
+	return nil
+}
+
+// ValidateBatch 批量验证文件
+func (fv *FileValidator) ValidateBatch(filePaths []string) ([]*FileValidationResult, error) {
+	results := make([]*FileValidationResult, 0, len(filePaths))
+	
+	for _, filePath := range filePaths {
+		result, err := fv.ValidateFile(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("验证文件 %s 时出错: %v", filePath, err)
+		}
+		results = append(results, result)
+	}
+	
+	return results, nil
+}
+
+// GetValidationSummary 获取验证摘要
+func (fv *FileValidator) GetValidationSummary(results []*FileValidationResult) string {
+	total := len(results)
+	valid := 0
+	invalid := 0
+	warnings := 0
+	
+	for _, result := range results {
+		if result.IsValid {
+			valid++
+		} else {
+			invalid++
+		}
+		if len(result.Warnings) > 0 {
+			warnings++
+		}
+	}
+	
+	return fmt.Sprintf("验证完成: 总计 %d 个文件, 有效 %d 个, 无效 %d 个, %d 个有警告", 
+		total, valid, invalid, warnings)
+}
+
+// getFileType 获取文件类型描述
+func getFileType(info os.FileInfo) string {
+	mode := info.Mode()
+	switch {
+	case mode.IsDir():
+		return "目录"
+	case mode.IsRegular():
+		return "普通文件"
+	case mode&os.ModeSymlink != 0:
+		return "符号链接"
+	case mode&os.ModeDevice != 0:
+		return "设备文件"
+	case mode&os.ModeSocket != 0:
+		return "套接字"
+	case mode&os.ModeNamedPipe != 0:
+		return "命名管道"
+	default:
+		return "未知类型"
+	}
+}
+
+// isExecutableFile 检查文件是否可执行
+func isExecutableFile(info os.FileInfo, filePath string) bool {
+	if info == nil {
+		return false
+	}
+	
+	if info.IsDir() {
+		return false
+	}
+	
+	mode := info.Mode()
+	if runtime.GOOS == "windows" {
+		// Windows: 检查文件扩展名
+		ext := strings.ToLower(filepath.Ext(filePath))
+		executableExts := []string{".exe", ".bat", ".cmd", ".com", ".scr", ".msi", ".ps1"}
+		for _, executableExt := range executableExts {
+			if ext == executableExt {
+				return true
+			}
+		}
+		return false
+	}
+	
+	// Unix: 检查执行权限位
+	return mode&0111 != 0
+}
+
+// isHiddenFile 检查文件是否为隐藏文件
+func isHiddenFile(info os.FileInfo, filePath string) (bool, error) {
+	if runtime.GOOS == "windows" {
+		// Windows: 使用系统调用检查隐藏属性
+		pointer, err := syscall.UTF16PtrFromString(filePath)
+		if err != nil {
+			return false, err
+		}
+		attrs, err := syscall.GetFileAttributes(pointer)
+		if err != nil {
+			return false, err
+		}
+		return attrs&syscall.FILE_ATTRIBUTE_HIDDEN != 0, nil
+	}
+	
+	// Unix: 检查文件名是否以点开头
+	filename := filepath.Base(filePath)
+	return strings.HasPrefix(filename, "."), nil
+}
+
+// isSystemFile 检查文件是否为系统文件（仅Windows）
+func isSystemFile(info os.FileInfo, filePath string) (bool, error) {
+	if runtime.GOOS != "windows" {
+		return false, nil
+	}
+	
+	// Windows: 使用系统调用检查文件属性
+	pointer, err := syscall.UTF16PtrFromString(filePath)
+	if err != nil {
+		return false, err
+	}
+	
+	attrs, err := syscall.GetFileAttributes(pointer)
+	if err != nil {
+		return false, err
+	}
+	
+	return attrs&syscall.FILE_ATTRIBUTE_SYSTEM != 0, nil
+}
+
+// PrintValidationResult 打印验证结果
+func PrintValidationResult(result *FileValidationResult) {
+	status := "✅"
+	if !result.IsValid {
+		status = "❌"
+	} else if len(result.Warnings) > 0 {
+		status = "⚠️"
+	}
+	
+	fmt.Printf("%s %s\n", status, result.FileName)
+	
+	if result.FileSize > 0 {
+		fmt.Printf("   大小: %s\n", formatBytes(result.FileSize))
+	}
+	
+	if result.IsHidden {
+		fmt.Printf("   属性: 隐藏文件\n")
+	}
+	
+	if result.IsSystem {
+		fmt.Printf("   属性: 系统文件\n")
+	}
+	
+	if result.IsExecutable {
+		fmt.Printf("   属性: 可执行文件\n")
+	}
+	
+	if result.IsSymlink {
+		fmt.Printf("   属性: 符号链接\n")
+	}
+	
+	for _, warning := range result.Warnings {
+		fmt.Printf("   ⚠️  警告: %s\n", warning)
+	}
+	
+	for _, err := range result.Errors {
+		fmt.Printf("   ❌ 错误: %s\n", err)
+	}
+	
+	if len(result.Suggestions) > 0 {
+		for _, suggestion := range result.Suggestions {
+			fmt.Printf("   💡 建议: %s\n", suggestion)
+		}
+	}
+	
+	fmt.Println()
 }

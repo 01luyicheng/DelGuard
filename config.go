@@ -6,361 +6,410 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"time"
 )
 
+// Config 配置结构体
 type Config struct {
-	// 默认交互删除（当 CLI 未显式指定 -i 时生效）
-	DefaultInteractive bool `json:"defaultInteractive"`
-	// 默认语言（例如 "zh-CN" / "en-US"）
-	Language string `json:"language"`
-	// 输出详细程度：quiet/normal/verbose
-	Verbosity string `json:"verbosity"`
-	// 是否启用安全模式（保护系统关键文件）
-	SafeMode bool `json:"safeMode"`
-	// 是否启用回收站功能（false时直接删除）
-	UseTrash bool `json:"useTrash"`
-	// 是否跳过只读文件确认
-	SkipReadOnlyConfirm bool `json:"skipReadOnlyConfirm"`
-	// 是否跳过隐藏文件确认
-	SkipHiddenConfirm bool `json:"skipHiddenConfirm"`
-	// 是否跳过系统文件确认
-	SkipSystemConfirm bool `json:"skipSystemConfirm"`
-	// 是否启用管理员权限警告
-	AdminWarning bool `json:"adminWarning"`
-	// 最大备份文件数量
-	MaxBackupFiles int `json:"maxBackupFiles"`
-	// 日志文件路径
-	LogFile string `json:"logFile"`
-	// 回收站最大容量（MB）
-	TrashMaxSize int `json:"trashMaxSize"`
-	// 自动清理回收站旧文件（天）
-	TrashAutoCleanDays int `json:"trashAutoCleanDays"`
-	// 启用文件操作日志
-	EnableOperationLog bool `json:"enableOperationLog"`
-	// 启用删除确认声音提示
-	EnableSoundAlert bool `json:"enableSoundAlert"`
-	// 颜色输出模式：auto/always/never
-	ColorMode string `json:"colorMode"`
+	// 基本设置
+	UseRecycleBin   bool   `json:"use_recycle_bin"`
+	InteractiveMode string `json:"interactive_mode"` // "always", "never", "confirm"
+	Language        string `json:"language"`
+	LogLevel        string `json:"log_level"`
+	SafeMode        string `json:"safe_mode"` // "strict", "normal", "relaxed"
+
+	// 限制设置
+	MaxBackupFiles   int64 `json:"max_backup_files"`
+	TrashMaxSize     int64 `json:"trash_max_size"` // MB
+	MaxFileSize      int64 `json:"max_file_size"`  // bytes
+	MaxPathLength    int   `json:"max_path_length"`
+	MaxConcurrentOps int   `json:"max_concurrent_ops"`
+
+	// 安全设置
+	EnableSecurityChecks bool `json:"enable_security_checks"`
+	EnableMalwareScan    bool `json:"enable_malware_scan"`
+	EnablePathValidation bool `json:"enable_path_validation"`
+	EnableHiddenCheck    bool `json:"enable_hidden_check"`
+
+	// 高级设置
+	BackupRetentionDays int    `json:"backup_retention_days"`
+	LogRetentionDays    int    `json:"log_retention_days"`
+	EnableTelemetry     bool   `json:"enable_telemetry"`
+	TelemetryEndpoint   string `json:"telemetry_endpoint"`
+
+	// 平台特定设置
+	Windows WindowsConfig `json:"windows"`
+	Linux   LinuxConfig   `json:"linux"`
+	Darwin  DarwinConfig  `json:"darwin"`
+
+	// 运行时状态（不保存到配置文件）
+	ConfigPath string    `json:"-"`
+	LastLoaded time.Time `json:"-"`
 }
 
-var overrideConfigPath = ""
-
-// SetConfigOverride 通过 --config 指定配置文件路径
-func SetConfigOverride(p string) {
-	overrideConfigPath = strings.TrimSpace(p)
+// WindowsConfig Windows平台特定配置
+type WindowsConfig struct {
+	RecycleBinPath     string `json:"recycle_bin_path"`
+	UseSystemTrash     bool   `json:"use_system_trash"`
+	EnableUACPrompt    bool   `json:"enable_uac_prompt"`
+	CheckFileOwnership bool   `json:"check_file_ownership"`
 }
 
-// GetDefaultInteractive 计算默认交互删除（不含 CLI -i），优先级：
-// 环境变量 DELGUARD_INTERACTIVE / DELGUARD_DEFAULT_INTERACTIVE > 配置文件
-func GetDefaultInteractive() bool {
-	if v, ok := readEnvBool("DELGUARD_INTERACTIVE"); ok {
-		return v
-	}
-	if v, ok := readEnvBool("DELGUARD_DEFAULT_INTERACTIVE"); ok {
-		return v
-	}
-	cfg := LoadConfig()
-	return cfg.DefaultInteractive
+// LinuxConfig Linux平台特定配置
+type LinuxConfig struct {
+	TrashDir      string `json:"trash_dir"`
+	UseXDGTrash   bool   `json:"use_xdg_trash"`
+	CheckSELinux  bool   `json:"check_selinux"`
+	CheckAppArmor bool   `json:"check_apparmor"`
 }
 
-// ResolveLanguage 确定语言，优先级：CLI --lang > ENV DELGUARD_LANG > 配置文件 > 系统语言
-func ResolveLanguage(cliLang string) string {
-	if strings.TrimSpace(cliLang) != "" {
-		return cliLang
-	}
-	if v := strings.TrimSpace(os.Getenv("DELGUARD_LANG")); v != "" {
-		return v
-	}
-	cfg := LoadConfig()
-	if strings.TrimSpace(cfg.Language) != "" {
-		return cfg.Language
-	}
-	return DetectSystemLocale()
+// DarwinConfig macOS平台特定配置
+type DarwinConfig struct {
+	TrashDir        string `json:"trash_dir"`
+	UseSystemTrash  bool   `json:"use_system_trash"`
+	CheckFileVault  bool   `json:"check_filevault"`
+	CheckGatekeeper bool   `json:"check_gatekeeper"`
 }
 
-// ResolveVerbosity 根据 CLI 和配置/环境确定 verbose/quiet
-// 返回 (verbose, quiet)
-func ResolveVerbosity(cliVerbose, cliQuiet bool) (bool, bool) {
-	if cliVerbose && cliQuiet {
-		// CLI 同时设置时以 verbose 优先，quiet 关闭
-		return true, false
+var defaultConfig *Config
+
+// LoadConfig 加载配置
+func LoadConfig() (*Config, error) {
+	if defaultConfig != nil {
+		return defaultConfig, nil
 	}
-	if cliVerbose || cliQuiet {
-		return cliVerbose, cliQuiet
-	}
-	// 环境变量
-	if v := strings.TrimSpace(strings.ToLower(os.Getenv("DELGUARD_VERBOSITY"))); v != "" {
-		switch v {
-		case "verbose", "debug", "2":
-			return true, false
-		case "quiet", "silent", "0":
-			return false, true
-		case "normal", "info", "1":
-			return false, false
+
+	config := &Config{}
+
+	// 加载默认配置
+	config.setDefaults()
+
+	// 查找配置文件路径
+	configPaths := config.findConfigPaths()
+
+	// 尝试加载配置文件
+	for _, path := range configPaths {
+		if _, err := os.Stat(path); err == nil {
+			if err := config.loadFromFile(path); err != nil {
+				// 记录错误但不停止加载
+				LogWarn("config", path, fmt.Sprintf("配置文件加载失败: %v", err))
+				continue
+			}
+			config.ConfigPath = path
+			break
 		}
 	}
-	// 配置文件
-	cfg := LoadConfig()
-	switch strings.ToLower(strings.TrimSpace(cfg.Verbosity)) {
-	case "verbose", "debug":
-		return true, false
-	case "quiet", "silent":
-		return false, true
-	default:
-		return false, false
+
+	// 从环境变量加载配置
+	config.loadFromEnv()
+
+	defaultConfig = config
+	return config, nil
+}
+
+// setDefaults 设置默认配置值
+func (c *Config) setDefaults() {
+	c.UseRecycleBin = true
+	c.InteractiveMode = "confirm"
+	c.Language = "auto"
+	c.LogLevel = "info"
+	c.SafeMode = "normal"
+
+	c.MaxBackupFiles = 1000
+	c.TrashMaxSize = 10000      // 10GB
+	c.MaxFileSize = 10737418240 // 10GB
+	c.MaxPathLength = 4096
+	c.MaxConcurrentOps = 100
+
+	c.EnableSecurityChecks = true
+	c.EnableMalwareScan = false // 默认关闭，提高性能
+	c.EnablePathValidation = true
+	c.EnableHiddenCheck = true
+
+	c.BackupRetentionDays = 30
+	c.LogRetentionDays = 7
+	c.EnableTelemetry = false
+	c.TelemetryEndpoint = "https://telemetry.delguard.io/v1/report"
+
+	// 平台特定默认值
+	switch runtime.GOOS {
+	case "windows":
+		c.Windows.RecycleBinPath = ""
+		c.Windows.UseSystemTrash = true
+		c.Windows.EnableUACPrompt = true
+		c.Windows.CheckFileOwnership = true
+	case "linux":
+		c.Linux.TrashDir = ""
+		c.Linux.UseXDGTrash = true
+		c.Linux.CheckSELinux = false
+		c.Linux.CheckAppArmor = false
+	case "darwin":
+		c.Darwin.TrashDir = ""
+		c.Darwin.UseSystemTrash = true
+		c.Darwin.CheckFileVault = false
+		c.Darwin.CheckGatekeeper = false
 	}
 }
 
-func readEnvBool(key string) (bool, bool) {
-	val, exists := os.LookupEnv(key)
-	if !exists {
-		return false, false
-	}
-	val = strings.TrimSpace(strings.ToLower(val))
-	switch val {
-	case "1", "true", "yes", "on":
-		return true, true
-	case "0", "false", "no", "off", "":
-		return false, true
-	default:
-		// 非法值时，认为存在但为 false
-		return false, true
-	}
-}
+// findConfigPaths 查找配置文件路径
+func (c *Config) findConfigPaths() []string {
+	var paths []string
 
-func LoadConfigPath() string {
-	if overrideConfigPath != "" {
-		return overrideConfigPath
+	// 用户配置目录
+	if home, err := os.UserHomeDir(); err == nil {
+		paths = append(paths, filepath.Join(home, ".delguard", "config.json"))
 	}
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-
-	if runtime.GOOS == "windows" {
-		appData := os.Getenv("APPDATA")
-		if appData == "" {
-			// 如果 APPDATA 不存在，使用用户主目录
-			appData = filepath.Join(home, "AppData", "Roaming")
+	// 系统配置目录
+	switch runtime.GOOS {
+	case "windows":
+		if systemRoot := os.Getenv("SystemRoot"); systemRoot != "" {
+			paths = append(paths, filepath.Join(systemRoot, "delguard", "config.json"))
 		}
-		return filepath.Join(appData, "DelGuard", "config.json")
+	default:
+		paths = append(paths, "/etc/delguard/config.json")
 	}
 
-	xdg := os.Getenv("XDG_CONFIG_HOME")
-	base := xdg
-	if base == "" {
-		base = filepath.Join(home, ".config")
-	}
-	return filepath.Join(base, "delguard", "config.json")
+	// 当前目录
+	paths = append(paths, "config.json")
+
+	return paths
 }
 
-func LoadConfig() Config {
-	cfg := Config{
-		DefaultInteractive:  false,
-		Language:            "",
-		Verbosity:           "normal",
-		SafeMode:            true,
-		UseTrash:            true,
-		SkipReadOnlyConfirm: false,
-		SkipHiddenConfirm:   false,
-		SkipSystemConfirm:   false,
-		AdminWarning:        true,
-		MaxBackupFiles:      10,
-		LogFile:             "",
-		TrashMaxSize:        1024,
-		TrashAutoCleanDays:  30,
-		EnableOperationLog:  false,
-		EnableSoundAlert:    true,
-		ColorMode:           "auto",
-	}
-
-	path := LoadConfigPath()
-	if path == "" {
-		return cfg
-	}
-	b, err := os.ReadFile(path)
-	if err != nil || len(b) == 0 {
-		return cfg
-	}
-	_ = json.Unmarshal(b, &cfg) // 解析失败则使用默认值
-	return cfg
-}
-
-// validateConfig 验证配置参数的有效性
-func validateConfig(cfg *Config) error {
-	// 验证最大备份文件数量
-	if cfg.MaxBackupFiles <= 0 || cfg.MaxBackupFiles > 1000 {
-		return fmt.Errorf("maxBackupFiles 必须在 1-1000 之间")
-	}
-	// 验证回收站最大容量
-	if cfg.TrashMaxSize <= 0 || cfg.TrashMaxSize > 10*1024 {
-		return fmt.Errorf("trashMaxSize 必须在 1-10240 MB 之间")
-	}
-	// 验证自动清理天数
-	if cfg.TrashAutoCleanDays <= 0 || cfg.TrashAutoCleanDays > 365 {
-		return fmt.Errorf("trashAutoCleanDays 必须在 1-365 天之间")
-	}
-	// 验证语言设置
-	validLangs := map[string]bool{"zh-CN": true, "en-US": true, "ja-JP": true}
-	if cfg.Language != "" && !validLangs[cfg.Language] {
-		return fmt.Errorf("不支持的语言: %s", cfg.Language)
-	}
-	// 验证详细程度
-	validVerb := map[string]bool{"quiet": true, "normal": true, "verbose": true}
-	if !validVerb[cfg.Verbosity] {
-		return fmt.Errorf("无效的 verbosity 值: %s", cfg.Verbosity)
-	}
-	// 验证颜色模式
-	validColor := map[string]bool{"auto": true, "always": true, "never": true}
-	if !validColor[cfg.ColorMode] {
-		return fmt.Errorf("无效的 colorMode 值: %s", cfg.ColorMode)
-	}
-	return nil
-}
-
-// SaveConfig 保存配置到文件
-func SaveConfig(cfg Config) error {
-	path := LoadConfigPath()
-	if path == "" {
-		return os.ErrInvalid
-	}
-
-	// 验证配置
-	if err := validateConfig(&cfg); err != nil {
-		return err
-	}
-
-	// 创建配置目录
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-
-	data, err := json.MarshalIndent(cfg, "", "  ")
+// loadFromFile 从文件加载配置
+func (c *Config) loadFromFile(path string) error {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
 
-	return os.WriteFile(path, data, 0644)
+	return json.Unmarshal(data, c)
 }
 
-// GetSafeMode 获取安全模式设置
-func GetSafeMode() bool {
-	if v, ok := readEnvBool("DELGUARD_SAFE_MODE"); ok {
-		return v
+// loadFromEnv 从环境变量加载配置
+func (c *Config) loadFromEnv() {
+	// 基本设置
+	if v := os.Getenv("DELGUARD_USE_RECYCLE_BIN"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			c.UseRecycleBin = b
+		}
 	}
-	cfg := LoadConfig()
-	return cfg.SafeMode
+
+	if v := os.Getenv("DELGUARD_INTERACTIVE_MODE"); v != "" {
+		c.InteractiveMode = v
+	}
+
+	if v := os.Getenv("DELGUARD_LANGUAGE"); v != "" {
+		c.Language = v
+	}
+
+	if v := os.Getenv("DELGUARD_LOG_LEVEL"); v != "" {
+		c.LogLevel = v
+	}
+
+	if v := os.Getenv("DELGUARD_SAFE_MODE"); v != "" {
+		c.SafeMode = v
+	}
+
+	// 限制设置
+	if v := os.Getenv("DELGUARD_MAX_BACKUP_FILES"); v != "" {
+		if i, err := strconv.ParseInt(v, 10, 64); err == nil {
+			c.MaxBackupFiles = i
+		}
+	}
+
+	if v := os.Getenv("DELGUARD_TRASH_MAX_SIZE"); v != "" {
+		if i, err := strconv.ParseInt(v, 10, 64); err == nil {
+			c.TrashMaxSize = i
+		}
+	}
+
+	if v := os.Getenv("DELGUARD_MAX_FILE_SIZE"); v != "" {
+		if i, err := strconv.ParseInt(v, 10, 64); err == nil {
+			c.MaxFileSize = i
+		}
+	}
+
+	// 安全设置
+	if v := os.Getenv("DELGUARD_ENABLE_SECURITY_CHECKS"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			c.EnableSecurityChecks = b
+		}
+	}
+
+	if v := os.Getenv("DELGUARD_ENABLE_MALWARE_SCAN"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			c.EnableMalwareScan = b
+		}
+	}
+}
+
+// GetInteractiveDefault 获取交互模式默认值
+func (c *Config) GetInteractiveDefault() bool {
+	return c.InteractiveMode == "always" || c.InteractiveMode == "confirm"
 }
 
 // GetUseTrash 获取是否使用回收站
-func GetUseTrash() bool {
-	if v, ok := readEnvBool("DELGUARD_USE_TRASH"); ok {
-		return v // 环境变量为true时表示使用回收站
-	}
-	cfg := LoadConfig()
-	return cfg.UseTrash
+func (c *Config) GetUseTrash() bool {
+	return c.UseRecycleBin
 }
 
-// ShouldSkipReadOnlyConfirm 是否跳过只读文件确认
-func ShouldSkipReadOnlyConfirm() bool {
-	if v, ok := readEnvBool("DELGUARD_SKIP_READONLY_CONFIRM"); ok {
-		return v
-	}
-	cfg := LoadConfig()
-	return cfg.SkipReadOnlyConfirm
+// GetMaxFileSize 获取最大文件大小限制
+func (c *Config) GetMaxFileSize() int64 {
+	return c.MaxFileSize
 }
 
-// ShouldSkipHiddenConfirm 是否跳过隐藏文件确认
-func ShouldSkipHiddenConfirm() bool {
-	if v, ok := readEnvBool("DELGUARD_SKIP_HIDDEN_CONFIRM"); ok {
-		return v
-	}
-	cfg := LoadConfig()
-	return cfg.SkipHiddenConfirm
+// GetSafeMode 获取安全模式
+func (c *Config) GetSafeMode() string {
+	return c.SafeMode
 }
 
-// ShouldSkipSystemConfirm 是否跳过系统文件确认
-func ShouldSkipSystemConfirm() bool {
-	if v, ok := readEnvBool("DELGUARD_SKIP_SYSTEM_CONFIRM"); ok {
-		return v
-	}
-	cfg := LoadConfig()
-	return cfg.SkipSystemConfirm
-}
+// Validate 验证配置有效性
+func (c *Config) Validate() error {
+	var errs []error
 
-// ShouldShowAdminWarning 是否显示管理员权限警告
-func ShouldShowAdminWarning() bool {
-	if v, ok := readEnvBool("DELGUARD_ADMIN_WARNING"); ok {
-		return v
+	// 验证日志级别
+	validLevels := map[string]bool{
+		"debug": true,
+		"info":  true,
+		"warn":  true,
+		"error": true,
+		"fatal": true,
 	}
-	cfg := LoadConfig()
-	return cfg.AdminWarning
-}
+	if !validLevels[c.LogLevel] {
+		err := fmt.Errorf("无效的日志级别: %s (有效值: debug, info, warn, error, fatal)", c.LogLevel)
+		errs = append(errs, err)
+	}
 
-// GetTrashMaxSize 获取回收站最大容量（MB）
-func GetTrashMaxSize() int {
-	if val := os.Getenv("DELGUARD_TRASH_MAX_SIZE"); val != "" {
-		if size, err := parseInt(val); err == nil && size > 0 {
-			return size
+	// 验证交互模式
+	switch c.InteractiveMode {
+	case "always", "never", "confirm":
+	default:
+		err := fmt.Errorf("无效的交互模式: %s (有效值: always, never, confirm)", c.InteractiveMode)
+		errs = append(errs, err)
+	}
+
+	// 验证安全模式
+	switch c.SafeMode {
+	case "strict", "normal", "relaxed":
+	default:
+		err := fmt.Errorf("无效的安全模式: %s (有效值: strict, normal, relaxed)", c.SafeMode)
+		errs = append(errs, err)
+	}
+
+	// 验证数值范围
+	if c.MaxFileSize < 0 {
+		err := fmt.Errorf("最大文件大小不能为负数: %d", c.MaxFileSize)
+		errs = append(errs, err)
+	}
+
+	if c.MaxPathLength <= 0 {
+		err := fmt.Errorf("最大路径长度必须为正数: %d", c.MaxPathLength)
+		errs = append(errs, err)
+	}
+
+	if c.MaxConcurrentOps <= 0 {
+		err := fmt.Errorf("最大并发操作数必须为正数: %d", c.MaxConcurrentOps)
+		errs = append(errs, err)
+	}
+	if c.MaxConcurrentOps > 100 {
+		err := fmt.Errorf("并发操作数过大: %d (最大100)", c.MaxConcurrentOps)
+		errs = append(errs, err)
+	}
+
+	if c.MaxBackupFiles < 0 {
+		err := fmt.Errorf("最大备份文件数不能为负数: %d", c.MaxBackupFiles)
+		errs = append(errs, err)
+	}
+
+	if c.TrashMaxSize < 0 {
+		err := fmt.Errorf("回收站最大容量不能为负数: %d MB", c.TrashMaxSize)
+		errs = append(errs, err)
+	}
+
+	if c.BackupRetentionDays < 0 {
+		err := fmt.Errorf("备份保留天数不能为负数: %d", c.BackupRetentionDays)
+		errs = append(errs, err)
+	}
+	if c.BackupRetentionDays > 365 {
+		err := fmt.Errorf("备份保留天数过长: %d (最大365天)", c.BackupRetentionDays)
+		errs = append(errs, err)
+	}
+
+	if c.LogRetentionDays < 0 {
+		err := fmt.Errorf("日志保留天数不能为负数: %d", c.LogRetentionDays)
+		errs = append(errs, err)
+	}
+	if c.LogRetentionDays > 30 {
+		err := fmt.Errorf("日志保留天数过长: %d (最大30天)", c.LogRetentionDays)
+		errs = append(errs, err)
+	}
+
+	// 平台特定路径验证
+	if runtime.GOOS == "windows" {
+		if c.Windows.RecycleBinPath != "" {
+			if _, err := os.Stat(c.Windows.RecycleBinPath); err != nil {
+				if os.IsNotExist(err) {
+					err = fmt.Errorf("Windows回收站路径不存在: %s", c.Windows.RecycleBinPath)
+				} else {
+					err = fmt.Errorf("Windows回收站路径访问失败: %v", err)
+				}
+				errs = append(errs, err)
+			}
+		}
+	} else {
+		if runtime.GOOS == "linux" {
+			if c.Linux.TrashDir != "" {
+				if _, err := os.Stat(c.Linux.TrashDir); err != nil {
+					if os.IsNotExist(err) {
+						err = fmt.Errorf("Linux回收站路径不存在: %s", c.Linux.TrashDir)
+					} else {
+						err = fmt.Errorf("Linux回收站路径访问失败: %v", err)
+					}
+					errs = append(errs, err)
+				}
+			}
+		} else if runtime.GOOS == "darwin" {
+			if c.Darwin.TrashDir != "" {
+				if _, err := os.Stat(c.Darwin.TrashDir); err != nil {
+					if os.IsNotExist(err) {
+						err = fmt.Errorf("macOS回收站路径不存在: %s", c.Darwin.TrashDir)
+					} else {
+						err = fmt.Errorf("macOS回收站路径访问失败: %v", err)
+					}
+					errs = append(errs, err)
+				}
+			}
 		}
 	}
-	cfg := LoadConfig()
-	return cfg.TrashMaxSize
-}
 
-// GetTrashAutoCleanDays 获取回收站自动清理天数
-func GetTrashAutoCleanDays() int {
-	if val := os.Getenv("DELGUARD_TRASH_AUTO_CLEAN_DAYS"); val != "" {
-		if days, err := parseInt(val); err == nil && days > 0 {
-			return days
+	// 返回所有错误
+	if len(errs) > 0 {
+		var errorMsgs []string
+		for _, err := range errs {
+			errorMsgs = append(errorMsgs, err.Error())
 		}
+		return fmt.Errorf("配置验证失败:\n%s", strings.Join(errorMsgs, "\n"))
 	}
-	cfg := LoadConfig()
-	return cfg.TrashAutoCleanDays
+
+	return nil
 }
 
-// ShouldEnableOperationLog 是否启用操作日志
-func ShouldEnableOperationLog() bool {
-	if v, ok := readEnvBool("DELGUARD_ENABLE_OPERATION_LOG"); ok {
-		return v
+// Save 保存配置到文件
+func (c *Config) Save(path string) error {
+	// 创建目录
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
 	}
-	cfg := LoadConfig()
-	return cfg.EnableOperationLog
-}
 
-// ShouldEnableSoundAlert 是否启用声音提示
-func ShouldEnableSoundAlert() bool {
-	if v, ok := readEnvBool("DELGUARD_ENABLE_SOUND_ALERT"); ok {
-		return v
+	// 序列化配置
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return err
 	}
-	cfg := LoadConfig()
-	return cfg.EnableSoundAlert
-}
 
-// GetColorMode 获取颜色输出模式
-func GetColorMode() string {
-	if val := os.Getenv("DELGUARD_COLOR_MODE"); val != "" {
-		val = strings.ToLower(strings.TrimSpace(val))
-		if val == "always" || val == "auto" || val == "never" {
-			return val
-		}
-	}
-	cfg := LoadConfig()
-	return cfg.ColorMode
-}
-
-// parseInt 解析整数字符串
-func parseInt(s string) (int, error) {
-	var n int
-	_, err := fmt.Sscanf(s, "%d", &n)
-	return n, err
-}
-
-// GetInteractiveDefault 获取默认交互模式设置
-func GetInteractiveDefault() bool {
-	cfg := LoadConfig()
-	return cfg.DefaultInteractive
+	// 写入文件
+	return os.WriteFile(path, data, 0644)
 }
