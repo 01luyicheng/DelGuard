@@ -216,22 +216,6 @@ func checkDirectoryPermissions(dir string) error {
 	return fmt.Errorf("目录无写权限: %s", dir)
 }
 
-// checkFilePermissions 检查文件权限
-func checkFilePermissions(path string, fi os.FileInfo) error {
-	if fi == nil {
-		var err error
-		fi, err = os.Stat(path)
-		if err != nil {
-			return err
-		}
-	}
-	// 简单检查文件是否可读
-	if _, err := os.OpenFile(path, os.O_RDONLY, 0); err != nil {
-		return fmt.Errorf("无法读取文件: %v", err)
-	}
-	return nil
-}
-
 // -------------------- Linux --------------------
 
 func restoreFromTrashLinux(pattern string, opts RestoreOptions) error {

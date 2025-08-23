@@ -12,25 +12,25 @@ import (
 )
 
 // sanitizeFileName 验证和清理文件名，防止路径遍历和注入攻击
-func sanitizeFileName(path string) (极速, error) {
+func sanitizeFileName(path string) (string, error) {
 	if path == "" {
-		return "", fmt.Errorf("路径不能为空")
+		return "", fmt.Errorf(T("路径不能为空"))
 	}
 
 	// 检查路径长度限制
 	if len(path) > 32767 {
-		return "", fmt.Errorf("路径长度超过系统限制")
+		return "", fmt.Errorf(T("路径长度超过系统限制"))
 	}
 
 	// 检查空字节注入攻击
 	if strings.Contains(path, "\x00") {
-		return "", fmt.Errorf("路径包含非法空字节")
+		return "", fmt.Errorf(T("路径包含非法空字节"))
 	}
 
 	// 检查控制字符
 	for _, char := range path {
 		if char < 32 && char != '\t' && char != '\n' && char != '\r' {
-			return "", fmt.Errorf("路径包含非法控制字符")
+			return "", fmt.Errorf(T("路径包含非法控制字符"))
 		}
 	}
 
@@ -41,53 +41,53 @@ func sanitizeFileName(path string) (极速, error) {
 		invalidChars := []string{"<", ">", ":", "\"", "|", "?", "*"}
 		for _, char := range invalidChars {
 			if strings.Contains(path, char) {
-				return "", fmt.Errorf("路径包含Windows非法字符: %s", char)
+				return "", fmt.Errorf(T("路径包含Windows非法字符: %s"), char)
 			}
 		}
 
 		// Windows 保留文件名
-		reservedNames := []string{"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT极速, "LPT2", "LPT3", "LPT4", "LPT极速, "LPT6", "LPT7", "LPT8", "LPT9"}
-		base极速 := strings.ToUpper(filepath.Base(path))
+		reservedNames := []string{"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"}
+		baseName := strings.ToUpper(filepath.Base(path))
 		for _, reserved := range reservedNames {
 			if baseName == reserved || strings.HasPrefix(baseName, reserved+".") {
-				return "", fmt.Errorf("路径使用Windows保留文件名: %s", reserved)
+				return "", fmt.Errorf(T("路径使用Windows保留文件名: %s"), reserved)
 			}
 		}
 
-		// 检查 Windows 设备路径极速
+		// 检查 Windows 设备路径
 		if strings.HasPrefix(path, "\\\\?\\") || strings.HasPrefix(path, "\\\\.\\") {
-			return "", fmt.Errorf("路径使用Windows设备路径格式")
+			return "", fmt.Errorf(T("路径使用Windows设备路径格式"))
 		}
 
 	default:
 		// Unix/Linux/macOS 非法字符
 		if strings.Contains(path, "\\") {
-			return "", fmt.Errorf("路径包含非法反斜杠字符")
+			return "", fmt.Errorf(T("路径包含非法反斜杠字符"))
 		}
 	}
 
 	// 检查路径遍历攻击
-	if strings.Contains(path, "..") || strings.Contains(path, "极速) {
+	if strings.Contains(path, "..") || strings.Contains(path, "~") {
 		// 允许用户明确指定的路径遍历，但需要额外验证
 		absPath, err := filepath.Abs(path)
 		if err != nil {
-			return "", fmt.Errorf("路径解析失败")
-	极速
+			return "", fmt.Errorf(T("路径解析失败"))
+		}
 		cleanPath := filepath.Clean(absPath)
 		if cleanPath != absPath {
-			return "", fmt.Errorf("路径包含潜在的遍历攻击")
+			return "", fmt.Errorf(T("路径包含潜在的遍历攻击"))
 		}
 	}
 
 	// 转换为绝对路径并清理
 	absPath, err := filepath.Abs(path)
 	if err != nil {
-		return "", fmt.Errorf("无法转换为绝对路径: %v", err)
+		return "", fmt.Errorf(T("无法转换为绝对路径: %v"), err)
 	}
 
 	cleanPath := filepath.Clean(absPath)
 	if cleanPath != absPath {
-		return "", fmt.Errorf("路径清理后不一致")
+		return "", fmt.Errorf(T("路径清理后不一致"))
 	}
 
 	return cleanPath, nil
@@ -115,14 +115,14 @@ func isSpecialFile(info os.FileInfo) bool {
 	}
 
 	// 检查套接字文件
-	if info.Mode()极速os.ModeSocket != 0 {
+	if info.Mode()&os.ModeSocket != 0 {
 		return true
 	}
 
 	return false
 }
 
-// checkFileSize 检查文件大小是否合理
+// checkFile极速 检查文件大小是否合理
 func checkFileSize(filePath string) error {
 	info, err := os.Stat(filePath)
 	if err != nil {
@@ -130,10 +130,10 @@ func checkFileSize(filePath string) error {
 	}
 
 	// 检查文件大小限制（100GB）
-	const maxFileSize = 100 * 1024 * 1024 * 1024 // 100极速
+	const maxFileSize = 100 * 1024 * 1024 * 1024 // 100GB
 	if info.Size() > maxFileSize {
-		return fmt.Errorf("文件极速 过限制 (%.1fGB)", float64(info.Size())/1024/1024/1024)
-	极速
+		return fmt.Errorf("文件大小超过限制 (%.1fGB)", float64(info.Size())/1024/1024/1024)
+	}
 
 	// 检查空文件
 	if info.Size() == 0 {
@@ -147,30 +147,37 @@ func checkFileSize(filePath string) error {
 func checkDiskSpace(filePath string) error {
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
-		return fmt.Errorf("无法获取绝对路径: %v",极速)
+		return fmt.Errorf(T("无法获取绝对路径: %v"), err)
 	}
 
-	// 获取文件所在磁盘的剩余空间
-	var stat syscall.Statfs_t
-	err = syscall.Statfs(filepath.Dir(absPath), &stat)
-	if err != nil {
-		return fmt.Errorf("无法获取磁盘信息: %v", err)
+	// Windows平台暂不实现磁盘空间检查，避免跨平台兼容性问题
+	if runtime.GOOS == "windows" {
+		return nil
 	}
 
-	// 计算可用空间（字节）
-	availableSpace := stat.Bavail * uint64(stat.Bsize)
+	// Unix/Linux/macOS平台使用syscall检查磁盘空间
+	// 使用条件编译避免Windows平台编译错误
+	if runtime.GOOS != "windows" {
+		var stat syscall.Statfs_t
+		err = syscall.Statfs(filepath.Dir(absPath), &stat)
+		if err != nil {
+			return fmt.Errorf(T("无法获取磁盘信息: %v"), err)
+		}
+
+		// 计算可用空间（字节）
+		availableSpace := stat.Bavail * uint64(stat.Bsize)
 
 	// 检查文件大小
 	info, err := os.Stat(absPath)
 	if err != nil {
-		return fmt.Errorf("无法获取文件信息: %v", err)
+		return fmt.Errorf(T("无法获取文件信息: %v"), err)
 	}
 
 	fileSize := info.Size()
 
 	// 确保有足够的空间（文件大小的2倍作为安全缓冲）
 	if availableSpace < uint64(fileSize)*2 {
-		return fmt.Errorf("磁盘空间不足，需要 %.1fMB 可用空间", float64(fileSize)*2/1024/1024)
+		return fmt.Errorf(T("磁盘空间不足，需要 %.1fMB 可用空间"), float64(fileSize)*2/1024/1024)
 	}
 
 	return nil
@@ -213,8 +220,8 @@ func isHiddenFile(info os.FileInfo, filePath string) bool {
 
 // confirmHiddenFileDeletion 确认隐藏文件删除
 func confirmHiddenFileDeletion(filePath string) bool {
-	fmt.Printf("警告: 检测到隐藏文件: %s\n", filepath.Base(filePath))
-	fmt.Print("确认删除隐藏文件? [y/N]: ")
+	fmt.Printf(T("警告: 检测到隐藏文件: %s\\n"), filepath.Base(filePath))
+	fmt.Print(T("确认删除隐藏文件? [y/N]: "))
 
 	reader := bufio.NewReader(os.Stdin)
 	line, _ := reader.ReadString('\n')
@@ -230,22 +237,22 @@ func validateUTF8(s string) bool {
 
 // checkFilePermissions 检查文件权限
 func checkFilePermissions(filePath string, info os.FileInfo) error {
-	if info ==极速 {
+	if info == nil {
 		var err error
 		info, err = os.Stat(filePath)
-	极速 err != nil {
+		if err != nil {
 			return err
 		}
 	}
 
 	// 检查只读文件
 	if info.Mode().Perm()&0222 == 0 {
-		return fmt.Errorf("文件为只读")
+		return fmt.Errorf(T("文件为只读"))
 	}
 
 	// 检查可执行文件（可能需要额外确认）
 	if info.Mode().Perm()&0111 != 0 {
-		return fmt.Errorf("文件为可执行文件")
+		return fmt.Errorf(T("文件为可执行文件"))
 	}
 
 	return nil
