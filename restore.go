@@ -111,6 +111,127 @@ func restoreFromTrashMacOS(pattern string, opts RestoreOptions) error {
 	return nil
 }
 
+// restoreFile 恢复单个文件
+func restoreFile(trashPath, originalPath string) error {
+	// 验证原始路径
+	if err := validateRestorePath(originalPath); err != nil {
+		return fmt.Errorf("路径验证失败: %v", err)
+	}
+
+	// 检查目标位置是否已存在文件
+	if _, err := os.Stat(originalPath); err == nil {
+		return fmt.Errorf("目标位置已存在文件: %s", originalPath)
+	}
+
+	// 检查回收站文件是否存在
+	if _, err := os.Stat(trashPath); os.IsNotExist(err) {
+		return fmt.Errorf("回收站中找不到该文件: %s", trashPath)
+	}
+
+	// 检查回收站文件权限
+	if err := checkFilePermissions(trashPath, nil); err != nil {
+		return fmt.Errorf("回收站文件权限检查失败: %v", err)
+	}
+
+	// 创建目标目录
+	destDir := filepath.Dir(originalPath)
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return fmt.Errorf("无法创建目标目录: %v", err)
+	}
+
+	// 检查目标目录权限
+	if err := checkDirectoryPermissions(destDir); err != nil {
+		return fmt.Errorf("目标目录权限不足: %v", err)
+	}
+
+	// 移动文件
+	if err := os.Rename(trashPath, originalPath); err != nil {
+		return fmt.Errorf("无法移动文件: %v", err)
+	}
+
+	return nil
+}
+
+// validateRestorePath 验证恢复路径的有效性
+func validateRestorePath(path string) error {
+	// 检查空路径
+	if path == "" {
+		return fmt.Errorf("恢复路径不能为空")
+	}
+
+	// 检查路径遍历
+	if strings.Contains(path, "..") {
+		return fmt.Errorf("路径包含非法字符")
+	}
+
+	// 检查路径长度
+	if len(path) > 260 {
+		return fmt.Errorf("路径过长")
+	}
+
+	// 检查系统目录
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("无法获取绝对路径")
+	}
+
+	// 禁止恢复到系统关键目录
+	protectedPaths := []string{
+		"C:\\Windows",
+		"C:\\Program Files",
+		"C:\\Program Files (x86)",
+		"/usr",
+		"/bin",
+		"/sbin",
+		"/etc",
+		"/var",
+	}
+
+	for _, protected := range protectedPaths {
+		if strings.HasPrefix(strings.ToLower(absPath), strings.ToLower(protected)) {
+			return fmt.Errorf("禁止恢复到系统目录: %s", protected)
+		}
+	}
+
+	return nil
+}
+
+// checkDirectoryPermissions 检查目录权限
+func checkDirectoryPermissions(dir string) error {
+	// 检查目录是否存在
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		// 如果目录不存在，检查父目录权限
+		parent := filepath.Dir(dir)
+		return checkDirectoryPermissions(parent)
+	}
+
+	// 检查目录是否可写
+	testFile := filepath.Join(dir, ".delguard_test")
+	if f, err := os.Create(testFile); err == nil {
+		f.Close()
+		os.Remove(testFile)
+		return nil
+	}
+
+	return fmt.Errorf("目录无写权限: %s", dir)
+}
+
+// checkFilePermissions 检查文件权限
+func checkFilePermissions(path string, fi os.FileInfo) error {
+	if fi == nil {
+		var err error
+		fi, err = os.Stat(path)
+		if err != nil {
+			return err
+		}
+	}
+	// 简单检查文件是否可读
+	if _, err := os.OpenFile(path, os.O_RDONLY, 0); err != nil {
+		return fmt.Errorf("无法读取文件: %v", err)
+	}
+	return nil
+}
+
 // -------------------- Linux --------------------
 
 func restoreFromTrashLinux(pattern string, opts RestoreOptions) error {
@@ -172,7 +293,7 @@ func restoreFromTrashLinux(pattern string, opts RestoreOptions) error {
 				line = strings.TrimSpace(line)
 				if strings.HasPrefix(line, "Path=") {
 					raw := strings.TrimPrefix(line, "Path=")
-					originalPath = DecodeTrashInfoPath(raw)
+					originalPath = decodeTrashInfoPath(raw)
 					break
 				}
 			}

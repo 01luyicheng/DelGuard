@@ -25,22 +25,22 @@ DelGuard 是一个现代化的跨平台安全删除工具，支持 Windows、mac
 #### Windows (PowerShell 7+)
 ```powershell
 # 一键安装
-iwr -useb https://raw.githubusercontent.com/YourOrg/DelGuard/main/install | iex
+iwr -useb https://raw.githubusercontent.com/your-username/DelGuard/main/install | iex
 
 # 或安装并设置默认交互模式
-iwr -useb https://raw.githubusercontent.com/YourOrg/DelGuard/main/install | iex -- --default-interactive
+iwr -useb https://raw.githubusercontent.com/your-username/DelGuard/main/install | iex -- --default-interactive
 ```
 
 #### macOS / Linux
 ```bash
 # 一键安装
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/YourOrg/DelGuard/main/install)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/your-username/DelGuard/main/install)"
 
 # 或安装并设置默认交互模式
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/YourOrg/DelGuard/main/install)" -- --default-interactive
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/your-username/DelGuard/main/install)" -- --default-interactive
 
 # 或者使用 curl 管道方式
-curl -fsSL https://raw.githubusercontent.com/YourOrg/DelGuard/main/install | bash
+curl -fsSL https://raw.githubusercontent.com/your-username/DelGuard/main/install | bash
 ```
 
 ### 手动安装（备用方案）
@@ -222,7 +222,7 @@ DelGuard 会自动保护以下关键路径：
 ### 从源码构建
 ```bash
 # 克隆仓库
-git clone https://github.com/your-repo/DelGuard.git
+git clone https://github.com/your-username/DelGuard.git
 cd DelGuard
 
 # 构建所有平台

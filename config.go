@@ -133,10 +133,17 @@ func LoadConfigPath() string {
 	if overrideConfigPath != "" {
 		return overrideConfigPath
 	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+
 	if runtime.GOOS == "windows" {
 		appData := os.Getenv("APPDATA")
 		if appData == "" {
-			return ""
+			// 如果 APPDATA 不存在，使用用户主目录
+			appData = filepath.Join(home, "AppData", "Roaming")
 		}
 		return filepath.Join(appData, "DelGuard", "config.json")
 	}
@@ -144,10 +151,6 @@ func LoadConfigPath() string {
 	xdg := os.Getenv("XDG_CONFIG_HOME")
 	base := xdg
 	if base == "" {
-		home, _ := os.UserHomeDir()
-		if home == "" {
-			return ""
-		}
 		base = filepath.Join(home, ".config")
 	}
 	return filepath.Join(base, "delguard", "config.json")
@@ -185,11 +188,48 @@ func LoadConfig() Config {
 	return cfg
 }
 
+// validateConfig 验证配置参数的有效性
+func validateConfig(cfg *Config) error {
+	// 验证最大备份文件数量
+	if cfg.MaxBackupFiles <= 0 || cfg.MaxBackupFiles > 1000 {
+		return fmt.Errorf("maxBackupFiles 必须在 1-1000 之间")
+	}
+	// 验证回收站最大容量
+	if cfg.TrashMaxSize <= 0 || cfg.TrashMaxSize > 10*1024 {
+		return fmt.Errorf("trashMaxSize 必须在 1-10240 MB 之间")
+	}
+	// 验证自动清理天数
+	if cfg.TrashAutoCleanDays <= 0 || cfg.TrashAutoCleanDays > 365 {
+		return fmt.Errorf("trashAutoCleanDays 必须在 1-365 天之间")
+	}
+	// 验证语言设置
+	validLangs := map[string]bool{"zh-CN": true, "en-US": true, "ja-JP": true}
+	if cfg.Language != "" && !validLangs[cfg.Language] {
+		return fmt.Errorf("不支持的语言: %s", cfg.Language)
+	}
+	// 验证详细程度
+	validVerb := map[string]bool{"quiet": true, "normal": true, "verbose": true}
+	if !validVerb[cfg.Verbosity] {
+		return fmt.Errorf("无效的 verbosity 值: %s", cfg.Verbosity)
+	}
+	// 验证颜色模式
+	validColor := map[string]bool{"auto": true, "always": true, "never": true}
+	if !validColor[cfg.ColorMode] {
+		return fmt.Errorf("无效的 colorMode 值: %s", cfg.ColorMode)
+	}
+	return nil
+}
+
 // SaveConfig 保存配置到文件
 func SaveConfig(cfg Config) error {
 	path := LoadConfigPath()
 	if path == "" {
 		return os.ErrInvalid
+	}
+
+	// 验证配置
+	if err := validateConfig(&cfg); err != nil {
+		return err
 	}
 
 	// 创建配置目录

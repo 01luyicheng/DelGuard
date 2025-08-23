@@ -15,18 +15,34 @@ import (
 func moveToTrashMacOS(filePath string) error {
 	// 检查文件是否存在
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		return ErrFileNotFound
+		return E(KindNotFound, "moveToTrash", filePath, err, "文件不存在")
 	}
 
 	// 获取绝对路径
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
-		return err
+		return E(KindIO, "moveToTrash", filePath, err, "无法解析绝对路径")
+	}
+
+	// 安全检查：防止删除关键路径
+	if IsCriticalPath(absPath) {
+		return E(KindProtected, "moveToTrash", absPath, nil, "无法删除关键受保护路径")
 	}
 
 	// 检查路径是否已经被删除或不可访问
 	if _, err := os.Lstat(absPath); err != nil {
 		return E(KindIO, "moveToTrash", absPath, err, "无法访问文件")
+	}
+
+	// 检查文件权限和类型
+	fileInfo, err := os.Lstat(absPath)
+	if err != nil {
+		return E(KindIO, "moveToTrash", absPath, err, "无法获取文件信息")
+	}
+
+	// 检查特殊文件类型
+	if isSpecialFile(fileInfo) {
+		return E(KindProtected, "moveToTrash", absPath, nil, "不支持删除特殊文件类型")
 	}
 
 	// 使用osascript调用Finder将文件移动到废纸篓

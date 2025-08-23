@@ -81,10 +81,10 @@ func moveToTrashWindows(filePath string) error {
 		case 0x2: // ERROR_FILE_NOT_FOUND
 			return E(KindNotFound, "moveToTrash", absPath, nil, "文件不存在")
 		default:
-			// 检查是否有底层系统错误，使用安全的错误包装
+			// 检查是否有底层系统错误
 			if err != nil {
 				if syscallErr, ok := err.(syscall.Errno); ok && syscallErr != 0 {
-					return E(KindIO, "moveToTrash", absPath, nil, fmt.Sprintf("Windows API 错误码: 0x%x", uint32(ret)))
+					return E(KindIO, "moveToTrash", absPath, err, fmt.Sprintf("Windows API 错误码: 0x%x", uint32(ret)))
 				}
 			}
 			return E(KindIO, "moveToTrash", absPath, nil, fmt.Sprintf("Windows API 错误码: 0x%x", ret))
@@ -122,4 +122,52 @@ func decodeTrashInfoPath(p string) string {
 		}
 	}
 	return strings.Join(parts, "/")
+}
+
+// isWindowsHiddenFile 检查Windows文件是否为隐藏文件
+func isWindowsHiddenFile(filePath string) bool {
+	// 使用Windows API检查文件属性
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	getFileAttributes := kernel32.NewProc("GetFileAttributesW")
+	
+	// 转换路径为UTF16
+	pathPtr, err := syscall.UTF16PtrFromString(filePath)
+	if err != nil {
+		return false
+	}
+	
+	// 调用Windows API获取文件属性
+	attrs, _, err := getFileAttributes.Call(uintptr(unsafe.Pointer(pathPtr)))
+	if attrs == 0xffffffff {
+		// 获取属性失败，保守起见返回true
+		return true
+	}
+	
+	// 检查隐藏属性位 (FILE_ATTRIBUTE_HIDDEN = 0x2)
+	const FILE_ATTRIBUTE_HIDDEN = 0x00000002
+	return (attrs & FILE_ATTRIBUTE_HIDDEN) != 0
+}
+
+// checkFileOwnershipWindows 检查Windows文件所有权
+func checkFileOwnershipWindows(filePath string) error {
+	// Windows平台的所有权检查相对复杂，这里实现基础检查
+	// 检查文件是否可访问
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("无法访问文件: %v", err)
+	}
+	defer file.Close()
+	
+	// 检查文件权限
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return fmt.Errorf("无法获取文件信息: %v", err)
+	}
+	
+	// 检查是否为只读
+	if info.Mode().Perm()&0222 == 0 {
+		return fmt.Errorf("文件为只读")
+	}
+	
+	return nil
 }

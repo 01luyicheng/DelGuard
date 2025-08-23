@@ -205,7 +205,6 @@ func CheckDeletePermission(filePath string) bool {
 		if line != "y" && line != "yes" {
 			return false
 		}
-		// 继续检查管理员权限，不直接返回
 	}
 
 	// 检查管理员权限（需要额外确认）
@@ -215,24 +214,45 @@ func CheckDeletePermission(filePath string) bool {
 		reader := bufio.NewReader(os.Stdin)
 		line, _ := reader.ReadString('\n')
 		line = strings.TrimSpace(strings.ToLower(line))
-		return line == "y" || line == "yes"
+		if line != "y" && line != "yes" {
+			return false
+		}
 	}
 
 	return true
 }
 
-// validatePath validates path
+// validatePath validates path with comprehensive security checks
 func validatePath(path string) bool {
 	if path == "" {
 		return false
 	}
 
+	// 检查路径长度限制
 	if len(path) > 32767 {
 		return false
 	}
 
+	// 检查空字节注入攻击
+	if strings.Contains(path, "\x00") {
+		return false
+	}
+
+	// 检查路径遍历攻击
+	if strings.Contains(path, "..") || strings.Contains(path, "~") {
+		return false
+	}
+
+	// 检查控制字符
+	for _, char := range path {
+		if char < 32 && char != '\t' && char != '\n' && char != '\r' {
+			return false
+		}
+	}
+
 	switch runtime.GOOS {
 	case "windows":
+		// Windows 非法字符
 		invalidChars := []string{"<", ">", ":", "\"", "|", "?", "*"}
 		for _, char := range invalidChars {
 			if strings.Contains(path, char) {
@@ -240,6 +260,7 @@ func validatePath(path string) bool {
 			}
 		}
 
+		// Windows 保留文件名
 		reservedNames := []string{"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"}
 		baseName := strings.ToUpper(filepath.Base(path))
 		for _, reserved := range reservedNames {
@@ -247,11 +268,43 @@ func validatePath(path string) bool {
 				return false
 			}
 		}
-	case "darwin", "linux":
-		if strings.Contains(path, "\x00") {
+
+		// 检查 Windows 设备路径
+		if strings.HasPrefix(path, "\\\\?\\") || strings.HasPrefix(path, "\\\\.\\") {
+			return false
+		}
+
+	default:
+		// Unix/Linux/macOS 非法字符
+		if strings.Contains(path, "\\") {
 			return false
 		}
 	}
 
+	// 检查隐藏文件/系统文件模式（防止误删）
+	baseName := filepath.Base(path)
+	if strings.HasPrefix(baseName, ".") && !isUserIntendedHiddenFile(path) {
+		return false
+	}
+
+	// 检查路径是否为绝对路径（相对路径更安全）
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+
+	// 最终清理检查
+	cleanPath := filepath.Clean(absPath)
+	if cleanPath != absPath {
+		return false
+	}
+
 	return true
+}
+
+// isUserIntendedHiddenFile 检查是否为用户有意操作隐藏文件
+func isUserIntendedHiddenFile(path string) bool {
+	// 用户明确指定隐藏文件时才允许操作
+	// 在实际使用中，这个函数应该结合用户交互确认
+	return true // 暂时返回true，后续结合交互模式
 }

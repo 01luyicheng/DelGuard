@@ -177,13 +177,17 @@ func IsCriticalError(err error) bool {
 	}
 
 	// 检查特定的错误消息
-	errMsg := err.Error()
+	errMsg := strings.ToLower(err.Error())
 	return strings.Contains(errMsg, "critical") ||
 		strings.Contains(errMsg, "protected") ||
 		strings.Contains(errMsg, "permission") ||
+		strings.Contains(errMsg, "access denied") ||
+		strings.Contains(errMsg, "privilege") ||
 		strings.Contains(errMsg, "回收站") ||
 		strings.Contains(errMsg, "关键路径") ||
-		strings.Contains(errMsg, "DelGuard程序")
+		strings.Contains(errMsg, "delguard程序") ||
+		strings.Contains(errMsg, "系统目录") ||
+		strings.Contains(errMsg, "只读")
 }
 
 // GetErrorAdvice 根据错误类型提供建议信息
@@ -198,20 +202,42 @@ func GetErrorAdvice(err error) string {
 	}
 
 	// 根据错误类型提供默认建议
-	errMsg := err.Error()
+	errMsg := strings.ToLower(err.Error())
 	switch {
-	case strings.Contains(errMsg, "permission") || strings.Contains(errMsg, "权限"):
+	case strings.Contains(errMsg, "permission") || strings.Contains(errMsg, "权限") || strings.Contains(errMsg, "access denied"):
 		return "请检查文件权限或使用管理员权限运行"
-	case strings.Contains(errMsg, "not exist") || strings.Contains(errMsg, "不存在"):
-		return "请检查文件路径是否正确"
-	case strings.Contains(errMsg, "critical") || strings.Contains(errMsg, "关键路径"):
+	case strings.Contains(errMsg, "not exist") || strings.Contains(errMsg, "不存在") || strings.Contains(errMsg, "no such file"):
+		return "请检查文件路径是否正确，文件可能已被删除或移动"
+	case strings.Contains(errMsg, "critical") || strings.Contains(errMsg, "关键路径") || strings.Contains(errMsg, "protected"):
 		return "此路径受到保护，无法删除"
 	case strings.Contains(errMsg, "trash") || strings.Contains(errMsg, "回收站"):
 		return "无法删除回收站目录"
 	case strings.Contains(errMsg, "read-only") || strings.Contains(errMsg, "只读"):
 		return "请先取消文件的只读属性"
+	case strings.Contains(errMsg, "invalid") || strings.Contains(errMsg, "无效"):
+		return "文件参数无效。请检查：\n1. 文件大小是否合理（不超过10GB）\n2. 文件是否为空文件\n3. 文件路径是否正确\n4. 尝试使用其他文件"
+	case strings.Contains(errMsg, "too long") || strings.Contains(errMsg, "过长"):
+		return "文件路径过长，请缩短路径长度"
+	case strings.Contains(errMsg, "occupied") || strings.Contains(errMsg, "占用"):
+		return "文件可能被其他程序占用，请关闭相关程序后重试"
+	case strings.Contains(errMsg, "disk full") || strings.Contains(errMsg, "磁盘空间"):
+		return "磁盘空间不足，请清理磁盘空间"
+	case strings.Contains(errMsg, "network") || strings.Contains(errMsg, "网络"):
+		return "网络连接问题，请检查网络连接"
+	case strings.Contains(errMsg, "hidden") || strings.Contains(errMsg, "隐藏"):
+		return "隐藏文件删除需要额外确认"
+	case strings.Contains(errMsg, "special") || strings.Contains(errMsg, "特殊"):
+		return "特殊文件类型不支持删除操作"
+	case strings.Contains(errMsg, "system") || strings.Contains(errMsg, "系统"):
+		return "系统文件删除可能影响系统稳定性"
+	case strings.Contains(errMsg, "symlink") || strings.Contains(errMsg, "符号链接"):
+		return "符号链接删除可能影响其他文件"
+	case strings.Contains(errMsg, "device") || strings.Contains(errMsg, "设备"):
+		return "设备文件删除可能导致系统问题"
+	case strings.Contains(errMsg, "ownership") || strings.Contains(errMsg, "所有权"):
+		return "文件所有权验证失败，请检查文件权限"
 	default:
-		return "请检查文件是否被其他程序占用或磁盘空间是否充足"
+		return "文件操作失败。请检查：\n1. 文件是否被其他程序占用\n2. 磁盘空间是否充足\n3. 文件权限是否正确\n4. 尝试重新运行程序"
 	}
 }
 

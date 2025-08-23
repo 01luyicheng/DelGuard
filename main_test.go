@@ -86,6 +86,8 @@ func TestIsCriticalPath_Advanced(t *testing.T) {
 	}{
 		{"normal path", "/home/user/file.txt", false},
 		{"relative path", "file.txt", false},
+		{"current directory", ".", false},
+		{"parent directory", "..", false},
 	}
 
 	// 平台特定测试
@@ -97,7 +99,11 @@ func TestIsCriticalPath_Advanced(t *testing.T) {
 		}{
 			{"windows system32", "C:\\Windows\\System32", true},
 			{"windows program files", "C:\\Program Files", true},
+			{"windows program files x86", "C:\\Program Files (x86)", true},
+			{"windows programdata", "C:\\ProgramData", true},
 			{"recycle bin path", "C:\\$RECYCLE.BIN", true},
+			{"windows root", "C:\\", true},
+			{"windows drive root", "D:\\", true},
 		}
 		tests = append(tests, windowsTests...)
 	} else {
@@ -110,6 +116,11 @@ func TestIsCriticalPath_Advanced(t *testing.T) {
 			{"usr directory", "/usr", true},
 			{"etc directory", "/etc", true},
 			{"dev directory", "/dev", true},
+			{"root directory", "/", true},
+			{"sbin directory", "/sbin", true},
+			{"lib directory", "/lib", true},
+			{"var directory", "/var", true},
+			{"boot directory", "/boot", true},
 		}
 		tests = append(tests, unixTests...)
 	}
@@ -118,6 +129,101 @@ func TestIsCriticalPath_Advanced(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := IsCriticalPath(tt.path); got != tt.want {
 				t.Errorf("IsCriticalPath(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidatePath(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{"valid path", "/home/user/file.txt", true},
+		{"empty path", "", false},
+		{"path with null char", "/home/user/\x00file.txt", false},
+	}
+
+	if runtime.GOOS == "windows" {
+		windowsTests := []struct {
+			name string
+			path string
+			want bool
+		}{
+			{"path with <", "C:\\file<.txt", false},
+			{"path with >", "C:\\file>.txt", false},
+			{"path with :", "C:\\file:.txt", false},
+			{"path with \"", "C:\\file\".txt", false},
+			{"path with |", "C:\\file|.txt", false},
+			{"path with ?", "C:\\file?.txt", false},
+			{"path with *", "C:\\file*.txt", false},
+			{"reserved name CON", "CON", false},
+			{"reserved name PRN", "PRN", false},
+			{"reserved name AUX", "AUX", false},
+			{"reserved name NUL", "NUL", false},
+			{"reserved name COM1", "COM1", false},
+			{"reserved name LPT1", "LPT1", false},
+		}
+		tests = append(tests, windowsTests...)
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := validatePath(tt.path); got != tt.want {
+				t.Errorf("validatePath(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsTrashDirectory(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{"normal path", "/home/user/file.txt", false},
+	}
+
+	if runtime.GOOS == "windows" {
+		windowsTests := []struct {
+			name string
+			path string
+			want bool
+		}{
+			{"recycle bin", "C:\\$Recycle.Bin", true},
+			{"recycler", "C:\\Recycler", true},
+			{"RECYCLER", "C:\\RECYCLER", true},
+		}
+		tests = append(tests, windowsTests...)
+	} else if runtime.GOOS == "darwin" {
+		home, _ := os.UserHomeDir()
+		macosTests := []struct {
+			name string
+			path string
+			want bool
+		}{
+			{"mac trash", filepath.Join(home, ".Trash"), true},
+		}
+		tests = append(tests, macosTests...)
+	} else {
+		home, _ := os.UserHomeDir()
+		linuxTests := []struct {
+			name string
+			path string
+			want bool
+		}{
+			{"linux trash", filepath.Join(home, ".local", "share", "Trash"), true},
+			{"linux trash alt", filepath.Join(home, ".Trash"), true},
+		}
+		tests = append(tests, linuxTests...)
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsTrashDirectory(tt.path); got != tt.want {
+				t.Errorf("IsTrashDirectory(%q) = %v, want %v", tt.path, got, tt.want)
 			}
 		})
 	}

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -28,9 +29,25 @@ func moveToTrashLinux(filePath string) error {
 		return E(KindIO, "moveToTrash", filePath, err, "无法解析绝对路径")
 	}
 
+	// 安全检查：防止删除关键路径
+	if IsCriticalPath(absPath) {
+		return E(KindProtected, "moveToTrash", absPath, nil, "无法删除关键受保护路径")
+	}
+
 	// 检查路径是否可访问
 	if _, err := os.Lstat(absPath); err != nil {
 		return E(KindIO, "moveToTrash", absPath, err, "无法访问文件")
+	}
+
+	// 检查文件权限
+	fileInfo, err := os.Lstat(absPath)
+	if err != nil {
+		return E(KindIO, "moveToTrash", absPath, err, "无法获取文件信息")
+	}
+
+	// 检查特殊文件类型
+	if isSpecialFile(fileInfo) {
+		return E(KindProtected, "moveToTrash", absPath, nil, "不支持删除特殊文件类型")
 	}
 
 	// 获取用户主目录
@@ -96,8 +113,8 @@ func moveToTrashLinux(filePath string) error {
 	trashFilePath := filepath.Join(filesDir, trashFileName)
 	infoFilePath := filepath.Join(infoDir, trashFileName+".trashinfo")
 
-	// 获取文件信息用于权限设置
-	fileInfo, err := os.Lstat(absPath)
+	// 获取文件信息用于权限设置（注意：fileInfo已经在前面定义过）
+	fileInfo, err = os.Lstat(absPath)
 	if err != nil {
 		return E(KindIO, "moveToTrash", absPath, err, "无法获取文件信息")
 	}
@@ -219,7 +236,17 @@ func copySymlink(src, dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
 		return err
 	}
-	return os.Symlink(target, dst)
+
+	// 创建符号链接
+	if err := os.Symlink(target, dst); err != nil {
+		return err
+	}
+
+	// 尝试保持符号链接的权限（如果平台支持）
+	// 注意：在Linux上，符号链接的权限通常由系统管理
+	// 我们无法直接设置符号链接的权限，但可以设置目标文件的权限
+
+	return nil
 }
 
 // encodeTrashInfoPath 对 .trashinfo 的 Path 字段进行按段 URL 编码，保留 /
@@ -274,4 +301,53 @@ func moveToTrashWindows(filePath string) error {
 
 func moveToTrashMacOS(filePath string) error {
 	return ErrUnsupportedPlatform
+}
+
+// checkFileOwnershipUnix 检查Unix文件所有权
+func checkFileOwnershipUnix(filePath string) error {
+	// 获取当前用户信息
+	currentUser, err := user.Current()
+	if err != nil {
+		return fmt.Errorf("无法获取当前用户信息: %v", err)
+	}
+	
+	// 获取文件信息
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return fmt.Errorf("无法获取文件信息: %v", err)
+	}
+	
+	// 检查是否为符号链接，避免安全风险
+	if info.Mode()&os.ModeSymlink != 0 {
+		// 检查符号链接的目标
+		target, err := os.Readlink(filePath)
+		if err != nil {
+			return fmt.Errorf("无法读取符号链接目标: %v", err)
+		}
+		
+		// 检查目标文件的所有权
+		targetInfo, err := os.Stat(target)
+		if err != nil {
+			return fmt.Errorf("无法获取符号链接目标信息: %v", err)
+		}
+		
+		// 检查目标文件权限
+		if targetInfo.Mode().Perm()&0222 == 0 {
+			return fmt.Errorf("符号链接目标文件为只读")
+		}
+		
+		return nil
+	}
+	
+	// 检查文件权限
+	if info.Mode().Perm()&0222 == 0 {
+		return fmt.Errorf("文件为只读")
+	}
+	
+	// 检查是否为系统文件
+	if info.Mode()&os.ModeDevice != 0 || info.Mode()&os.ModeCharDevice != 0 {
+		return fmt.Errorf("无法操作系统设备文件")
+	}
+	
+	return nil
 }

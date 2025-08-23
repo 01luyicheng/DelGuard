@@ -189,7 +189,7 @@ var translations = map[string]map[string]string{
 		"错误：无法解析路径 %s: %v\n":                 "Error: cannot resolve path %s: %v\n",
 		"错误：无法访问 %s: %v\n":                   "Error: cannot access %s: %v\n",
 		"提示：%s 是目录，删除目录需使用 -r/--recursive\n": "Tip: %s is a directory; use -r/--recursive to delete directories\n",
-		"即将删除 %d 个极目标（其中目录 %d 个）。选择模式 [a]全部同意/[n]全部拒绝/[i]逐项/[q]退出 (默认 i): ": "About to delete %d target(s) (%d directorie(s)). Choose [a] accept all / [n] reject all / [i] item-by-item / [q] quit (default i): ",
+		"即将删除 %d 个目标（其中目录 %d 个）。选择模式 [a]全部同意/[n]全部拒绝/[i]逐项/[q]退出 (默认 i): ": "About to delete %d target(s) (%d directorie(s)). Choose [a] accept all / [n] reject all / [i] item-by-item / [q] quit (default i): ",
 		"已取消所有删除。":                     "All deletions cancelled.",
 		"计划删除：%s (绝对路径: %s, 类型: %s)\n": "Plan to delete: %s (abs: %s, type: %s)\n",
 		"删除 %s ? [y/N/a/q]: ":          "Delete %s ? [y/N/a/q]: ",
