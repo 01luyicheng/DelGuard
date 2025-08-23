@@ -18,6 +18,38 @@ DelGuard 是一个现代化的跨平台安全删除工具，支持 Windows、mac
 - **错误处理**: 详细的错误代码和建议信息
 - **配置管理**: 用户可配置默认行为和语言设置
 
+## 🔒 安全增强功能
+
+### 文件类型检测
+- **隐藏文件检测**: 自动识别Windows隐藏属性文件
+- **特殊文件保护**: 防止删除符号链接、设备文件、套接字文件
+- **系统文件保护**: 阻止删除Windows系统文件和关键目录
+
+### 权限验证
+- **文件所有权检查**: 验证用户是否有权限删除指定文件
+- **目录权限验证**: 检查目标目录的写权限
+- **只读文件保护**: 阻止删除只读属性文件
+
+### 资源限制
+- **文件大小限制**: 限制单个文件最大为10GB
+- **磁盘空间检查**: 确保有足够空间进行删除操作
+- **内存使用监控**: 防止内存溢出
+
+### 路径验证
+- **路径遍历攻击防护**: 防止 `../../../` 等路径攻击
+- **非法字符检测**: 检测并阻止包含 `< > : " | ? *` 的文件名
+- **路径长度限制**: 限制最大路径长度为260字符
+
+### 操作确认
+- **批量操作确认**: 删除多个文件时要求用户确认
+- **隐藏文件确认**: 删除隐藏文件时额外确认
+- **系统文件确认**: 删除系统相关文件时警告
+
+### 恢复安全
+- **恢复路径验证**: 验证恢复目标路径的合法性
+- **系统目录保护**: 禁止恢复到系统关键目录
+- **文件冲突检测**: 检测恢复目标是否已存在文件
+
 ## 📦 安装
 
 ### 一行命令安装（推荐）
@@ -25,22 +57,22 @@ DelGuard 是一个现代化的跨平台安全删除工具，支持 Windows、mac
 #### Windows (PowerShell 7+)
 ```powershell
 # 一键安装
-iwr -useb https://raw.githubusercontent.com/your-username/DelGuard/main/install | iex
+iwr -useb https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/install.ps1 | iex
 
 # 或安装并设置默认交互模式
-iwr -useb https://raw.githubusercontent.com/your-username/DelGuard/main/install | iex -- --default-interactive
+iwr -useb https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/install.ps1 | iex -- --default-interactive
 ```
 
 #### macOS / Linux
 ```bash
 # 一键安装
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/your-username/DelGuard/main/install)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/install.sh)"
 
 # 或安装并设置默认交互模式
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/your-username/DelGuard/main/install)" -- --default-interactive
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/install.sh)" -- --default-interactive
 
 # 或者使用 curl 管道方式
-curl -fsSL https://raw.githubusercontent.com/your-username/DelGuard/main/install | bash
+curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/install.sh | bash
 ```
 
 ### 手动安装（备用方案）
@@ -181,6 +213,20 @@ delguard restore 文件名
 | `DELGUARD_INTERACTIVE` | 强制交互模式 | `true` |
 | `DELGUARD_LANG` | 设置语言 | `zh-CN` 或 `en-US` |
 | `DELGUARD_VERBOSE` | 详细输出 | `true` |
+| `DELGUARD_MAX_FILE_SIZE` | 最大文件大小(MB) | `100` |
+| `DELGUARD_SKIP_HIDDEN_CHECK` | 跳过隐藏文件检查 | `false` |
+
+### 配置验证
+
+DelGuard 会自动验证所有配置参数，确保：
+- 最大文件大小在合理范围内 (1MB - 10GB)
+- 备份文件数量限制 (1-1000个)
+- 回收站容量限制 (1-10240MB)
+- 语言设置有效
+- 日志级别有效
+- 保护路径格式正确
+
+如果配置验证失败，将使用默认安全配置并提示用户。
 
 ### 配置文件
 
@@ -222,7 +268,7 @@ DelGuard 会自动保护以下关键路径：
 ### 从源码构建
 ```bash
 # 克隆仓库
-git clone https://github.com/your-username/DelGuard.git
+git clone https://github.com/01luyicheng/DelGuard.git
 cd DelGuard
 
 # 构建所有平台
@@ -304,7 +350,7 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 ## 📞 支持
 
 - 📧 邮箱: support@delguard.dev
-- 🐛 Issue: [GitHub Issues](https://github.com/your-repo/DelGuard/issues)
-- 💬 讨论: [GitHub Discussions](https://github.com/your-repo/DelGuard/discussions)
+- 🐛 Issue: [GitHub Issues](https://github.com/01luyicheng/DelGuard/issues)
+- 💬 讨论: [GitHub Discussions](https://github.com/01luyicheng/DelGuard/discussions)
 
 **让删除更安全，让数据有保障！**
