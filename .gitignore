@@ -2,6 +2,7 @@
 delguard
 delguard.exe
 delguard-*
+*.exe
 
 # Go相关
 *.o
@@ -9,7 +10,6 @@ delguard-*
 *.so
 _obj
 _test
-*.exe
 *.test
 *.prof
 *.out
@@ -28,3 +28,28 @@ _test
 # 操作系统相关
 .DS_Store
 Thumbs.db
+
+# 开发过程中产生的文档和临时文件
+ISSUES_LIST.md
+DEVELOPMENT_GUIDE.md
+TECHNICAL_DOCUMENTATION.md
+SECURITY_FINAL_REPORT.md
+SECURITY_IMPROVEMENTS.md
+SECURITY_SUMMARY.md
+
+# 临时代码文件
+fix_duplicates.bat
+security_test.bat
+test_restore.bat
+*_clean.go
+*_test.exe
+security_tool.exe
+
+# 构建相关
+build/
+*.log
+logs/
+backups/
+
+# 代码检查报告
+security_check_report.txt

@@ -172,15 +172,6 @@ func getWindowsUsername() (string, error) {
 	return username, nil
 }
 
-// 为Windows平台提供其他平台函数的存根
-func moveToTrashMacOS(filePath string) error {
-	return ErrUnsupportedPlatform
-}
-
-func moveToTrashLinux(filePath string) error {
-	return ErrUnsupportedPlatform
-}
-
 // DecodeTrashInfoPath 解码.trashinfo中的Path字段，供其他平台使用
 func DecodeTrashInfoPath(p string) string {
 	return decodeTrashInfoPath(p)

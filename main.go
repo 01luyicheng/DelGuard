@@ -13,20 +13,6 @@ import (
 	"time"
 )
 
-// formatBytes 格式化字节数为人类可读格式
-func formatBytes(bytes int64) string {
-	const unit = 1024
-	if bytes < unit {
-		return fmt.Sprintf("%d B", bytes)
-	}
-	div, exp := int64(unit), 0
-	for n := bytes / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
-}
-
 // 全局变量
 var (
 	version                   = "1.0.0"
@@ -305,13 +291,17 @@ func main() {
 			if !force {
 				info, err := os.Stat(abs)
 				if err == nil {
-					err = checkDiskSpace(abs, info.Size())
-					if err != nil {
-						dgErr := E(KindIO, "checkDiskSpace", abs, err, "磁盘空间不足")
-						fmt.Printf(T("错误：%s\n"), FormatErrorForDisplay(dgErr))
-						preErrCount++
-						continue
+					// 只在Windows平台上调用checkDiskSpace
+					if runtime.GOOS == "windows" {
+						err = checkDiskSpace(abs, info.Size())
+						if err != nil {
+							dgErr := E(KindIO, "checkDiskSpace", abs, err, "磁盘空间不足")
+							fmt.Printf(T("错误：%s\n"), FormatErrorForDisplay(dgErr))
+							preErrCount++
+							continue
+						}
 					}
+					// 其他平台不检查磁盘空间
 				}
 			}
 

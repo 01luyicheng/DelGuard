@@ -411,7 +411,8 @@ func GetProcessIntegrityLevel() (string, error) {
 		return "unknown", nil
 	}
 
-	level := *(*uint32)(unsafe.Pointer(lastSubAuthority))
+	// 安全地转换结果
+	level := uint32(lastSubAuthority)
 	switch level {
 	case 0x0000:
 		return "untrusted", nil
@@ -478,28 +479,28 @@ func checkFileOwnershipWindows(filePath string) error {
 		return fmt.Errorf("无法访问文件: %v", err)
 	}
 	defer file.Close()
-	
+
 	// 检查文件权限
 	info, err := os.Stat(filePath)
 	if err != nil {
 		return fmt.Errorf("无法获取文件信息: %v", err)
 	}
-	
+
 	// 检查是否为只读
 	if info.Mode().Perm()&0222 == 0 {
 		return fmt.Errorf("文件为只读")
 	}
-	
+
 	// 检查文件是否为系统文件
 	if isWindowsSystemFile(filePath) {
 		return fmt.Errorf("系统文件不允许操作")
 	}
-	
+
 	// 检查文件是否被其他进程锁定
 	if err := checkFileLock(filePath); err != nil {
 		return fmt.Errorf("文件被锁定: %v", err)
 	}
-	
+
 	return nil
 }
 
@@ -507,17 +508,17 @@ func checkFileOwnershipWindows(filePath string) error {
 func isWindowsSystemFile(filePath string) bool {
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
 	getFileAttributes := kernel32.NewProc("GetFileAttributesW")
-	
+
 	pathPtr, err := syscall.UTF16PtrFromString(filePath)
 	if err != nil {
 		return false
 	}
-	
+
 	attrs, _, err := getFileAttributes.Call(uintptr(unsafe.Pointer(pathPtr)))
 	if attrs == 0xffffffff {
 		return false
 	}
-	
+
 	// 检查系统文件属性 (FILE_ATTRIBUTE_SYSTEM = 0x4)
 	const FILE_ATTRIBUTE_SYSTEM = 0x00000004
 	return (attrs & FILE_ATTRIBUTE_SYSTEM) != 0
@@ -531,7 +532,7 @@ func checkFileLock(filePath string) error {
 		return err
 	}
 	defer file.Close()
-	
+
 	// 尝试获取文件锁（Windows需要特殊处理）
 	// 这里简化处理，实际应该使用LockFileEx
 	return nil

@@ -4,7 +4,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"os/user"
@@ -114,6 +113,6 @@ func CheckFilePermissions(filePath string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	
+
 	return true, nil
 }

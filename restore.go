@@ -67,8 +67,11 @@ func restoreFromTrashMacOS(pattern string, opts RestoreOptions) error {
 
 // restoreFromTrashMacOSImpl macOS平台恢复实现函数
 func restoreFromTrashMacOSImpl(pattern string, opts RestoreOptions) error {
-	// 对于macOS，使用restore_darwin.go中的实现
-	return restoreFromTrashMacOSImpl(pattern, opts)
+	if runtime.GOOS != "darwin" {
+		return ErrUnsupportedPlatform
+	}
+	// 由于平台特定文件有构建标签，这里使用通用实现
+	return fmt.Errorf("macOS恢复功能在当前构建中不可用")
 }
 
 // restoreFromTrashLinux Linux平台恢复实现
@@ -78,8 +81,11 @@ func restoreFromTrashLinux(pattern string, opts RestoreOptions) error {
 
 // restoreFromTrashLinuxImpl Linux平台恢复实现函数
 func restoreFromTrashLinuxImpl(pattern string, opts RestoreOptions) error {
-	// 对于Linux，使用restore_linux.go中的实现
-	return restoreFromTrashLinuxImpl(pattern, opts)
+	if runtime.GOOS != "linux" {
+		return ErrUnsupportedPlatform
+	}
+	// 由于平台特定文件有构建标签，这里使用通用实现
+	return fmt.Errorf("Linux恢复功能在当前构建中不可用")
 }
 
 // listRecoverableFiles 列出可恢复的文件

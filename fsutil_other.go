@@ -4,7 +4,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"runtime"
 	"syscall"
@@ -20,18 +19,6 @@ func moveToTrashPlatform(filePath string) error {
 	default:
 		return ErrUnsupportedPlatform
 	}
-}
-
-// moveToTrashMacOS macOS平台移动到废纸篓实现
-func moveToTrashMacOS(filePath string) error {
-	// macOS实现
-	return nil
-}
-
-// moveToTrashLinux Linux平台移动到回收站实现
-func moveToTrashLinux(filePath string) error {
-	// Linux实现
-	return nil
 }
 
 // isEXDEV 检查是否为跨设备错误

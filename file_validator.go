@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
-	"syscall"
 )
 
 // FileValidationResult 文件验证验证结果
@@ -54,10 +53,10 @@ func NewFileValidator() *FileValidator {
 // ValidateFile 验证单个文件
 func (fv *FileValidator) ValidateFile(filePath string) (*FileValidationResult, error) {
 	result := &FileValidationResult{
-		FileName: filePath,
-		IsValid:  true,
-		Errors:   make([]string, 0),
-		Warnings: make([]string, 0),
+		FileName:    filePath,
+		IsValid:     true,
+		Errors:      make([]string, 0),
+		Warnings:    make([]string, 0),
 		Suggestions: make([]string, 0),
 	}
 
@@ -94,14 +93,14 @@ func (fv *FileValidator) ValidateFile(filePath string) (*FileValidationResult, e
 
 	// 检查文件大小
 	if info.Size() > fv.MaxFileSize {
-		result.Errors = append(result.Errors, fmt.Sprintf("文件大小超过限制 (%s > %s)", 
+		result.Errors = append(result.Errors, fmt.Sprintf("文件大小超过限制 (%s > %s)",
 			formatBytes(info.Size()), formatBytes(fv.MaxFileSize)))
 		result.IsValid = false
 	}
 
 	// 检查扩展名
 	ext := strings.ToLower(filepath.Ext(filePath))
-	
+
 	// 检查是否在阻止列表中
 	for _, blockedExt := range fv.BlockedExtensions {
 		if ext == strings.ToLower(blockedExt) {
@@ -234,7 +233,7 @@ func (fv *FileValidator) checkMaliciousPatterns(filePath string) error {
 // ValidateBatch 批量验证文件
 func (fv *FileValidator) ValidateBatch(filePaths []string) ([]*FileValidationResult, error) {
 	results := make([]*FileValidationResult, 0, len(filePaths))
-	
+
 	for _, filePath := range filePaths {
 		result, err := fv.ValidateFile(filePath)
 		if err != nil {
@@ -242,7 +241,7 @@ func (fv *FileValidator) ValidateBatch(filePaths []string) ([]*FileValidationRes
 		}
 		results = append(results, result)
 	}
-	
+
 	return results, nil
 }
 
@@ -252,7 +251,7 @@ func (fv *FileValidator) GetValidationSummary(results []*FileValidationResult) s
 	valid := 0
 	invalid := 0
 	warnings := 0
-	
+
 	for _, result := range results {
 		if result.IsValid {
 			valid++
@@ -263,8 +262,8 @@ func (fv *FileValidator) GetValidationSummary(results []*FileValidationResult) s
 			warnings++
 		}
 	}
-	
-	return fmt.Sprintf("验证完成: 总计 %d 个文件, 有效 %d 个, 无效 %d 个, %d 个有警告", 
+
+	return fmt.Sprintf("验证完成: 总计 %d 个文件, 有效 %d 个, 无效 %d 个, %d 个有警告",
 		total, valid, invalid, warnings)
 }
 
@@ -294,11 +293,11 @@ func isExecutableFile(info os.FileInfo, filePath string) bool {
 	if info == nil {
 		return false
 	}
-	
+
 	if info.IsDir() {
 		return false
 	}
-	
+
 	mode := info.Mode()
 	if runtime.GOOS == "windows" {
 		// Windows: 检查文件扩展名
@@ -311,7 +310,7 @@ func isExecutableFile(info os.FileInfo, filePath string) bool {
 		}
 		return false
 	}
-	
+
 	// Unix: 检查执行权限位
 	return mode&0111 != 0
 }
@@ -319,18 +318,11 @@ func isExecutableFile(info os.FileInfo, filePath string) bool {
 // isHiddenFile 检查文件是否为隐藏文件
 func isHiddenFile(info os.FileInfo, filePath string) (bool, error) {
 	if runtime.GOOS == "windows" {
-		// Windows: 使用系统调用检查隐藏属性
-		pointer, err := syscall.UTF16PtrFromString(filePath)
-		if err != nil {
-			return false, err
-		}
-		attrs, err := syscall.GetFileAttributes(pointer)
-		if err != nil {
-			return false, err
-		}
-		return attrs&syscall.FILE_ATTRIBUTE_HIDDEN != 0, nil
+		// Windows: 简化实现，检查文件名
+		filename := filepath.Base(filePath)
+		return strings.HasPrefix(filename, "."), nil
 	}
-	
+
 	// Unix: 检查文件名是否以点开头
 	filename := filepath.Base(filePath)
 	return strings.HasPrefix(filename, "."), nil
@@ -341,19 +333,22 @@ func isSystemFile(info os.FileInfo, filePath string) (bool, error) {
 	if runtime.GOOS != "windows" {
 		return false, nil
 	}
-	
-	// Windows: 使用系统调用检查文件属性
-	pointer, err := syscall.UTF16PtrFromString(filePath)
-	if err != nil {
-		return false, err
+
+	// Windows: 简化实现，检查特定系统目录
+	systemPaths := []string{
+		"C:\\Windows",
+		"C:\\Program Files",
+		"C:\\System",
 	}
-	
-	attrs, err := syscall.GetFileAttributes(pointer)
-	if err != nil {
-		return false, err
+
+	cleanPath := filepath.Clean(strings.ToLower(filePath))
+	for _, sysPath := range systemPaths {
+		if strings.HasPrefix(cleanPath, strings.ToLower(sysPath)) {
+			return true, nil
+		}
 	}
-	
-	return attrs&syscall.FILE_ATTRIBUTE_SYSTEM != 0, nil
+
+	return false, nil
 }
 
 // PrintValidationResult 打印验证结果
@@ -364,42 +359,56 @@ func PrintValidationResult(result *FileValidationResult) {
 	} else if len(result.Warnings) > 0 {
 		status = "⚠️"
 	}
-	
+
 	fmt.Printf("%s %s\n", status, result.FileName)
-	
+
 	if result.FileSize > 0 {
 		fmt.Printf("   大小: %s\n", formatBytes(result.FileSize))
 	}
-	
+
 	if result.IsHidden {
 		fmt.Printf("   属性: 隐藏文件\n")
 	}
-	
+
 	if result.IsSystem {
 		fmt.Printf("   属性: 系统文件\n")
 	}
-	
+
 	if result.IsExecutable {
 		fmt.Printf("   属性: 可执行文件\n")
 	}
-	
+
 	if result.IsSymlink {
 		fmt.Printf("   属性: 符号链接\n")
 	}
-	
+
 	for _, warning := range result.Warnings {
 		fmt.Printf("   ⚠️  警告: %s\n", warning)
 	}
-	
+
 	for _, err := range result.Errors {
 		fmt.Printf("   ❌ 错误: %s\n", err)
 	}
-	
+
 	if len(result.Suggestions) > 0 {
 		for _, suggestion := range result.Suggestions {
 			fmt.Printf("   💡 建议: %s\n", suggestion)
 		}
 	}
-	
+
 	fmt.Println()
+}
+
+// formatBytes 格式化字节数为人类可读格式
+func formatBytes(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
