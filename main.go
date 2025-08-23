@@ -138,9 +138,9 @@ func main() {
 
 	for _, file := range files {
 		// 安全检查：防止路径遍历和注入攻击
-		if !validateInputPath(file) {
-			dgErr := E(KindInvalidArgs, "validateInput", file, nil, "输入路径包含非法字符或格式")
-			fmt.Printf(T("错误：%v\n"), dgErr)
+		if _, err := sanitizeFileName(file); err != nil {
+			dgErr := E(KindInvalidArgs, "validateInput", file, err, "输入路径包含非法字符或格式")
+			fmt.Printf(T("错误：%v\n"), FormatErrorForDisplay(dgErr))
 			preErrCount++
 			continue
 		}
@@ -170,13 +170,7 @@ func main() {
 				continue
 			}
 
-			// 路径验证
-			if !validatePath(abs) {
-				dgErr := E(KindInvalidArgs, "validatePath", file, nil, "路径包含无效字符或格式")
-				fmt.Printf(T("错误：路径无效 %s: %s\n"), file, dgErr.Error())
-				preErrCount++
-				continue
-			}
+			// 路径验证已在sanitizeFileName中完成
 
 			// 文件存在性检查
 			fileInfo, err := os.Stat(abs)
@@ -323,7 +317,8 @@ func processTargets(tgs []target) (successCount, failCount int) {
 		if IsCriticalPath(tg.abs) {
 			if !ConfirmCritical(tg.abs) {
 				fmt.Printf(T("已取消关键路径 %s 的删除\n"), tg.abs)
-				return
+				failCount++
+				continue
 			}
 		}
 	}
@@ -332,7 +327,8 @@ func processTargets(tgs []target) (successCount, failCount int) {
 	for _, tg := range tgs {
 		if !CheckDeletePermission(tg.abs) {
 			fmt.Printf(T("已跳过 %s\n"), tg.arg)
-			return
+			failCount++
+			continue
 		}
 	}
 
@@ -350,9 +346,9 @@ func processTargets(tgs []target) (successCount, failCount int) {
 				mode = "a"
 			} else if line == "n" {
 				fmt.Println(T("已取消所有删除。"))
-				return
+				return 0, len(tgs)
 			} else if line == "q" {
-				return
+				return 0, len(tgs)
 			} else if line != "" {
 				mode = line
 			}
@@ -366,6 +362,9 @@ func processTargets(tgs []target) (successCount, failCount int) {
 				// 全部同意，直接删除
 				if err := deleteTarget(tg); err != nil {
 					fmt.Printf(T("错误：无法删除 %s: %v\n"), tg.arg, err)
+					failCount++
+				} else {
+					successCount++
 				}
 			} else if mode == "i" {
 				// 逐项确认
@@ -390,18 +389,25 @@ func processTargets(tgs []target) (successCount, failCount int) {
 				case "y", "yes":
 					if err := deleteTarget(tg); err != nil {
 						fmt.Printf(T("错误：无法删除 %s: %v\n"), tg.arg, err)
+						failCount++
+					} else {
+						successCount++
 					}
 				case "a":
 					mode = "a" // 切换到全部同意模式
 					if err := deleteTarget(tg); err != nil {
 						fmt.Printf(T("错误：无法删除 %s: %v\n"), tg.arg, err)
+						failCount++
+					} else {
+						successCount++
 					}
 					// 继续处理剩余文件
 					continue
 				case "q":
-					return
+					return successCount, failCount + len(tgs) - i
 				default:
 					fmt.Printf(T("已跳过 %s\n"), tg.arg)
+					failCount++
 				}
 			}
 		}
@@ -410,10 +416,13 @@ func processTargets(tgs []target) (successCount, failCount int) {
 		for _, tg := range tgs {
 			if err := deleteTarget(tg); err != nil {
 				fmt.Printf(T("错误：无法删除 %s: %v\n"), tg.arg, err)
+				failCount++
+			} else {
+				successCount++
 			}
 		}
 	}
-	return
+	return successCount, failCount
 }
 
 func deleteTarget(tg target) error {
@@ -441,7 +450,7 @@ func deleteTarget(tg target) error {
 	if !quiet {
 		fmt.Printf(T("已将 %s 移动到回收站\n"), tg.arg)
 	}
-	return
+	return nil
 }
 
 // checkSystemResources 检查系统资源
@@ -449,20 +458,20 @@ func checkSystemResources() error {
 	// 检查内存使用情况
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
-	
+
 	// 如果内存使用超过80%，警告用户
 	const maxMemoryUsage = 0.8
 	if float64(m.Alloc)/float64(m.Sys) > maxMemoryUsage {
-		return fmt.Errorf("系统内存使用过高（%.1f%%），可能影响操作性能", 
+		return fmt.Errorf("系统内存使用过高（%.1f%%），可能影响操作性能",
 			float64(m.Alloc)/float64(m.Sys)*100)
 	}
-	
+
 	// 检查CPU使用率（简化实现）
 	// 这里我们检查是否有过多的goroutine
 	if runtime.NumGoroutine() > 1000 {
 		return fmt.Errorf("系统并发过高（%d个goroutine），可能影响稳定性", runtime.NumGoroutine())
 	}
-	
+
 	return nil
 }
 
@@ -470,23 +479,23 @@ func checkSystemResources() error {
 func monitorOperation(targets []target) {
 	startTime := time.Now()
 	fmt.Printf(T("开始监控操作，共%d个目标...\n"), len(targets))
-	
+
 	// 创建监控goroutine
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
-		
+
 		for {
 			select {
 			case <-ticker.C:
 				var m runtime.MemStats
 				runtime.ReadMemStats(&m)
-				
+
 				// 检查内存使用
 				memUsage := float64(m.Alloc) / 1024 / 1024 // MB
-				fmt.Printf(T("[监控] 内存使用: %.1f MB, Goroutines: %d\n"), 
+				fmt.Printf(T("[监控] 内存使用: %.1f MB, Goroutines: %d\n"),
 					memUsage, runtime.NumGoroutine())
-				
+
 				// 如果操作时间过长，发出警告
 				if time.Since(startTime) > 5*time.Minute {
 					fmt.Println(T("[警告] 操作执行时间过长，请检查系统状态"))
