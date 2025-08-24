@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,9 +19,17 @@ func sanitizeFileName(filename string) (string, error) {
 		return "", fmt.Errorf("文件名不能为空")
 	}
 
-	// 检查路径遍历
-	if strings.Contains(filename, "..") {
-		return "", fmt.Errorf("不允许路径遍历")
+	// Unicode 标准化防止绕过
+	filename = normalizeUnicode(filename)
+
+	// URL 解码防止编码绕过
+	if decoded, err := url.QueryUnescape(filename); err == nil {
+		filename = decoded
+	}
+
+	// 检查路径遍历（多种模式）
+	if containsPathTraversal(filename) {
+		return "", fmt.Errorf("检测到路径遍历攻击")
 	}
 
 	// 检查非法字符
@@ -256,18 +265,34 @@ func IsCriticalPath(path string) bool {
 			"C:\\Windows",
 			"C:\\Program Files",
 			"C:\\Program Files (x86)",
+			"C:\\ProgramData",
+			"C:\\System Volume Information",
+			"C:\\Recovery",
+			"C:\\$Recycle.Bin",
 			os.Getenv("SYSTEMROOT"),
 			os.Getenv("PROGRAMFILES"),
 			os.Getenv("PROGRAMFILES(X86)"),
+			os.Getenv("PROGRAMDATA"),
+			os.Getenv("WINDIR"),
+			os.Getenv("SYSTEMDRIVE") + "\\Windows",
+		}
+
+		// 添加用户特定的关键目录
+		if userProfile := os.Getenv("USERPROFILE"); userProfile != "" {
+			criticalPaths = append(criticalPaths,
+				userProfile+"\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu",
+				userProfile+"\\AppData\\Local\\Microsoft\\Windows",
+				userProfile+"\\NTUSER.DAT",
+			)
 		}
 
 		for _, critical := range criticalPaths {
-			if critical != "" && strings.HasPrefix(cleanPath, filepath.Clean(critical)) {
+			if critical != "" && strings.HasPrefix(strings.ToLower(cleanPath), strings.ToLower(filepath.Clean(critical))) {
 				return true
 			}
 		}
-	} else {
-		// Unix系统关键路径
+	} else if runtime.GOOS == "linux" {
+		// Linux系统关键路径（包括现代应用路径）
 		criticalPaths := []string{
 			"/bin",
 			"/sbin",
@@ -278,8 +303,89 @@ func IsCriticalPath(path string) bool {
 			"/lib64",
 			"/usr/lib",
 			"/usr/lib64",
-			"/System",       // macOS
-			"/Applications", // macOS
+			"/boot",
+			"/dev",
+			"/proc",
+			"/sys",
+			"/run",
+			"/var/lib/dpkg",
+			"/var/lib/rpm",
+			"/var/lib/pacman",
+			// 现代应用路径
+			"/snap",
+			"/var/lib/snapd",
+			"/var/lib/flatpak",
+			"/usr/share/applications",
+			"/usr/local/share/applications",
+			"/opt",
+			// AppImage目录
+			"/usr/bin/appimaged",
+			// 容器目录
+			"/var/lib/docker",
+			"/var/lib/containerd",
+			"/var/lib/podman",
+		}
+
+		// 添加用户目录中的关键路径
+		if homeDir := os.Getenv("HOME"); homeDir != "" {
+			criticalPaths = append(criticalPaths,
+				homeDir+"/.local/share/flatpak",
+				homeDir+"/.local/share/applications",
+				homeDir+"/.config",
+				homeDir+"/.ssh",
+				homeDir+"/.gnupg",
+			)
+		}
+
+		for _, critical := range criticalPaths {
+			if strings.HasPrefix(cleanPath, critical) {
+				return true
+			}
+		}
+	} else if runtime.GOOS == "darwin" {
+		// macOS系统关键路径（包括现代系统目录）
+		criticalPaths := []string{
+			"/System",
+			"/Applications",
+			"/bin",
+			"/sbin",
+			"/usr/bin",
+			"/usr/sbin",
+			"/etc",
+			"/lib",
+			"/usr/lib",
+			"/private",
+			"/var",
+			"/tmp",
+			// 现代macOS系统目录
+			"/System/Library",
+			"/System/Applications",
+			"/System/DriverKit",
+			"/System/iOSSupport",
+			"/System/Volumes",
+			"/Library/Application Support",
+			"/Library/LaunchAgents",
+			"/Library/LaunchDaemons",
+			"/Library/Preferences",
+			"/Library/Security",
+			"/Library/SystemMigration",
+			// Homebrew目录
+			"/usr/local/Cellar",
+			"/usr/local/Homebrew",
+			"/opt/homebrew",
+			// MacPorts目录
+			"/opt/local",
+		}
+
+		// 添加用户目录中的关键路径
+		if homeDir := os.Getenv("HOME"); homeDir != "" {
+			criticalPaths = append(criticalPaths,
+				homeDir+"/Library/Preferences",
+				homeDir+"/Library/Application Support",
+				homeDir+"/Library/Keychains",
+				homeDir+"/.ssh",
+				homeDir+"/.gnupg",
+			)
 		}
 
 		for _, critical := range criticalPaths {
@@ -331,4 +437,47 @@ func CheckDeletePermission(path string) error {
 	}
 
 	return nil
+}
+
+// normalizeUnicode 标准化Unicode字符串防止绕过
+func normalizeUnicode(s string) string {
+	// 简单的Unicode标准化，去除不可见字符
+	var result strings.Builder
+	for _, r := range s {
+		// 过滤控制字符和不可见字符
+		if r >= 32 && r != 127 {
+			result.WriteRune(r)
+		}
+	}
+	return result.String()
+}
+
+// containsPathTraversal 检测路径遍历攻击模式
+func containsPathTraversal(path string) bool {
+	// 检查各种路径遍历模式
+	traversalPatterns := []string{
+		"..",
+		".." + string(filepath.Separator),
+		"%2e%2e",         // URL编码
+		"%252e%252e",     // 双重编码
+		"\\u002e\\u002e", // Unicode编码
+		"\\x2e\\x2e",     // 十六进制编码
+	}
+
+	lowerPath := strings.ToLower(path)
+	for _, pattern := range traversalPatterns {
+		if strings.Contains(lowerPath, pattern) {
+			return true
+		}
+	}
+
+	// 检查路径组件
+	parts := strings.Split(filepath.Clean(path), string(filepath.Separator))
+	for _, part := range parts {
+		if part == ".." {
+			return true
+		}
+	}
+
+	return false
 }

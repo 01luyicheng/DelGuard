@@ -27,6 +27,17 @@ var (
 	showHelp                  bool
 	validateOnly              bool          // 新增：仅验证模式
 	timeout                   time.Duration // 新增：操作超时时间
+	safeCopy                  bool          // 新增：安全复制模式
+	protect                   bool          // 启用文件覆盖保护
+	disableProtect            bool          // 禁用文件覆盖保护
+	cpMode                    bool          // 新增：cp命令模式
+	// 智能删除相关参数
+	smartSearch         bool    // 启用智能搜索
+	searchContent       bool    // 搜索文件内容
+	searchParent        bool    // 搜索父目录
+	similarityThreshold float64 // 相似度阈值
+	maxResults          int     // 最大搜索结果数
+	forceConfirm        bool    // 强制跳过确认
 )
 
 // TargetInfo 用于日志记录
@@ -67,6 +78,15 @@ func ContextWithTimeout() (context.Context, context.CancelFunc) {
 }
 
 func main() {
+	// 检查是否为cp命令模式
+	for _, arg := range os.Args[1:] {
+		if arg == "--cp" {
+			cpMode = true
+			handleCopyCommand()
+			return
+		}
+	}
+
 	// 解析命令行参数
 	flag.BoolVar(&verbose, "v", false, "详细模式")
 	flag.BoolVar(&quiet, "q", false, "安静模式")
@@ -74,11 +94,24 @@ func main() {
 	flag.BoolVar(&dryRun, "n", false, "试运行，不实际删除")
 	flag.BoolVar(&force, "force", false, "强制彻底删除，不经过回收站")
 	flag.BoolVar(&interactive, "i", false, "交互模式")
-	flag.BoolVar(&installDefaultInteractive, "install", false, "安装别名（默认启用交互模式）")
+	flag.BoolVar(&interactive, "interactive", false, "交互模式") // 支持长参数形式
+	flag.BoolVar(&installDefaultInteractive, "default-interactive", false, "安装时将 del/rm 默认指向交互删除")
 	flag.BoolVar(&showVersion, "version", false, "显示版本")
+	flag.BoolVar(&showHelp, "h", false, "显示帮助")
 	flag.BoolVar(&showHelp, "help", false, "显示帮助")
-	flag.BoolVar(&validateOnly, "validate-only", false, "仅验证文件，不执行删除操作") // 新增参数
-	flag.DurationVar(&timeout, "timeout", 10*time.Minute, "操作超时时间")
+	flag.BoolVar(&validateOnly, "validate-only", false, "仅验证文件，不执行删除操作")
+	flag.BoolVar(&safeCopy, "safe-copy", false, "安全复制模式") // 新增：安全复制模式
+	flag.BoolVar(&protect, "protect", false, "启用文件覆盖保护")
+	flag.BoolVar(&disableProtect, "disable-protect", false, "禁用文件覆盖保护")
+	flag.DurationVar(&timeout, "timeout", 30*time.Second, "操作超时时间")
+	flag.BoolVar(&cpMode, "cp", false, "启用cp命令模式")
+	// 智能删除参数
+	flag.BoolVar(&smartSearch, "smart-search", true, "启用智能搜索（默认开启）")
+	flag.BoolVar(&searchContent, "search-content", false, "搜索文件内容")
+	flag.BoolVar(&searchParent, "search-parent", false, "搜索父目录")
+	flag.Float64Var(&similarityThreshold, "similarity", 60.0, "相似度阈值（0-100）")
+	flag.IntVar(&maxResults, "max-results", 10, "最大搜索结果数量")
+	flag.BoolVar(&forceConfirm, "force-confirm", false, "跳过二次确认")
 
 	flag.Parse()
 
@@ -104,6 +137,25 @@ func main() {
 		return
 	}
 
+	// 处理覆盖保护开关
+	if protect {
+		if err := EnableOverwriteProtection(); err != nil {
+			fmt.Printf(T("启用覆盖保护失败: %v\n"), err)
+			os.Exit(1)
+		}
+		fmt.Println(T("✅ 文件覆盖保护已启用"))
+		return
+	}
+
+	if disableProtect {
+		if err := DisableOverwriteProtection(); err != nil {
+			fmt.Printf(T("禁用覆盖保护失败: %v\n"), err)
+			os.Exit(1)
+		}
+		fmt.Println(T("⚠️ 文件覆盖保护已禁用"))
+		return
+	}
+
 	// 显示帮助
 	if showHelp {
 		printUsage()
@@ -116,6 +168,12 @@ func main() {
 			fmt.Printf(T("参数解析失败: %v\n"), err)
 			os.Exit(1)
 		}
+		fmt.Println(T("请新开一个 PowerShell 或 CMD 窗口使用："))
+		fmt.Println(T("  del -i file.txt   # 交互删除"))
+		fmt.Println(T("  del -rf folder    # 递归强制删除"))
+		fmt.Println(T("  cp file.txt backup.txt  # 安全复制"))
+		fmt.Println(T("  cp -r folder/ backup/   # 递归复制目录"))
+		fmt.Println(T("  delguard --help   # 查看帮助"))
 		return
 	}
 
@@ -253,19 +311,9 @@ func main() {
 				continue
 			}
 
-			// 检查特殊文件类型（符号链接、设备文件等）
-			if isSpecialFile(fileInfo, abs) {
-				fileType := "特殊文件"
-				if fileInfo.Mode()&os.ModeSymlink != 0 {
-					fileType = "符号链接"
-				} else if fileInfo.Mode()&os.ModeDevice != 0 {
-					fileType = "设备文件"
-				} else if fileInfo.Mode()&os.ModeSocket != 0 {
-					fileType = "套接字文件"
-				} else if fileInfo.Mode()&os.ModeNamedPipe != 0 {
-					fileType = "命名管道"
-				}
-				dgErr := E(KindProtected, "checkFileType", abs, nil, fmt.Sprintf("不支持删除%s类型", fileType))
+			// 检查文件类型
+			if err := checkFileType(abs); err != nil {
+				dgErr := E(KindProtected, "checkFileType", abs, err, "不支持删除特殊文件类型")
 				fmt.Printf(T("错误：%s\n"), FormatErrorForDisplay(dgErr))
 				preErrCount++
 				continue
@@ -493,7 +541,8 @@ func printUsage() {
 	fmt.Println("DelGuard - 安全删除工具")
 	fmt.Println("用法:")
 	fmt.Println("  delguard [选项] <文件路径...>")
-	fmt.Println("  delguard restore [选项] [模式]")
+	fmt.Println("  delguard restore [选项] [模式>")
+	fmt.Println("  delguard --cp [选项] <源文件> <目标文件>")
 	fmt.Println()
 	fmt.Println("主要选项:")
 	fmt.Println("  -f, --force        强制删除，跳过确认")
@@ -501,25 +550,180 @@ func printUsage() {
 	fmt.Println("  -r, --recursive    递归删除目录")
 	fmt.Println("  -v, --verbose      详细输出")
 	fmt.Println("  --dry-run          仅验证，不实际删除")
+	fmt.Println("  --protect          启用文件覆盖保护")
+	fmt.Println("  --disable-protect  禁用文件覆盖保护")
+	fmt.Println()
+	fmt.Println("智能删除选项:")
+	fmt.Println("  --smart-search     启用智能搜索（默认开启）")
+	fmt.Println("  --search-content   搜索文件内容")
+	fmt.Println("  --search-parent    搜索父目录")
+	fmt.Println("  --similarity=N     相似度阈值（0-100，默认60）")
+	fmt.Println("  --max-results=N    最大搜索结果数（默认10）")
+	fmt.Println("  --force-confirm    跳过二次确认")
 	fmt.Println()
 	fmt.Println("恢复选项:")
 	fmt.Println("  -l, --list         仅列出可恢复文件")
 	fmt.Println("  -i, --interactive  交互式选择恢复")
 	fmt.Println("  --max <数量>      最大恢复文件数")
 	fmt.Println()
+	fmt.Println("复制选项:")
+	fmt.Println("  -r, --recursive    递归复制目录")
+	fmt.Println("  -i, --interactive  交互模式")
+	fmt.Println("  -f, --force        强制覆盖")
+	fmt.Println("  -v, --verbose      详细输出")
+	fmt.Println()
 	fmt.Println("其他选项:")
 	fmt.Println("  -h, --help         显示帮助信息")
 	fmt.Println("  -V, --version      显示版本信息")
-	fmt.Println("  --install          安装别名（rm/del）")
+	fmt.Println("  --install          安装别名（rm/del/cp）")
 	fmt.Println()
 	fmt.Println("示例:")
 	fmt.Println("  delguard file.txt             # 删除文件到回收站")
 	fmt.Println("  delguard -f *.tmp             # 强制删除所有.tmp文件")
 	fmt.Println("  delguard -i folder/           # 交互式删除目录")
+	fmt.Println("  delguard test_fil             # 智能搜索相似文件名")
+	fmt.Println("  delguard *.txt --force-confirm # 批量删除跳过确认")
+	fmt.Println("  delguard --search-content doc  # 搜索文件内容")
 	fmt.Println("  delguard restore file.txt     # 恢复指定文件")
 	fmt.Println("  delguard restore -l           # 列出所有可恢复文件")
+	fmt.Println("  cp file.txt backup.txt        # 安全复制文件")
+	fmt.Println("  cp -r folder/ backup/         # 递归复制目录")
 	fmt.Println()
 	fmt.Println("注意: DelGuard会将文件移动到系统回收站，不会直接删除。")
+	fmt.Println("      cp命令会安全处理文件覆盖，将原文件移入回收站。")
+}
+
+// handleCopyCommand 处理cp命令
+func handleCopyCommand() {
+	// 创建新的flag set用于cp命令参数解析
+	cpFlag := flag.NewFlagSet("cp", flag.ExitOnError)
+	var (
+		recursive   bool
+		interactive bool
+		force       bool
+		verbose     bool
+		preserve    bool
+	)
+
+	cpFlag.BoolVar(&recursive, "r", false, "递归复制目录")
+	cpFlag.BoolVar(&recursive, "recursive", false, "递归复制目录")
+	cpFlag.BoolVar(&interactive, "i", false, "交互模式")
+	cpFlag.BoolVar(&interactive, "interactive", false, "交互模式")
+	cpFlag.BoolVar(&force, "f", false, "强制覆盖")
+	cpFlag.BoolVar(&force, "force", false, "强制覆盖")
+	cpFlag.BoolVar(&verbose, "v", false, "详细输出")
+	cpFlag.BoolVar(&verbose, "verbose", false, "详细输出")
+	cpFlag.BoolVar(&preserve, "p", false, "保留文件属性")
+	cpFlag.BoolVar(&preserve, "preserve", false, "保留文件属性")
+
+	// 解析参数
+	// 手动解析参数，跳过全局flag
+	var cpArgs []string
+	foundCp := false
+
+	for i := 1; i < len(os.Args); i++ {
+		arg := os.Args[i]
+		if arg == "--cp" {
+			foundCp = true
+			continue
+		}
+		if foundCp {
+			cpArgs = append(cpArgs, arg)
+		}
+	}
+
+	// 如果没有找到--cp，检查是否是第一个参数
+	if !foundCp && len(os.Args) > 1 {
+		if os.Args[1] == "--cp" {
+			if len(os.Args) > 2 {
+				cpArgs = os.Args[2:]
+			}
+		}
+	}
+
+	// 使用flag包解析cp参数
+	if err := cpFlag.Parse(cpArgs); err != nil {
+		fmt.Printf("参数解析失败: %v\n", err)
+		os.Exit(1)
+	}
+
+	// 获取剩余参数（文件路径）
+	files := cpFlag.Args()
+	if len(files) < 2 {
+		fmt.Println("用法: cp [选项] 源文件 目标文件")
+		fmt.Println("       cp [选项] 源文件... 目标目录")
+		fmt.Println("\n选项:")
+		fmt.Println("  -r, --recursive    递归复制目录")
+		fmt.Println("  -i, --interactive  交互模式")
+		fmt.Println("  -f, --force        强制覆盖")
+		fmt.Println("  -v, --verbose      详细输出")
+		fmt.Println("  -p, --preserve     保留文件属性")
+		os.Exit(1)
+	}
+
+	// 创建复制选项
+	opts := SafeCopyOptions{
+		Interactive: interactive,
+		Force:       force,
+		Verbose:     verbose,
+		Recursive:   recursive,
+		Preserve:    preserve,
+	}
+
+	// 判断是复制到文件还是目录
+	var sources []string
+	var dest string
+
+	if len(files) >= 2 {
+		dest = files[len(files)-1]
+		sources = files[:len(files)-1]
+	}
+
+	// 检查目标是否为目录
+	destInfo, err := os.Stat(dest)
+	isDestDir := err == nil && destInfo.IsDir()
+
+	// 处理多个源文件
+	if len(sources) > 1 && !isDestDir {
+		fmt.Printf("错误: 目标 '%s' 不是目录\n", dest)
+		os.Exit(1)
+	}
+
+	successCount := 0
+	failCount := 0
+
+	for i, src := range sources {
+		var targetPath string
+		if isDestDir {
+			targetPath = filepath.Join(dest, filepath.Base(src))
+		} else {
+			targetPath = dest
+		}
+
+		if verbose {
+			fmt.Printf("处理 %d/%d: %s -> %s\n", i+1, len(sources), src, targetPath)
+		}
+
+		// 执行安全复制
+		if err := SafeCopy(src, targetPath, opts); err != nil {
+			fmt.Printf("复制失败: %s\n", err)
+			failCount++
+		} else {
+			if verbose {
+				fmt.Printf("✅ 成功复制: %s -> %s\n", src, targetPath)
+			}
+			successCount++
+		}
+	}
+
+	// 显示结果总结
+	if verbose || failCount > 0 {
+		fmt.Printf("\n复制完成: 成功 %d 个，失败 %d 个\n", successCount, failCount)
+	}
+
+	if failCount > 0 {
+		os.Exit(1)
+	}
 }
 
 // processTargets 处理目标文件删除
@@ -545,4 +749,42 @@ func processTargets(targets []target) (int, int) {
 	fmt.Printf(T("\n操作完成: 成功 %d 个，失败 %d 个\n"), successCount, failCount)
 
 	return successCount, failCount
+}
+
+// 添加缺失的辅助函数
+func checkFileType(abs string) error {
+	// 简单实现，实际项目中应该根据文件类型进行检查
+	info, err := os.Stat(abs)
+	if err != nil {
+		return err
+	}
+
+	// 检查是否为特殊文件类型
+	if isSpecialFile(info, abs) {
+		return fmt.Errorf("不支持删除特殊文件类型")
+	}
+
+	return nil
+}
+
+func formatBytes(bytes int64) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+		GB = MB * 1024
+		TB = GB * 1024
+	)
+
+	switch {
+	case bytes >= TB:
+		return fmt.Sprintf("%.2f TB", float64(bytes)/TB)
+	case bytes >= GB:
+		return fmt.Sprintf("%.2f GB", float64(bytes)/GB)
+	case bytes >= MB:
+		return fmt.Sprintf("%.2f MB", float64(bytes)/MB)
+	case bytes >= KB:
+		return fmt.Sprintf("%.2f KB", float64(bytes)/KB)
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
 }

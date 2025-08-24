@@ -11,12 +11,12 @@ import (
 
 // SecurityCheckResult 安全检查结果
 type SecurityCheckResult struct {
-	Category    string
-	TestName    string
-	Status      string
-	Message     string
-	Details     string
-	Timestamp   time.Time
+	Category  string
+	TestName  string
+	Status    string
+	Message   string
+	Details   string
+	Timestamp time.Time
 }
 
 // SecurityChecker 安全检查器
@@ -82,20 +82,20 @@ func (sc *SecurityChecker) checkSystemEnvironment() {
 
 	// 操作系统检查
 	osName := runtime.GOOS
-	sc.AddResult("系统环境", "操作系统", "PASS", 
-		fmt.Sprintf("检测到 %s 系统", osName), 
+	sc.AddResult("系统环境", "操作系统", "PASS",
+		fmt.Sprintf("检测到 %s 系统", osName),
 		fmt.Sprintf("架构: %s", runtime.GOARCH))
 
 	// 权限检查
 	if runtime.GOOS == "windows" {
 		// Windows 管理员检查
-		sc.AddResult("系统环境", "管理员权限", "PASS", 
-			"Windows 系统管理员权限已验证", 
+		sc.AddResult("系统环境", "管理员权限", "PASS",
+			"Windows 系统管理员权限已验证",
 			"UAC 集成已启用")
 	} else {
 		// Unix 系统 root 检查
-		sc.AddResult("系统环境", "Root权限", "PASS", 
-			"Unix 系统权限检查完成", 
+		sc.AddResult("系统环境", "Root权限", "PASS",
+			"Unix 系统权限检查完成",
 			"建议使用非root用户运行")
 	}
 
@@ -105,8 +105,8 @@ func (sc *SecurityChecker) checkSystemEnvironment() {
 		homeDir = os.Getenv("USERPROFILE")
 	}
 	if homeDir != "" {
-		sc.AddResult("系统环境", "环境变量", "PASS", 
-			"HOME/USERPROFILE 环境变量正常", 
+		sc.AddResult("系统环境", "环境变量", "PASS",
+			"HOME/USERPROFILE 环境变量正常",
 			fmt.Sprintf("路径: %s", homeDir))
 	}
 }
@@ -119,32 +119,32 @@ func (sc *SecurityChecker) checkFileSystem() {
 	testDir := filepath.Join(os.TempDir(), "delguard_security_test")
 	err := os.MkdirAll(testDir, 0755)
 	if err != nil {
-		sc.AddResult("文件系统", "目录创建", "FAIL", 
+		sc.AddResult("文件系统", "目录创建", "FAIL",
 			"无法创建测试目录", err.Error())
 		return
 	}
 	defer os.RemoveAll(testDir)
 
-	sc.AddResult("文件系统", "目录创建", "PASS", 
+	sc.AddResult("文件系统", "目录创建", "PASS",
 		"测试目录创建成功", fmt.Sprintf("路径: %s", testDir))
 
 	// 测试文件创建
 	testFile := filepath.Join(testDir, "test.txt")
 	err = os.WriteFile(testFile, []byte("test content"), 0644)
 	if err != nil {
-		sc.AddResult("文件系统", "文件创建", "FAIL", 
+		sc.AddResult("文件系统", "文件创建", "FAIL",
 			"无法创建测试文件", err.Error())
 		return
 	}
 
-	sc.AddResult("文件系统", "文件创建", "PASS", 
+	sc.AddResult("文件系统", "文件创建", "PASS",
 		"测试文件创建成功", fmt.Sprintf("路径: %s", testFile))
 
 	// 测试隐藏文件检测
 	hiddenFile := filepath.Join(testDir, ".hidden")
 	err = os.WriteFile(hiddenFile, []byte("hidden content"), 0644)
 	if err == nil {
-		sc.AddResult("文件系统", "隐藏文件", "PASS", 
+		sc.AddResult("文件系统", "隐藏文件", "PASS",
 			"隐藏文件检测功能正常", "可以创建和检测隐藏文件")
 	}
 }
@@ -155,17 +155,17 @@ func (sc *SecurityChecker) checkPermissions() {
 
 	// 检查文件权限
 	if runtime.GOOS == "windows" {
-		sc.AddResult("权限系统", "Windows权限", "PASS", 
+		sc.AddResult("权限系统", "Windows权限", "PASS",
 			"Windows权限系统已集成", "支持ACL和UAC")
 	} else {
-		sc.AddResult("权限系统", "Unix权限", "PASS", 
+		sc.AddResult("权限系统", "Unix权限", "PASS",
 			"Unix权限系统已集成", "支持chmod/chown")
 	}
 
 	// 检查管理员权限
 	if runtime.GOOS == "windows" {
 		// 模拟管理员检查
-		sc.AddResult("权限系统", "管理员检查", "PASS", 
+		sc.AddResult("权限系统", "管理员检查", "PASS",
 			"管理员权限验证机制已启用", "UAC提示已配置")
 	}
 }
@@ -184,18 +184,18 @@ func (sc *SecurityChecker) checkPathValidation() {
 
 	for _, path := range maliciousPaths {
 		if strings.Contains(path, "..") || strings.HasPrefix(path, "/etc") {
-			sc.AddResult("路径验证", "路径遍历防护", "PASS", 
-				fmt.Sprintf("阻止恶意路径: %s", path), 
+			sc.AddResult("路径验证", "路径遍历防护", "PASS",
+				fmt.Sprintf("阻止恶意路径: %s", path),
 				"路径遍历攻击防护已启用")
 		}
 	}
 
 	// 测试绝对路径验证
-	sc.AddResult("路径验证", "绝对路径", "PASS", 
+	sc.AddResult("路径验证", "绝对路径", "PASS",
 		"强制使用绝对路径", "防止相对路径攻击")
 
 	// 测试系统路径保护
-	sc.AddResult("路径验证", "系统路径", "PASS", 
+	sc.AddResult("路径验证", "系统路径", "PASS",
 		"系统路径已保护", "阻止删除系统关键文件")
 }
 
@@ -206,15 +206,15 @@ func (sc *SecurityChecker) checkConfiguration() {
 	// 检查配置文件
 	configPath := "config/security_template.json"
 	if _, err := os.Stat(configPath); err == nil {
-		sc.AddResult("配置系统", "配置文件", "PASS", 
+		sc.AddResult("配置系统", "配置文件", "PASS",
 			"安全配置模板已找到", fmt.Sprintf("路径: %s", configPath))
 	} else {
-		sc.AddResult("配置系统", "配置文件", "FAIL", 
+		sc.AddResult("配置系统", "配置文件", "FAIL",
 			"安全配置模板未找到", err.Error())
 	}
 
 	// 检查配置验证
-	sc.AddResult("配置系统", "配置验证", "PASS", 
+	sc.AddResult("配置系统", "配置验证", "PASS",
 		"配置验证机制已启用", "支持JSON Schema验证")
 }
 
@@ -228,15 +228,15 @@ func (sc *SecurityChecker) checkLogging() {
 		os.MkdirAll(logDir, 0755)
 	}
 
-	sc.AddResult("日志系统", "日志目录", "PASS", 
+	sc.AddResult("日志系统", "日志目录", "PASS",
 		"日志目录已配置", fmt.Sprintf("路径: %s", logDir))
 
 	// 检查日志轮转
-	sc.AddResult("日志系统", "日志轮转", "PASS", 
+	sc.AddResult("日志系统", "日志轮转", "PASS",
 		"日志轮转已启用", "支持按大小和时间轮转")
 
 	// 检查安全日志
-	sc.AddResult("日志系统", "安全日志", "PASS", 
+	sc.AddResult("日志系统", "安全日志", "PASS",
 		"安全事件日志已配置", "记录所有安全相关事件")
 }
 
@@ -250,11 +250,11 @@ func (sc *SecurityChecker) checkBackupSystem() {
 		os.MkdirAll(backupDir, 0755)
 	}
 
-	sc.AddResult("备份系统", "备份目录", "PASS", 
+	sc.AddResult("备份系统", "备份目录", "PASS",
 		"备份目录已配置", fmt.Sprintf("路径: %s", backupDir))
 
 	// 检查备份机制
-	sc.AddResult("备份系统", "备份机制", "PASS", 
+	sc.AddResult("备份系统", "备份机制", "PASS",
 		"文件备份机制已启用", "支持原子操作和恢复点")
 }
 
@@ -263,25 +263,25 @@ func (sc *SecurityChecker) checkSecurityFeatures() {
 	fmt.Println("🔒 检查安全功能...")
 
 	// 检查恶意软件检测
-	sc.AddResult("安全功能", "恶意软件检测", "PASS", 
+	sc.AddResult("安全功能", "恶意软件检测", "PASS",
 		"恶意软件检测已启用", "支持文件签名和内容扫描")
 
 	// 检查隐藏文件检测
-	sc.AddResult("安全功能", "隐藏文件检测", "PASS", 
+	sc.AddResult("安全功能", "隐藏文件检测", "PASS",
 		"隐藏文件检测已启用", "跨平台隐藏文件检测")
 
 	// 检查回收站集成
-	sc.AddResult("安全功能", "回收站集成", "PASS", 
+	sc.AddResult("安全功能", "回收站集成", "PASS",
 		"回收站集成已配置", "支持Windows回收站和Linux废纸篓")
 
 	// 检查UAC集成
 	if runtime.GOOS == "windows" {
-		sc.AddResult("安全功能", "UAC集成", "PASS", 
+		sc.AddResult("安全功能", "UAC集成", "PASS",
 			"Windows UAC集成已启用", "支持权限提升提示")
 	}
 
 	// 检查加密支持
-	sc.AddResult("安全功能", "加密支持", "PASS", 
+	sc.AddResult("安全功能", "加密支持", "PASS",
 		"文件加密备份已配置", "支持AES-256加密")
 }
 
@@ -348,7 +348,7 @@ func (sc *SecurityChecker) generateReport() {
 // formatReport 格式化报告内容
 func (sc *SecurityChecker) formatReport() string {
 	var builder strings.Builder
-	
+
 	builder.WriteString("DelGuard 安全检查报告\n")
 	builder.WriteString(strings.Repeat("=", 50) + "\n")
 	builder.WriteString(fmt.Sprintf("检查时间: %s\n", time.Now().Format("2006-01-02 15:04:05")))

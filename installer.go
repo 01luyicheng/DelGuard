@@ -91,6 +91,10 @@ if (Get-Command rm -ErrorAction SilentlyContinue) {
     if (Get-Alias rm -ErrorAction SilentlyContinue) { Remove-Item Alias:rm -Force }
     if (Get-Command Remove-Item -ErrorAction SilentlyContinue) { Remove-Item Alias:rm -Force -ErrorAction SilentlyContinue }
 }
+if (Get-Command cp -ErrorAction SilentlyContinue) {
+    if (Get-Alias cp -ErrorAction SilentlyContinue) { Remove-Item Alias:cp -Force }
+    if (Get-Command Copy-Item -ErrorAction SilentlyContinue) { Remove-Item Alias:cp -Force -ErrorAction SilentlyContinue }
+}
 function global:del { 
     param([Parameter(ValueFromRemainingArguments)]$Arguments)
     & "%s" %s$Arguments 
@@ -99,9 +103,14 @@ function global:rm {
     param([Parameter(ValueFromRemainingArguments)]$Arguments)
     & "%s" %s$Arguments 
 }
+function global:cp { 
+    param([Parameter(ValueFromRemainingArguments)]$Arguments)
+    & "%s" --cp $Arguments 
+}
 Set-Alias -Name del -Value del -Scope Global -Force
 Set-Alias -Name rm -Value rm -Scope Global -Force
-`, escapedExePath, di, escapedExePath, di)
+Set-Alias -Name cp -Value cp -Scope Global -Force
+`, escapedExePath, di, escapedExePath, di, escapedExePath)
 
 	// 检查并移除旧的别名配置
 	content := ""
@@ -175,8 +184,9 @@ exit /b
 rem 定义别名
 doskey del="%s" %s$*
 doskey rm="%s" %s$*
+doskey cp="%s" --cp $*
 doskey delguard="%s" $*
-`, exePath, di, exePath, di, exePath, di, exePath, di, exePath)
+`, exePath, di, exePath, di, exePath, di, exePath, di, exePath, exePath)
 
 	// 检查现有宏文件，避免重复
 	if b, err := os.ReadFile(macroPath); err == nil {
@@ -261,7 +271,8 @@ func installUnixAliases(defaultInteractive bool) error {
 # DelGuard 安全删除别名 (Unix)
 alias rm='%s%s'
 alias del='%s%s'
-`, exePath, di, exePath, di)
+alias cp='%s --cp'
+`, exePath, di, exePath, di, exePath)
 
 	configFiles := []string{
 		".bashrc",

@@ -17,6 +17,10 @@ DelGuard 是一个现代化的跨平台安全删除工具，支持 Windows、mac
 - **权限管理**: 管理员权限操作需要二次确认
 - **错误处理**: 详细的错误代码和建议信息
 - **配置管理**: 用户可配置默认行为和语言设置
+- **覆盖保护**: 文件被覆盖时自动备份到回收站
+- **操作审计**: 完整记录文件操作历史
+- **恢复功能**: 从回收站恢复被覆盖或删除的文件
+- **安全复制**: 复制文件前检查目标文件，避免意外覆盖
 
 ## 🔒 安全功能
 
@@ -39,6 +43,12 @@ DelGuard 是一个现代化的跨平台安全删除工具，支持 Windows、mac
 - **非法字符检测**: 检测并阻止包含 `< > : " | ? *` 的文件名
 - **路径长度限制**: 限制最大路径长度为4096字符
 
+### 覆盖保护
+- **文件覆盖检测**: 自动检测即将被覆盖的文件
+- **备份机制**: 被覆盖文件先移动到回收站
+- **恢复支持**: 可从回收站恢复被覆盖的文件
+- **配置开关**: 可启用/禁用覆盖保护功能
+
 ### 操作确认
 - **批量操作确认**: 删除多个文件时要求用户确认
 - **隐藏文件确认**: 删除隐藏文件时额外确认
@@ -48,6 +58,20 @@ DelGuard 是一个现代化的跨平台安全删除工具，支持 Windows、mac
 - **恢复路径验证**: 验证恢复目标路径的合法性
 - **系统目录保护**: 禁止恢复到系统关键目录
 - **文件冲突检测**: 检测恢复目标是否已存在文件
+
+### 安全复制功能
+- **文件一致性检查**: 复制前计算并比较源文件和目标文件的SHA256哈希值，精确判断文件内容是否相同
+- **智能覆盖保护**: 文件不一致时提示用户确认是否覆盖，文件相同时自动跳过复制操作
+- **自动备份**: 覆盖前自动将原文件移动到系统回收站，确保数据可恢复
+- **详细信息展示**: 向用户展示源文件和目标文件的完整信息，包括文件路径、大小、最后修改时间和哈希值
+- **交互式确认**: 提供 `-i` 参数支持交互式确认，`-f` 参数支持强制覆盖
+- **智能跳过**: 当源文件和目标文件内容完全一致时，自动跳过复制操作，避免无意义的覆盖
+
+**安全复制使用场景：**
+- 备份重要文件前确认不会意外覆盖
+- 同步文件时避免重复复制相同内容
+- 团队协作中确保文件版本一致性
+- 自动化脚本中增加文件操作安全性
 
 ## 📦 安装
 
@@ -150,6 +174,43 @@ delguard restore -i
 delguard restore -l "*.pdf"
 ```
 
+### 安全复制功能
+```bash
+# 安全复制文件（如果目标文件存在且内容不同，会提示确认并备份原文件）
+delguard --safe-copy source.txt destination.txt
+
+# 强制安全复制（跳过确认，直接备份原文件并覆盖）
+delguard --safe-copy --force source.txt destination.txt
+
+# 交互式安全复制（总是提示确认）
+delguard --safe-copy -i source.txt destination.txt
+
+# 复制多个文件到目录
+delguard --safe-copy file1.txt file2.txt directory/
+
+# 详细模式显示更多信息
+delguard --safe-copy --verbose source.txt destination.txt
+
+# 实际使用示例
+# 场景1：文件内容相同，自动跳过
+$ delguard --safe-copy config.json backup/config.json
+文件内容相同，跳过复制
+
+# 场景2：文件内容不同，提示用户确认
+$ delguard --safe-copy -i new_config.json config.json
+目标文件已存在且内容不同:
+  源文件: new_config.json (大小: 2048字节, 修改时间: 2024-01-15 14:30:00, SHA256: a1b2c3d4e5f6...)
+  目标文件: config.json (大小: 1024字节, 修改时间: 2024-01-14 10:20:00, SHA256: f6e5d4c3b2a1...)
+是否覆盖目标文件？[y/N]: y
+已将 config.json 移动到回收站
+成功复制 new_config.json -> config.json
+
+# 场景3：强制覆盖模式
+$ delguard --safe-copy --force important.txt backup/important.txt
+已将 backup/important.txt 移动到回收站
+成功复制 important.txt -> backup/important.txt
+```
+
 ### 常用选项
 ```
 -v, --verbose           详细模式
@@ -158,6 +219,9 @@ delguard restore -l "*.pdf"
 -n, --dry-run           试运行，不实际删除
 --force                 强制彻底删除，不经过回收站
 -i, --interactive       交互模式，逐项确认
+--protect               启用文件覆盖保护
+--disable-protect       禁用文件覆盖保护
+--safe-copy             安全复制模式
 --install               安装shell别名（默认启用交互模式）
 --version               显示版本信息
 --help                  显示帮助信息
@@ -178,7 +242,8 @@ DelGuard 支持通过配置文件进行自定义，配置文件位置：
   "log_level": "info",
   "safe_mode": "normal",
   "max_file_size": 10737418240,
-  "enable_security_checks": true
+  "enable_security_checks": true,
+  "enable_overwrite_protection": true
 }
 ```
 

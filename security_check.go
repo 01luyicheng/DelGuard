@@ -35,21 +35,21 @@ func RunSecurityCheckTool(args []string) {
 func RunBasicSecurityChecks() {
 	fmt.Println("=== DelGuard Basic Security Check ===")
 	fmt.Printf("Platform: %s/%s\n", runtime.GOOS, runtime.GOARCH)
-	
+
 	// 检查关键文件
 	requiredFiles := []string{
 		"config/security_template.json",
 		"SECURITY.md",
 		"SECURITY_SUMMARY.md",
 	}
-	
+
 	missingFiles := []string{}
 	for _, file := range requiredFiles {
 		if _, err := os.Stat(file); os.IsNotExist(err) {
 			missingFiles = append(missingFiles, file)
 		}
 	}
-	
+
 	if len(missingFiles) > 0 {
 		fmt.Println("❌ Missing required security files:")
 		for _, file := range missingFiles {
@@ -58,7 +58,7 @@ func RunBasicSecurityChecks() {
 	} else {
 		fmt.Println("✅ All required security files present")
 	}
-	
+
 	// 检查配置文件
 	if config, err := LoadConfig(); err == nil {
 		if err := validateConfig(config); err != nil {
@@ -69,7 +69,7 @@ func RunBasicSecurityChecks() {
 	} else {
 		fmt.Printf("❌ Failed to load configuration: %v\n", err)
 	}
-	
+
 	// 检查关键路径保护
 	testPaths := []string{
 		"/etc",
@@ -79,14 +79,14 @@ func RunBasicSecurityChecks() {
 		"C:\\Windows",
 		"C:\\Program Files",
 	}
-	
+
 	protectedCount := 0
 	for _, path := range testPaths {
 		if IsCriticalPath(path) {
 			protectedCount++
 		}
 	}
-	
+
 	if protectedCount >= len(testPaths)/2 {
 		fmt.Println("✅ Critical path protection working")
 	} else {
@@ -124,7 +124,7 @@ func RunBasicSecurityChecks() {
 	fmt.Println("• 定期备份重要数据")
 	fmt.Println("• 使用强密码策略")
 	fmt.Println("• 检查文件权限设置")
-	
+
 	fmt.Println("\nNote: Full security check implementation in progress")
 }
 
@@ -138,7 +138,7 @@ func validateConfig(config *Config) error {
 	if config.MaxBackupFiles < 0 {
 		return fmt.Errorf("MaxBackupFiles cannot be negative")
 	}
-	
+
 	if config.Language == "" {
 		return fmt.Errorf("language cannot be empty")
 	}
@@ -157,12 +157,12 @@ func CheckSystemIntegrity() error {
 			}
 		}
 	}
-	
+
 	// 检查安全配置文件
 	securityFiles := []string{
 		"config/security_template.json",
 	}
-	
+
 	for _, file := range securityFiles {
 		if _, err := os.Stat(file); os.IsNotExist(err) {
 			// 尝试创建默认配置
@@ -171,7 +171,7 @@ func CheckSystemIntegrity() error {
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -182,7 +182,7 @@ func createDefaultSecurityConfig(filename string) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	
+
 	// 创建默认配置内容
 	defaultConfig := `{
 		"version": "1.0",
@@ -201,28 +201,28 @@ func createDefaultSecurityConfig(filename string) error {
 		"enable_encryption": true,
 		"backup_count": 3
 	}`
-	
+
 	return os.WriteFile(filename, []byte(defaultConfig), 0644)
 }
 
 // VerifySecurityFeatures 验证安全功能
 func VerifySecurityFeatures() []string {
 	var issues []string
-	
+
 	// 检查路径遍历保护
 	testPaths := []string{
 		"../../../etc/passwd",
 		"..\\..\\windows\\system32\\cmd.exe",
 		"/etc/shadow",
 	}
-	
+
 	for _, path := range testPaths {
 		if strings.Contains(path, "..") {
 			// 应该被阻止 - 检查清理后的路径是否包含..
 			cleanPath := filepath.Clean(path)
-			if strings.Contains(cleanPath, ".."+string(filepath.Separator)) || 
-			   strings.Contains(cleanPath, "..\\") || 
-			   strings.Contains(cleanPath, "../") {
+			if strings.Contains(cleanPath, ".."+string(filepath.Separator)) ||
+				strings.Contains(cleanPath, "..\\") ||
+				strings.Contains(cleanPath, "../") {
 				// 路径遍历检测正常
 				continue
 			} else {
@@ -230,19 +230,19 @@ func VerifySecurityFeatures() []string {
 			}
 		}
 	}
-	
+
 	// 检查系统路径保护
 	systemPaths := []string{
 		"/etc/passwd",
 		"/bin/sh",
 		"C:\\Windows\\System32\\cmd.exe",
 	}
-	
+
 	for _, path := range systemPaths {
 		if !IsCriticalPath(path) {
 			issues = append(issues, fmt.Sprintf("Critical path protection not working for: %s", path))
 		}
 	}
-	
+
 	return issues
 }

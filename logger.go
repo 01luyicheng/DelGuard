@@ -44,8 +44,8 @@ func NewLogger(level string) *Logger {
 		maxBackups: 10,
 	}
 
-	// 确保日志目录存在
-	if err := os.MkdirAll(l.logDir, 0755); err != nil {
+	// 确保日志目录存在，使用更安全的权限 0700（仅所有者可访问）
+	if err := os.MkdirAll(l.logDir, 0700); err != nil {
 		fmt.Fprintf(os.Stderr, "无法创建日志目录: %v\n", err)
 		return l
 	}
@@ -74,7 +74,8 @@ func (l *Logger) setupLogFile() error {
 		}
 	}
 
-	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	// 使用更安全的文件权限 0600（仅所有者可读写）
+	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return err
 	}
@@ -214,20 +215,22 @@ func (l *Logger) buildLogEntry(level LogLevel, operation, filePath string, err e
 		caller = fmt.Sprintf("%s:%d", filepath.Base(file), line)
 	}
 
-	// 错误信息
+	// 错误信息（脱敏处理）
 	errorMsg := ""
 	if err != nil {
-		errorMsg = fmt.Sprintf(" | Error: %v", err)
+		// 脱敏错误信息
+		sanitizedErr := sanitizeErrorMessage(err.Error())
+		errorMsg = fmt.Sprintf(" | Error: %s", sanitizedErr)
 	}
 
-	// 文件路径（缩短显示）
-	displayPath := filePath
-	if len(filePath) > 50 {
-		displayPath = "..." + filePath[len(filePath)-47:]
-	}
+	// 文件路径（脱敏处理）
+	displayPath := sanitizeFilePath(filePath)
+
+	// 消息脱敏处理
+	sanitizedMessage := sanitizeMessage(message)
 
 	return fmt.Sprintf("[%s] [%s] [%s] %s - %s - %s%s\n",
-		timestamp, level.String(), operation, caller, displayPath, message, errorMsg)
+		timestamp, level.String(), operation, caller, displayPath, sanitizedMessage, errorMsg)
 }
 
 // String 返回日志级别的字符串表示
@@ -307,4 +310,63 @@ func LogWarn(operation, filePath string, message string) {
 	if logger != nil {
 		logger.Warn(operation, filePath, message)
 	}
+}
+
+// sanitizeFilePath 脱敏文件路径，隐藏敏感信息
+func sanitizeFilePath(filePath string) string {
+	if filePath == "" {
+		return ""
+	}
+
+	// 获取用户主目录，用于脱敏
+	homeDir, _ := os.UserHomeDir()
+
+	// 替换用户主目录为~
+	if homeDir != "" && strings.HasPrefix(filePath, homeDir) {
+		filePath = "~" + strings.TrimPrefix(filePath, homeDir)
+	}
+
+	// 缩短过长的路径
+	if len(filePath) > 50 {
+		filePath = "..." + filePath[len(filePath)-47:]
+	}
+
+	return filePath
+}
+
+// sanitizeErrorMessage 脱敏错误信息
+func sanitizeErrorMessage(errorMsg string) string {
+	// 移除绝对路径信息
+	if homeDir, err := os.UserHomeDir(); err == nil && homeDir != "" {
+		errorMsg = strings.ReplaceAll(errorMsg, homeDir, "~")
+	}
+
+	// 移除Windows用户目录模式
+	errorMsg = strings.ReplaceAll(errorMsg, "C:\\Users\\", "<USER_DIR>\\")
+
+	// 限制错误信息长度
+	if len(errorMsg) > 200 {
+		errorMsg = errorMsg[:197] + "..."
+	}
+
+	return errorMsg
+}
+
+// sanitizeMessage 脱敏日志消息
+func sanitizeMessage(message string) string {
+	// 移除用户目录信息
+	if homeDir, err := os.UserHomeDir(); err == nil && homeDir != "" {
+		message = strings.ReplaceAll(message, homeDir, "~")
+	}
+
+	// 移除系统路径信息
+	message = strings.ReplaceAll(message, "C:\\Windows\\", "<WINDOWS_DIR>\\")
+	message = strings.ReplaceAll(message, "C:\\Program Files\\", "<PROGRAM_FILES>\\")
+
+	// 限制消息长度
+	if len(message) > 500 {
+		message = message[:497] + "..."
+	}
+
+	return message
 }

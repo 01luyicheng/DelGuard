@@ -12,6 +12,112 @@ DelGuard 是一个用 Go 编写的跨平台安全文件删除工具，核心功�
 - **restore.go** - 文件恢复功能
 - **protect.go** - 路径保护机制
 - **config.go** - 配置管理
+- **safe_copy.go** - 安全复制功能
+
+## 核心功能说明
+
+### 1. 文件删除机制
+
+DelGuard 不会直接删除文件，而是将文件移动到系统回收站/废纸篓中：
+
+- **Windows**: 使用 `SHFileOperationW` API 将文件移动到回收站
+- **macOS**: 使用 `osascript` 调用 Finder 将文件移动到废纸篓
+- **Linux**: 遵循 freedesktop.org Trash 规范，将文件移动到 `~/.local/share/Trash` 目录
+
+### 2. 文件覆盖保护机制
+
+DelGuard 提供文件覆盖保护功能，在以下场景自动激活：
+
+- **文件复制**: 当目标文件已存在时，先将现有文件移动到回收站
+- **文件移动**: 当目标位置已有同名文件时，先备份现有文件
+- **文件写入**: 当写入操作会覆盖现有文件时，先创建备份
+
+覆盖保护的工作流程：
+1. 检查目标文件是否存在
+2. 执行安全检查（权限、系统文件等）
+3. 将现有文件移动到回收站
+4. 记录操作日志
+5. 执行正常的文件操作
+
+### 3. 安全复制机制
+
+DelGuard 提供安全复制功能，可在复制文件时防止意外覆盖：
+
+- **文件一致性检查**: 复制前计算并比较源文件和目标文件的SHA256哈希值
+- **智能覆盖保护**: 文件不一致时提示用户确认是否覆盖
+- **自动备份**: 覆盖前自动将原文件移动到回收站
+- **详细信息展示**: 显示文件哈希值帮助用户判断文件是否相同
+
+安全复制的工作流程：
+1. 检查源文件和目标文件是否存在
+2. 如果目标文件存在，计算两个文件的哈希值
+3. 如果哈希值相同，跳过复制
+4. 如果哈希值不同，提示用户确认
+5. 用户确认后，将现有文件移动到回收站
+6. 执行文件复制操作
+
+### 1. 文件删除机制
+
+DelGuard 不会直接删除文件，而是将文件移动到系统回收站/废纸篓中：
+
+- **Windows**: 使用 `SHFileOperationW` API 将文件移动到回收站
+- **macOS**: 使用 `osascript` 调用 Finder 将文件移动到废纸篓
+- **Linux**: 遵循 freedesktop.org 规范，将文件移动到 `~/.local/share/Trash` 目录
+
+### 2. 文件覆盖保护机制
+
+DelGuard 提供文件覆盖保护功能，在以下场景自动激活：
+
+- **文件复制**: 当目标文件已存在时，先将现有文件移动到回收站
+- **文件移动**: 当目标位置已有同名文件时，先备份现有文件
+- **文件写入**: 当写入操作会覆盖现有文件时，先创建备份
+
+覆盖保护的工作流程：
+1. 检查目标文件是否存在
+2. 执行安全检查（权限、系统文件等）
+3. 将现有文件移动到回收站
+4. 记录操作日志
+5. 执行正常的文件操作
+
+#### 安全复制功能（Safe Copy）
+
+DelGuard 的安全复制功能提供了比传统 `cp` 命令更智能的文件保护机制：
+
+**功能特性：**
+- **哈希值比较**：使用SHA256算法计算文件指纹，精确判断文件内容是否相同
+- **智能交互**：当文件内容相同时，自动跳过复制操作，避免无意义的覆盖
+- **详细对比**：向用户展示源文件和目标文件的详细信息，包括文件大小、修改时间、哈希值
+- **自动备份**：覆盖操作前自动将目标文件移动到系统回收站
+- **交互确认**：提供 `-i` 参数支持交互式确认，`-f` 参数支持强制覆盖
+
+**使用示例：**
+```bash
+# 交互式安全复制（推荐）
+delguard cp -i source.txt destination.txt
+
+# 强制覆盖模式（自动备份）
+delguard cp -f source.txt destination.txt
+
+# 详细输出模式
+delguard cp -v source.txt destination.txt
+```
+
+**文件对比信息展示：**
+```
+目标文件已存在且内容不同:
+  源文件: /path/to/source.txt (大小: 1024字节, 修改时间: 2024-01-15 10:30:00, SHA256: a1b2c3d4e5f6...)
+  目标文件: /path/to/destination.txt (大小: 2048字节, 修改时间: 2024-01-14 15:20:00, SHA256: f6e5d4c3b2a1...)
+是否覆盖目标文件？[y/N]: 
+```
+
+**相同文件智能跳过：**
+```
+文件 /path/to/source.txt 和 /path/to/destination.txt 内容相同，跳过复制
+```
+
+### 3. 文件恢复机制
+
+DelGuard 提供了从回收站恢复文件的功能：
 
 ## 平台实现细节
 
@@ -91,18 +197,21 @@ GOOS=linux GOARCH=amd64 go build -o delguard-linux
 
 ```
 DelGuard/
-├── main.go              # 主程序
-├── platform.go          # 平台抽象
-├── windows.go           # Windows实现
-├── macos.go             # macOS实现
-├── linux.go             # Linux实现
-├── restore.go           # 文件恢复
-├── protect.go           # 安全保护
-├── config.go            # 配置管理
-├── logger.go            # 日志系统
-├── errors.go            # 错误处理
-├── go.mod               # 依赖管理
-└── Makefile             # 构建脚本
+├── main.go                 # 主程序
+├── platform.go             # 平台抽象
+├── windows.go              # Windows实现
+├── macos.go                # macOS实现
+├── linux.go                # Linux实现
+├── restore.go              # 文件恢复
+├── protect.go              # 安全保护
+├── overwrite_protect.go    # 文件覆盖保护
+├── safe_copy.go            # 安全复制功能
+├── file_operations.go      # 安全文件操作
+├── config.go               # 配置管理
+├── logger.go               # 日志系统
+├── errors.go               # 错误处理
+├── go.mod                  # 依赖管理
+└── Makefile                # 构建脚本
 ```
 
 ## 开发指南
@@ -131,14 +240,30 @@ go run . --verbose
 ### 核心函数
 - `MoveToTrash(path string) error` - 移动文件到回收站
 - `RestoreFromTrash(filename string) error` - 从回收站恢复文件
+- `SafeCopy(src, dst string, opts SafeCopyOptions) error` - 安全复制文件
 - `IsProtectedPath(path string) bool` - 检查路径是否受保护
 - `LoadConfig() (*Config, error)` - 加载配置文件
+
+### 安全复制API
+- `SafeCopy(src, dst string, opts SafeCopyOptions) error` - 安全复制文件
+- `calculateFileHash(filePath string) (string, error)` - 计算文件SHA256哈希值
+- `backupExistingFile(filePath string) error` - 将现有文件备份到回收站
+
+### SafeCopyOptions 结构体
+```go
+type SafeCopyOptions struct {
+    Interactive bool  // 交互模式，询问用户确认
+    Force       bool  // 强制模式，自动备份并覆盖
+    Verbose     bool  // 详细输出模式
+}
+```
 
 ### 错误类型
 - `ErrFileNotFound` - 文件不存在
 - `ErrPermissionDenied` - 权限不足
 - `ErrProtectedPath` - 受保护路径
 - `ErrInvalidPath` - 无效路径
+- `ErrHashMismatch` - 文件哈希值不匹配
 
 ## 测试
 

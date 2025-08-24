@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
+	"time"
 )
 
 // 统一错误种类与退出码映射
@@ -89,12 +91,21 @@ func (k ErrKind) ExitCode() int {
 
 // DGError 携带错误分类与上下文
 type DGError struct {
-	Kind   ErrKind
-	Op     string
-	Path   string
-	Cause  error
-	Advice string
-	Code   string // 错误代码，用于国际化
+	Kind      ErrKind
+	Op        string
+	Path      string
+	Cause     error
+	Advice    string
+	Code      string       // 错误代码，用于国际化
+	Timestamp string       // 错误发生时间
+	Stack     []StackFrame // 堆栈跟踪信息
+}
+
+// StackFrame 堆栈帧信息
+type StackFrame struct {
+	Function string
+	File     string
+	Line     int
 }
 
 func (e *DGError) Error() string {
@@ -135,11 +146,13 @@ func unwrapMsg(err error) string {
 // E 创建新的DGError
 func E(kind ErrKind, op, path string, cause error, advice string) *DGError {
 	return &DGError{
-		Kind:   kind,
-		Op:     op,
-		Path:   path,
-		Cause:  cause,
-		Advice: advice,
+		Kind:      kind,
+		Op:        op,
+		Path:      path,
+		Cause:     cause,
+		Advice:    advice,
+		Timestamp: getCurrentTime(),
+		Stack:     captureStackTrace(2), // 跳过当前和E函数
 	}
 }
 
@@ -152,36 +165,56 @@ func WrapE(operation string, path string, err error) *DGError {
 		advice = fmt.Sprintf("操作 '%s' 失败", operation)
 	}
 
-	// 根据错误类型提供更具体的错误信息
+	// 根据错误类型提供更具体的错误信息和类型
+	kind := KindIO // 默认类型
 	if err != nil {
 		switch {
 		case os.IsNotExist(err):
 			advice = fmt.Sprintf("文件或目录不存在: %s", path)
+			kind = KindNotFound
 		case os.IsPermission(err):
 			advice = fmt.Sprintf("权限不足，无法执行操作: %s", path)
+			kind = KindPermission
 		case os.IsTimeout(err):
 			advice = fmt.Sprintf("操作超时: %s", path)
+			kind = KindTimeout
+		case os.IsExist(err):
+			advice = fmt.Sprintf("文件已存在: %s", path)
+			kind = KindConflict
 		default:
+			// 检查是否为特定的系统错误
+			if strings.Contains(err.Error(), "access denied") || strings.Contains(err.Error(), "permission denied") {
+				kind = KindPermission
+			} else if strings.Contains(err.Error(), "no space left") {
+				kind = KindResourceExhausted
+			} else if strings.Contains(err.Error(), "invalid argument") {
+				kind = KindInvalidArgs
+			}
 			advice = fmt.Sprintf("%s: %v", advice, err)
 		}
 	}
 
-	// 如果已经是DGError，保留Kind
+	// 如果已经是DGError，保留原始的Kind和堆栈信息
 	if dgerr, ok := err.(*DGError); ok {
 		return &DGError{
-			Kind:   dgerr.Kind,
-			Op:     operation,
-			Path:   path,
-			Cause:  err,
-			Advice: advice,
+			Kind:      dgerr.Kind,
+			Op:        operation,
+			Path:      path,
+			Cause:     err,
+			Advice:    advice,
+			Timestamp: getCurrentTime(),
+			Stack:     dgerr.Stack, // 保留原始堆栈
 		}
 	}
+
 	return &DGError{
-		Kind:   KindIO,
-		Op:     operation,
-		Path:   path,
-		Cause:  err,
-		Advice: advice,
+		Kind:      kind,
+		Op:        operation,
+		Path:      path,
+		Cause:     err,
+		Advice:    advice,
+		Timestamp: getCurrentTime(),
+		Stack:     captureStackTrace(2), // 跳过当前和WrapE函数
 	}
 }
 
@@ -229,4 +262,52 @@ func ExitWithCode(err error) {
 		os.Exit(dgerr.Kind.ExitCode())
 	}
 	os.Exit(1)
+}
+
+// captureStackTrace 捕获堆栈跟踪信息
+func captureStackTrace(skip int) []StackFrame {
+	var frames []StackFrame
+
+	// 最多捕莱10层堆栈
+	for i := skip; i < skip+10; i++ {
+		pc, file, line, ok := runtime.Caller(i)
+		if !ok {
+			break
+		}
+
+		fn := runtime.FuncForPC(pc)
+		var funcName string
+		if fn != nil {
+			funcName = fn.Name()
+		} else {
+			funcName = "unknown"
+		}
+
+		frames = append(frames, StackFrame{
+			Function: funcName,
+			File:     file,
+			Line:     line,
+		})
+	}
+
+	return frames
+}
+
+// getCurrentTime 获取当前时间的格式化字符串
+func getCurrentTime() string {
+	return time.Now().Format("2006-01-02 15:04:05.000")
+}
+
+// StackString 返回堆栈跟踪的字符串表示
+func (e *DGError) StackString() string {
+	if len(e.Stack) == 0 {
+		return "无堆栈信息"
+	}
+
+	var sb strings.Builder
+	sb.WriteString("堆栈跟踪:\n")
+	for i, frame := range e.Stack {
+		sb.WriteString(fmt.Sprintf("%d. %s\n\t%s:%d\n", i+1, frame.Function, frame.File, frame.Line))
+	}
+	return sb.String()
 }

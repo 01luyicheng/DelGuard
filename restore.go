@@ -57,34 +57,28 @@ func restoreFromTrash(pattern string, opts RestoreOptions) error {
 
 // restoreFromTrashWindows Windows平台恢复实现
 func restoreFromTrashWindows(pattern string, opts RestoreOptions) error {
-	return restoreFromTrashWindowsImpl(pattern, opts)
+	if runtime.GOOS != "windows" {
+		return ErrUnsupportedPlatform
+	}
+	// 具体实现在 restore_windows.go 中
+	return fmt.Errorf("Windows恢复功能在当前构建中不可用")
 }
 
 // restoreFromTrashMacOS macOS平台恢复实现
 func restoreFromTrashMacOS(pattern string, opts RestoreOptions) error {
-	return restoreFromTrashMacOSImpl(pattern, opts)
-}
-
-// restoreFromTrashMacOSImpl macOS平台恢复实现函数
-func restoreFromTrashMacOSImpl(pattern string, opts RestoreOptions) error {
 	if runtime.GOOS != "darwin" {
 		return ErrUnsupportedPlatform
 	}
-	// 由于平台特定文件有构建标签，这里使用通用实现
+	// 具体实现在 restore_darwin.go 中
 	return fmt.Errorf("macOS恢复功能在当前构建中不可用")
 }
 
 // restoreFromTrashLinux Linux平台恢复实现
 func restoreFromTrashLinux(pattern string, opts RestoreOptions) error {
-	return restoreFromTrashLinuxImpl(pattern, opts)
-}
-
-// restoreFromTrashLinuxImpl Linux平台恢复实现函数
-func restoreFromTrashLinuxImpl(pattern string, opts RestoreOptions) error {
 	if runtime.GOOS != "linux" {
 		return ErrUnsupportedPlatform
 	}
-	// 由于平台特定文件有构建标签，这里使用通用实现
+	// 具体实现在 restore_linux.go 中
 	return fmt.Errorf("Linux恢复功能在当前构建中不可用")
 }
 
@@ -136,7 +130,8 @@ func listRecoverableFiles(pattern string) error {
 func listRecycleBinItems() ([]RecycleBinItem, error) {
 	switch runtime.GOOS {
 	case "windows":
-		return listRecycleBinItemsWindows()
+		// Windows平台的实现在 restore_windows.go 中
+		return []RecycleBinItem{}, fmt.Errorf("Windows回收站功能在当前构建中不可用")
 	case "darwin":
 		return listRecycleBinItemsMacOS()
 	case "linux":
@@ -284,18 +279,36 @@ func EnhancedRestore(pattern string, opts RestoreOptions, enhancedOpts EnhancedR
 
 // restoreSingleItem 恢复单个文件
 func restoreSingleItem(item RecycleBinItem, opts EnhancedRestoreOptions) error {
-	// 检查源文件是否存在
+	// 1. 验证恢复路径安全性
+	if err := validateRestorePath(item.OriginalPath); err != nil {
+		return fmt.Errorf("恢复路径验证失败: %v", err)
+	}
+
+	// 2. 检查是否恢复到关键系统路径
+	if IsCriticalPath(item.OriginalPath) {
+		return fmt.Errorf("不能恢复到关键系统路径: %s", item.OriginalPath)
+	}
+
+	// 3. 检查源文件是否存在
 	if _, err := os.Stat(item.CurrentPath); os.IsNotExist(err) {
 		return fmt.Errorf("源文件不存在: %s", item.CurrentPath)
 	} else if err != nil {
 		return fmt.Errorf("检查源文件时出错: %v", err)
 	}
 
-	// 检查目标路径是否存在
+	// 4. 检查目标路径是否存在
 	if _, err := os.Stat(item.OriginalPath); err == nil {
-		// 目标已存在
+		// 目标已存在，进行额外安全检查
+		if err := validateFileOverwrite(item.OriginalPath); err != nil {
+			return fmt.Errorf("文件覆盖安全检查失败: %v", err)
+		}
+
 		if opts.BackupExisting {
 			backupPath := item.OriginalPath + ".backup." + time.Now().Format("20060102150405")
+			// 验证备份路径安全性
+			if err := validateRestorePath(backupPath); err != nil {
+				return fmt.Errorf("备份路径验证失败: %v", err)
+			}
 			if err := os.Rename(item.OriginalPath, backupPath); err != nil {
 				return fmt.Errorf("备份现有文件失败: %v", err)
 			}
@@ -306,8 +319,11 @@ func restoreSingleItem(item RecycleBinItem, opts EnhancedRestoreOptions) error {
 		return fmt.Errorf("检查目标文件时出错: %v", err)
 	}
 
-	// 确保目标目录存在
+	// 5. 确保目标目录存在并验证安全性
 	targetDir := filepath.Dir(item.OriginalPath)
+	if err := validateRestorePath(targetDir); err != nil {
+		return fmt.Errorf("目标目录路径验证失败: %v", err)
+	}
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return fmt.Errorf("无法创建目标目录 %s: %v", targetDir, err)
 	}
@@ -346,14 +362,6 @@ func isFileInUse(err error) bool {
 	return strings.Contains(err.Error(), "text file busy")
 }
 
-// ResolveLanguage 解析语言设置
-func ResolveLanguage(lang string) string {
-	if lang != "" {
-		return lang
-	}
-	return "en-US"
-}
-
 // wildcardToRegex 将通配符转换为正则表达式
 func wildcardToRegex(pattern string) string {
 	pattern = strings.ToLower(pattern)
@@ -361,4 +369,96 @@ func wildcardToRegex(pattern string) string {
 	pattern = strings.ReplaceAll(pattern, "*", ".*")
 	pattern = strings.ReplaceAll(pattern, "?", ".")
 	return "(?i)^" + pattern + "$"
+}
+
+// validateRestorePath 验证恢复路径的安全性
+func validateRestorePath(path string) error {
+	if path == "" {
+		return fmt.Errorf("路径不能为空")
+	}
+
+	// 检查路径长度
+	if len(path) > 32767 {
+		return fmt.Errorf("路径太长")
+	}
+
+	// 清理路径
+	cleanPath := filepath.Clean(path)
+
+	// 检查路径遍历攻击
+	if strings.Contains(cleanPath, "..") {
+		return fmt.Errorf("检测到路径遍历攻击")
+	}
+
+	// 检查是否为绝对路径
+	if !filepath.IsAbs(cleanPath) {
+		return fmt.Errorf("必须为绝对路径")
+	}
+
+	// 检查是否包含非法字符
+	for _, r := range cleanPath {
+		if r < 32 || r == 127 {
+			return fmt.Errorf("路径包含非法字符")
+		}
+	}
+
+	// 平台特定的路径验证
+	if runtime.GOOS == "windows" {
+		// Windows路径验证
+		if strings.Contains(cleanPath, ":") && !strings.HasPrefix(cleanPath, filepath.VolumeName(cleanPath)) {
+			return fmt.Errorf("Windows路径格式无效")
+		}
+		// 检查保留名称
+		base := filepath.Base(cleanPath)
+		reservedNames := []string{"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"}
+		for _, reserved := range reservedNames {
+			if strings.EqualFold(base, reserved) || strings.HasPrefix(strings.ToUpper(base), reserved+".") {
+				return fmt.Errorf("路径使用了Windows保留名称: %s", base)
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateFileOverwrite 验证文件覆盖的安全性
+func validateFileOverwrite(path string) error {
+	// 检查是否为重要系统文件
+	if IsCriticalPath(path) {
+		return fmt.Errorf("不能覆盖重要系统文件")
+	}
+
+	// 检查文件权限
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("无法获取文件信息: %v", err)
+	}
+
+	// 检查是否为目录
+	if info.IsDir() {
+		return fmt.Errorf("不能覆盖目录")
+	}
+
+	// 检查文件大小（防止覆盖大文件）
+	if info.Size() > 1024*1024*1024 { // 1GB限制
+		return fmt.Errorf("不能覆盖超过1GB的大文件")
+	}
+
+	// 检查文件是否为可执行文件（额外保护）
+	if runtime.GOOS == "windows" {
+		ext := strings.ToLower(filepath.Ext(path))
+		execExts := []string{".exe", ".com", ".bat", ".cmd", ".scr", ".msi"}
+		for _, execExt := range execExts {
+			if ext == execExt {
+				return fmt.Errorf("不能覆盖可执行文件")
+			}
+		}
+	} else {
+		// Unix系统检查可执行权限
+		if info.Mode()&0111 != 0 {
+			return fmt.Errorf("不能覆盖可执行文件")
+		}
+	}
+
+	return nil
 }

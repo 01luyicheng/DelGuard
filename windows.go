@@ -49,34 +49,53 @@ const (
 
 // moveToTrashWindows 将文件移动到Windows回收站
 func moveToTrashWindows(filePath string) error {
-	// 检查文件是否存在
+	// 1. 基本输入验证
+	if filePath == "" {
+		return E(KindInvalidArgs, "moveToTrash", filePath, nil, "文件路径不能为空")
+	}
+
+	// 2. 检查路径长度下限（防止极短路径）
+	if len(filePath) < 3 {
+		return E(KindInvalidArgs, "moveToTrash", filePath, nil, "文件路径过短")
+	}
+
+	// 3. 检查文件是否存在
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return ErrFileNotFound
 	}
 
-	// 获取绝对路径
+	// 4. 获取绝对路径
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
-		return err
+		return E(KindInvalidArgs, "moveToTrash", filePath, err, "无法获取绝对路径")
 	}
 
-	// Windows SHFileOperation 要求 PFrom 为 双空终止 的列表（MULTI_SZ）
-	// syscall.UTF16FromString返回单空终止，这里手动再追加一个 0
-	u16, err := syscall.UTF16FromString(absPath)
+	// 5. 验证路径长度上限，防止缓冲区溢出
+	if len(absPath) > 32760 { // Windows 最大路径长度
+		return E(KindIO, "moveToTrash", absPath, nil, "路径太长，超过Windows限制")
+	}
+
+	// 6. 检查路径中的特殊字符（加强安全检查）
+	if err := validateWindowsPath(absPath); err != nil {
+		return E(KindInvalidArgs, "moveToTrash", absPath, err, "路径包含非法字符")
+	}
+
+	// 7. 安全的UTF16转换（增强版）
+	u16, err := createSafeUTF16String(absPath)
 	if err != nil {
-		return err
-	}
-	u16 = append(u16, 0) // 追加第二个 0 形成双空终止
-
-	// 确保切片不为空再获取指针
-	if len(u16) == 0 {
-		return E(KindIO, "moveToTrash", absPath, nil, "路径转换失败")
+		return E(KindIO, "moveToTrash", absPath, err, "UTF16转换失败")
 	}
 
+	// 初始化SHFILEOPSTRUCT结构体
 	fileOp := SHFILEOPSTRUCT{
-		WFunc:  FO_DELETE,
-		PFrom:  &u16[0],
-		FFlags: FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT,
+		Hwnd:                  0,
+		WFunc:                 FO_DELETE,
+		PFrom:                 &u16[0],
+		PTo:                   nil,
+		FFlags:                FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT,
+		FAnyOperationsAborted: false,
+		HNameMappings:         0,
+		LpszProgressTitle:     nil,
 	}
 
 	// 调用SHFileOperationW API
@@ -155,6 +174,11 @@ func getWindowsUsername() (string, error) {
 		return "", fmt.Errorf("无法获取用户名")
 	}
 
+	// 验证缓冲区大小，防止过大的分配
+	if size > 1024 {
+		return "", fmt.Errorf("用户名缓冲区过大: %d", size)
+	}
+
 	// 分配缓冲区并再次调用
 	buf := make([]uint16, size)
 	ret, _, _ = procGetUserNameExW.Call(
@@ -167,8 +191,16 @@ func getWindowsUsername() (string, error) {
 		return "", fmt.Errorf("无法获取用户名")
 	}
 
-	// 转换UTF-16到字符串
+	// 安全转换UTF-16到字符串
 	username := syscall.UTF16ToString(buf)
+	// 验证结果长度
+	if len(username) == 0 {
+		return "", fmt.Errorf("用户名为空")
+	}
+	if len(username) > 256 {
+		return "", fmt.Errorf("用户名过长")
+	}
+
 	return username, nil
 }
 
@@ -291,4 +323,98 @@ func getVolumePath(path string) (string, error) {
 
 	// 默认返回C盘
 	return "C:\\", nil
+}
+
+// createSafeUTF16String 安全创建UTF16字符串，防止缓冲区溢出
+func createSafeUTF16String(s string) ([]uint16, error) {
+	// 验证输入字符串
+	if s == "" {
+		return nil, fmt.Errorf("输入字符串不能为空")
+	}
+
+	// 验证字符串长度，防止过长的路径
+	if len(s) > 32760 {
+		return nil, fmt.Errorf("字符串太长，超过安全限制")
+	}
+
+	// 转换为UTF16
+	u16, err := syscall.UTF16FromString(s)
+	if err != nil {
+		return nil, fmt.Errorf("UTF16转换失败: %v", err)
+	}
+
+	// 验证转换结果
+	if len(u16) == 0 {
+		return nil, fmt.Errorf("转换结果为空")
+	}
+
+	// 确保双空终止（MULTI_SZ格式）
+	// Windows SHFileOperation API 要求 PFrom 参数为双空终止的字符串列表
+	if len(u16) < 2 || u16[len(u16)-1] != 0 {
+		// 添加第二个空终止符
+		u16 = append(u16, 0)
+	} else {
+		// 如果已经有一个空终止符，只需添加一个
+		u16 = append(u16, 0)
+	}
+
+	// 验证最终结果长度
+	if len(u16) > 32768 { // 留出一些缓冲区
+		return nil, fmt.Errorf("转换后的UTF16字符串过长")
+	}
+
+	return u16, nil
+}
+
+// validateWindowsPath 验证Windows路径中的特殊字符
+func validateWindowsPath(path string) error {
+	if path == "" {
+		return fmt.Errorf("路径不能为空")
+	}
+
+	// 检查非法字符（Windows不允许的字符）
+	invalidChars := []rune{'<', '>', ':', '"', '|', '?', '*'}
+	for _, char := range path {
+		// 检查控制字符（ASCII 0-31）
+		if char < 32 {
+			return fmt.Errorf("路径包含控制字符: %d", char)
+		}
+
+		// 检查Windows禁止的字符（除了冲突名称）
+		for _, invalid := range invalidChars {
+			if char == invalid && !(char == ':' && strings.Index(path, string(char)) == 1) { // 允许驱动器冒号
+				return fmt.Errorf("路径包含非法字符: %c", char)
+			}
+		}
+	}
+
+	// 检查路径是否以空格或点结尾（Windows不允许）
+	if strings.HasSuffix(path, " ") || strings.HasSuffix(path, ".") {
+		return fmt.Errorf("路径不能以空格或点结尾")
+	}
+
+	// 检查是否使用了Windows保留名称
+	baseName := filepath.Base(path)
+	// 移除扩展名检查保留名
+	nameWithoutExt := strings.ToUpper(baseName)
+	if dotIndex := strings.LastIndex(nameWithoutExt, "."); dotIndex > 0 {
+		nameWithoutExt = nameWithoutExt[:dotIndex]
+	}
+	reservedNames := []string{"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"}
+	for _, reserved := range reservedNames {
+		if nameWithoutExt == reserved {
+			return fmt.Errorf("路径使用了Windows保留名称: %s", baseName)
+		}
+	}
+
+	// 检查UNC路径格式
+	if strings.HasPrefix(path, "\\\\") {
+		// UNC路径格式: \\\\server\\share\\...
+		parts := strings.Split(path[2:], "\\")
+		if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
+			return fmt.Errorf("UNC路径格式无效")
+		}
+	}
+
+	return nil
 }

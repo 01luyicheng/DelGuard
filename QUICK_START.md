@@ -27,6 +27,25 @@ go build -o delguard.exe
 ./delguard.exe --config=config/security.json
 ```
 
+### 5. 安全复制功能测试
+```bash
+# 创建测试文件
+echo "测试内容" > test1.txt
+echo "测试内容" > test2.txt
+
+# 测试安全复制（文件相同，应跳过）
+./delguard.exe cp -i test1.txt test2.txt
+
+# 修改文件内容
+echo "不同内容" > test1.txt
+
+# 测试安全复制（文件不同，应询问用户）
+./delguard.exe cp -i test1.txt test2.txt
+
+# 测试强制覆盖模式
+./delguard.exe cp -f test1.txt test2.txt
+```
+
 ## 🔧 企业级部署
 
 ### 生产环境配置
