@@ -1,0 +1,60 @@
+{
+  // DelGuard Nederlandse vertalingen
+  "参数解析失败: %v\n": "Fout bij het ontleden van parameters: %v\n",
+  "别名安装成功！请重启终端或运行 'source ~/.bashrc' 使别名生效。": "Aliassen succesvol geïnstalleerd! Herstart de terminal of voer 'source ~/.bashrc' uit om de aliassen te activeren.",
+  "卸载功能尚未实现": "Deïnstallatiefunctie is nog niet geïmplementeerd",
+  "恢复文件失败: %v\n": "Fout bij het herstellen van bestanden: %v\n",
+  "错误：无法解析路径 %s: %v\n": "Fout: kan pad %s niet ontleden: %v\n",
+  "错误：无法访问 %s: %v\n": "Fout: kan %s niet benaderen: %v\n",
+  "提示：%s 是目录，删除目录需使用 -r/--recursive\n": "Tip: %s is een directory; gebruik -r/--recursive om directories te verwijderen\n",
+  
+  // Interactieve berichten
+  "即将删除 %d 个目标（其中目录 %d 个）。选择模式 [a]全部同意/[n]全部拒绝/[i]逐项/[q]退出 (默认 i): ": "%d doel(en) worden verwijderd (%d director(y/ies)). Kies modus [a] alles accepteren / [n] alles weigeren / [i] item voor item / [q] afsluiten (standaard i): ",
+  "已取消所有删除。": "Alle verwijderingen zijn geannuleerd.",
+  "计划删除：%s (绝对路径: %s, 类型: %s)\n": "Gepland voor verwijdering: %s (absoluut pad: %s, type: %s)\n",
+  "删除 %s ? [y/N/a/q]: ": "Verwijder %s ? [y/N/a/q]: ",
+  "已跳过 %s\n": "%s overgeslagen\n",
+  
+  // Beveiligingsberichten
+  "检测到关键路径，要求双重确认：%s\n": "Kritiek pad gedetecteerd, dubbele bevestiging vereist: %s\n",
+  "已取消关键路径 %s 的删除\n": "Verwijdering van kritiek pad %s geannuleerd\n",
+  "警告：即将删除关键路径: %s\n": "Waarschuwing: op het punt een kritiek pad te verwijderen: %s\n",
+  "为确认风险，请输入完整路径继续（或直接回车取消）：": "Om het risico te bevestigen, voer het volledige pad in om door te gaan (of druk op Enter om te annuleren): ",
+  "警告：当前以管理员/root权限运行，即将删除: %s\n": "Waarschuwing: draait als beheerder/root, op het punt te verwijderen: %s\n",
+  "确认删除？[y/N]: ": "Verwijdering bevestigen? [y/N]: ",
+  
+  // Operationele berichten
+  "[DRY-RUN] 将把 %s 移动到回收站\n": "[DROGE RUN] Zou %s naar de Prullenbak verplaatsen\n",
+  "错误：无法删除 %s: %v\n": "Fout: kan %s niet verwijderen: %v\n",
+  "已将 %s 移动到回收站\n": "%s naar de Prullenbak verplaatst\n",
+  "警告：当前以高权限运行（root/管理员），已强制启用交互确认。\n": "Waarschuwing: draait met verhoogde privileges (root/Beheerder). Interactieve bevestiging geforceerd.\n",
+  "当前平台 %s 暂不支持回收站功能\n": "Huidig platform %s ondersteunt geen prullenbakfunctionaliteit\n",
+  
+  // Waarschuwingen voor speciale bestanden
+  "警告：文件 %s 为只读文件\n": "Waarschuwing: bestand %s is alleen-lezen\n",
+  "确认删除只读文件？[y/N]: ": "Verwijdering van alleen-lezen bestand bevestigen? [y/N]: ",
+  "警告：检测到回收站/废纸篓目录: %s\n": "Waarschuwing: prullenbak/papiermand directory gedetecteerd: %s\n",
+  "确认删除回收站目录？[y/N]: ": "Verwijdering van prullenbak directory bevestigen? [y/N]: ",
+  "警告：检测到DelGuard程序目录: %s\n": "Waarschuwing: DelGuard programma directory gedetecteerd: %s\n",
+  "确认删除程序目录？[y/N]: ": "Verwijdering van programma directory bevestigen? [y/N]: ",
+  
+  // Foutmeldingen
+  "错误：权限不足，无法删除 %s\n": "Fout: onvoldoende rechten om %s te verwijderen\n",
+  "错误：系统保护文件，无法删除 %s\n": "Fout: systeem beschermd bestand, kan %s niet verwijderen\n",
+  "错误：路径包含非法字符: %s\n": "Fout: pad bevat ongeldige tekens: %s\n",
+  "错误：路径过长: %s\n": "Fout: pad te lang: %s\n",
+  "错误：磁盘空间不足，无法删除 %s\n": "Fout: onvoldoende schijfruimte om %s te verwijderen\n",
+  "错误：文件正在被使用: %s\n": "Fout: bestand is in gebruik: %s\n",
+  "错误：网络路径不可访问: %s\n": "Fout: netwerkpad niet toegankelijk: %s\n",
+  "错误：符号链接目标不存在: %s\n": "Fout: symbolische link doel bestaat niet: %s\n",
+  "错误：硬链接计数异常: %s\n": "Fout: abnormaal harde link aantal: %s\n",
+  "错误：文件系统只读: %s\n": "Fout: bestandssysteem alleen-lezen: %s\n",
+  "错误：磁盘错误: %s\n": "Fout: schijffout: %s\n",
+  "错误：内存不足: %s\n": "Fout: onvoldoende geheugen: %s\n",
+  "错误：操作超时: %s\n": "Fout: operatie time-out: %s\n",
+  "错误：系统调用失败: %s\n": "Fout: systeemaanroep mislukt: %s\n",
+  "错误：未知错误: %s\n": "Fout: onbekende fout: %s\n",
+  
+  // Hulptekst
+  "DelGuard v%s - 跨平台安全删除工具\n\n用法:\n  delguard [选项] <文件或目录>\n\n选项:\n  -r, --recursive              递归删除目录\n  -f, --force                  强制删除（忽略警告）\n  -i, --interactive            删除前确认（可通过环境变量/配置默认启用）\n  -y, --yes                    跳过确认，默认全部同意（关键路径仍需二次确认）\n  -n, --dry-run                干跑：只显示将要执行的操作，不实际删除\n      --verbose                输出详细信息\n      --quiet                  安静模式：仅输出错误\n      --lang value             设置语言 (auto/zh-CN/en-US)，默认随系统/配置/环境变量\n      --config path            指定配置文件路径\n      --install                安装shell别名（Windows: del/rm；Unix: rm/del）\n      --uninstall              卸载shell别名\n      --restore                从回收站恢复文件\n      --default-interactive    安装时将 del/rm 默认指向交互删除（等同于 -i）\n  -max int                     最大恢复文件数 (默认: 10)\n  -v, --version                显示版本信息\n  -h, --help                   显示此帮助信息\n\n说明:\n  - 支持短参组合，例如: -rf 等价于 -r -f\n  - 交互删除优先级: CLI(-i) > 环境变量(DELGUARD_INTERACTIVE/DELGUARD_DEFAULT_INTERACTIVE) > 配置文件\n  - 对关键路径（系统根、系统目录、用户主目录等）启用双重确认\n  - 交互批处理模式：在多目标下可选择\"全部同意/全部拒绝/逐项/退出\"\n  - Windows 回收站允许同名文件共存（系统自动处理）\n  - Windows/CMD & PowerShell 支持 rm 与 del 命令；Linux/macOS 同时提供 del 命令（通过别名）\n": "DelGuard v%s - Crossplatform veilig verwijdertool\n\nGebruik:\n  delguard [opties] <bestand-of-directory>\n\nOpties:\n  -r, --recursive              Directories recursief verwijderen\n  -f, --force                  Geforceerd verwijderen (waarschuwingen onderdrukken)\n  -i, --interactive            Bevestigen voor verwijderen (kan standaard zijn via env/config)\n  -y, --yes                    Bevestigingen overslaan (kritieke paden vereisen nog steeds dubbele bevestiging)\n  -n, --dry-run                Droge run: acties tonen zonder verwijderen\n      --verbose                Uitgebreide uitvoer\n      --quiet                  Stille modus: alleen fouten\n      --lang value             Taal instellen (auto/zh-CN/en-US), standaard naar systeem/config/env\n      --config path            Configuratiebestandpad specificeren\n      --install                Shell aliassen installeren (Windows: del/rm; Unix: rm/del)\n      --uninstall              Aliassen deïnstalleren\n      --restore                Herstellen uit Prullenbak\n      --default-interactive    del/rm standaard interactief (-i) maken bij installatie\n  -max int                     Max bestanden om te herstellen (standaard: 10)\n  -v, --version                Versie tonen\n  -h, --help                   Deze hulp tonen\n\nOpmerkingen:\n  - Gecombineerde korte vlaggen ondersteund, bijv. -rf == -r -f\n  - Interactieve prioriteit: CLI(-i) > ENV(DELGUARD_INTERACTIVE/DELGUARD_DEFAULT_INTERACTIVE) > config\n  - Dubbele bevestiging voor kritieke paden (systeemroot, systeemdirectories, gebruikershome, enz.)\n  - Batch interactieve modus: alles accepteren / alles weigeren / item voor item / afsluiten bij meerdere doelen\n  - Windows Prullenbak staat dubbele namen toe (afgehandeld door systeem)\n  - Windows CMD & PowerShell ondersteunen rm en del; Linux/macOS bieden ook del via aliassen\n"
+}

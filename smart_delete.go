@@ -29,8 +29,8 @@ func DefaultSmartDeleteOptions() SmartDeleteOptions {
 		SmartSearch:         true,
 		SearchContent:       false,
 		SearchParent:        false,
-		SimilarityThreshold: 60.0,
-		MaxResults:          10,
+		SimilarityThreshold: DefaultSimilarityThreshold,
+		MaxResults:          DefaultMaxResults,
 	}
 }
 

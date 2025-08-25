@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // RegexParser 正则表达式解析器
@@ -115,14 +116,16 @@ type BatchOperationConfirm struct {
 	files     []string
 	operation string
 	force     bool
+	pattern   string // 新增：原始模式
 }
 
 // NewBatchOperationConfirm 创建批量操作确认
-func NewBatchOperationConfirm(files []string, operation string, force bool) *BatchOperationConfirm {
+func NewBatchOperationConfirm(files []string, operation string, force bool, pattern string) *BatchOperationConfirm {
 	return &BatchOperationConfirm{
 		files:     files,
 		operation: operation,
 		force:     force,
+		pattern:   pattern,
 	}
 }
 
@@ -133,10 +136,14 @@ func (boc *BatchOperationConfirm) Confirm() (bool, error) {
 	}
 
 	if len(boc.files) == 0 {
-		fmt.Println("没有找到匹配的文件")
+		fmt.Println("❌ 没有找到匹配的文件")
 		return false, nil
 	}
 
+	// 显示模式信息
+	if boc.pattern != "" {
+		fmt.Printf("🎯 模式: %s\n", boc.pattern)
+	}
 	fmt.Printf("⚠️  准备%s %d 个文件：\n\n", boc.operation, len(boc.files))
 
 	// 显示文件列表（分页显示）
@@ -152,13 +159,28 @@ func (boc *BatchOperationConfirm) Confirm() (bool, error) {
 			end = len(boc.files)
 		}
 
-		fmt.Printf("第 %d/%d 页：\n", currentPage, totalPages)
+		fmt.Printf("📄 第 %d/%d 页：\n", currentPage, totalPages)
+		totalSize := int64(0)
 		for i := start; i < end; i++ {
-			fmt.Printf("  %d. %s\n", i+1, boc.files[i])
+			fileInfo, err := os.Stat(boc.files[i])
+			var sizeStr string
+			if err == nil {
+				size := fileInfo.Size()
+				totalSize += size
+				sizeStr = formatFileSize(size)
+			} else {
+				sizeStr = "<unknown>"
+			}
+			fmt.Printf("  %d. %s (%s)\n", i+1, boc.files[i], sizeStr)
+		}
+
+		// 显示当前页总大小
+		if totalSize > 0 {
+			fmt.Printf("\n📊 当前页总大小: %s\n", formatFileSize(totalSize))
 		}
 
 		// 显示操作选项
-		fmt.Printf("\n选项：\n")
+		fmt.Printf("\n🎯 选项：\n")
 		fmt.Printf("  y - 确认%s所有文件\n", boc.operation)
 		fmt.Printf("  n - 取消操作\n")
 		if totalPages > 1 {
@@ -170,11 +192,19 @@ func (boc *BatchOperationConfirm) Confirm() (bool, error) {
 			}
 		}
 		fmt.Printf("  s - 跳过确认（强制执行）\n")
+		fmt.Printf("  i - 显示所有文件详细信息\n")
 		fmt.Print("\n请选择: ")
 
 		var input string
-		fmt.Scanln(&input)
-		input = strings.ToLower(strings.TrimSpace(input))
+		if isStdinInteractive() {
+			if s, ok := readLineWithTimeout(30 * time.Second); ok {
+				input = strings.ToLower(strings.TrimSpace(s))
+			} else {
+				input = ""
+			}
+		} else {
+			input = ""
+		}
 
 		switch input {
 		case "y", "yes":
@@ -184,6 +214,8 @@ func (boc *BatchOperationConfirm) Confirm() (bool, error) {
 		case "s", "skip":
 			boc.force = true
 			return true, nil
+		case "i", "info":
+			boc.showDetailedInfo()
 		case ">", "next":
 			if currentPage < totalPages {
 				currentPage++
@@ -193,11 +225,71 @@ func (boc *BatchOperationConfirm) Confirm() (bool, error) {
 				currentPage--
 			}
 		default:
-			fmt.Println("无效的选择，请重新输入")
+			fmt.Println("❌ 无效的选择，请重新输入")
 		}
 
 		fmt.Println() // 空行分隔
 	}
+}
+
+// showDetailedInfo 显示详细信息
+func (boc *BatchOperationConfirm) showDetailedInfo() {
+	fmt.Printf("\n📊 所有文件详细信息：\n")
+	fmt.Printf("──────────────────────────────\n")
+
+	totalSize := int64(0)
+	totalFiles := len(boc.files)
+	fileTypes := make(map[string]int)
+
+	for i, file := range boc.files {
+		fileInfo, err := os.Stat(file)
+		if err == nil {
+			size := fileInfo.Size()
+			totalSize += size
+			modTime := fileInfo.ModTime().Format(TimeFormatStandard)
+			ext := strings.ToLower(filepath.Ext(file))
+			if ext == "" {
+				ext = "<no ext>"
+			}
+			fileTypes[ext]++
+
+			fmt.Printf("%3d. %-50s %10s %s\n", i+1,
+				truncateString(file, 50),
+				formatFileSize(size),
+				modTime)
+		} else {
+			fmt.Printf("%3d. %-50s %10s %s\n", i+1,
+				truncateString(file, 50),
+				"<error>",
+				"<unknown>")
+		}
+	}
+
+	fmt.Printf("──────────────────────────────\n")
+	fmt.Printf("📁 总文件数: %d\n", totalFiles)
+	fmt.Printf("📊 总大小: %s\n", formatFileSize(totalSize))
+	fmt.Printf("📄 文件类型分布：\n")
+	for ext, count := range fileTypes {
+		fmt.Printf("  %s: %d 个\n", ext, count)
+	}
+	fmt.Printf("\n按回车键继续...")
+	if isStdinInteractive() {
+		_, _ = readLineWithTimeout(20 * time.Second)
+	}
+}
+
+// formatFileSize 格式化文件大小
+func formatFileSize(size int64) string {
+	const unit = 1024
+	if size < unit {
+		return fmt.Sprintf("%d B", size)
+	}
+	div, exp := int64(unit), 0
+	for n := size / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(size)/float64(div), "KMGTPE"[exp])
 }
 
 // GetFiles 获取文件列表

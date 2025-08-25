@@ -18,11 +18,25 @@ var logger *Logger
 type LogLevel int
 
 const (
-	LevelDebug LogLevel = iota
-	LevelInfo
-	LevelWarn
-	LevelError
-	LevelFatal
+	LogLevelDebug LogLevel = iota
+	LogLevelInfo
+	LogLevelWarn
+	LogLevelError
+	LogLevelFatal
+)
+
+const (
+	// LogMaxSize 日志文件最大大小(MB)
+	LogMaxSize = 100
+
+	// LogMaxBackups 日志文件最大备份数量
+	LogMaxBackups = 10
+
+	// LogDirPerm 日志目录权限
+	LogDirPerm = 0700
+
+	// LogFilePerm 日志文件权限
+	LogFilePerm = 0600
 )
 
 // Logger 日志记录器
@@ -40,12 +54,12 @@ func NewLogger(level string) *Logger {
 	l := &Logger{
 		level:      parseLogLevel(level),
 		logDir:     getLogDir(),
-		maxSize:    100, // 100MB
-		maxBackups: 10,
+		maxSize:    LogMaxSize,    // 100MB
+		maxBackups: LogMaxBackups, // 10个备份
 	}
 
-	// 确保日志目录存在，使用更安全的权限 0700（仅所有者可访问）
-	if err := os.MkdirAll(l.logDir, 0700); err != nil {
+	// 确保日志目录存在，使用更安全的权限 LogDirPerm（仅所有者可访问）
+	if err := os.MkdirAll(l.logDir, LogDirPerm); err != nil {
 		fmt.Fprintf(os.Stderr, "无法创建日志目录: %v\n", err)
 		return l
 	}
@@ -74,8 +88,8 @@ func (l *Logger) setupLogFile() error {
 		}
 	}
 
-	// 使用更安全的文件权限 0600（仅所有者可读写）
-	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	// 使用更安全的文件权限 LogFilePerm（仅所有者可读写）
+	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, LogFilePerm)
 	if err != nil {
 		return err
 	}
@@ -154,18 +168,18 @@ func getLogDir() string {
 // parseLogLevel 解析日志级别字符串
 func parseLogLevel(level string) LogLevel {
 	switch strings.ToLower(level) {
-	case "debug":
-		return LevelDebug
-	case "info":
-		return LevelInfo
-	case "warn", "warning":
-		return LevelWarn
-	case "error":
-		return LevelError
-	case "fatal":
-		return LevelFatal
+	case LogLevelDebugStr:
+		return LogLevelDebug
+	case LogLevelInfoStr:
+		return LogLevelInfo
+	case LogLevelWarnStr, "warning":
+		return LogLevelWarn
+	case LogLevelErrorStr:
+		return LogLevelError
+	case LogLevelFatalStr:
+		return LogLevelFatal
 	default:
-		return LevelInfo
+		return LogLevelInfo
 	}
 }
 
@@ -198,7 +212,7 @@ func (l *Logger) Log(level LogLevel, operation, filePath string, err error, mess
 	}
 
 	// 同时输出到控制台（错误级别）
-	if level >= LevelError {
+	if level >= LogLevelError {
 		fmt.Fprintf(os.Stderr, "[%s] %s\n", level.String(), message)
 	}
 }
@@ -206,7 +220,7 @@ func (l *Logger) Log(level LogLevel, operation, filePath string, err error, mess
 // buildLogEntry 构建日志条目
 func (l *Logger) buildLogEntry(level LogLevel, operation, filePath string, err error, message string) string {
 	// 时间戳
-	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+	timestamp := time.Now().Format(TimeFormatWithMillis)
 
 	// 调用信息（文件名和行号）
 	_, file, line, ok := runtime.Caller(3)
@@ -236,15 +250,15 @@ func (l *Logger) buildLogEntry(level LogLevel, operation, filePath string, err e
 // String 返回日志级别的字符串表示
 func (l LogLevel) String() string {
 	switch l {
-	case LevelDebug:
+	case LogLevelDebug:
 		return "DEBUG"
-	case LevelInfo:
+	case LogLevelInfo:
 		return "INFO"
-	case LevelWarn:
+	case LogLevelWarn:
 		return "WARN"
-	case LevelError:
+	case LogLevelError:
 		return "ERROR"
-	case LevelFatal:
+	case LogLevelFatal:
 		return "FATAL"
 	default:
 		return "UNKNOWN"
@@ -253,24 +267,29 @@ func (l LogLevel) String() string {
 
 // 快捷日志方法
 func (l *Logger) Debug(operation, filePath string, message string) {
-	l.Log(LevelDebug, operation, filePath, nil, message)
+	l.Log(LogLevelDebug, operation, filePath, nil, message)
 }
 
 func (l *Logger) Info(operation, filePath string, message string) {
-	l.Log(LevelInfo, operation, filePath, nil, message)
+	l.Log(LogLevelInfo, operation, filePath, nil, message)
 }
 
 func (l *Logger) Warn(operation, filePath string, message string) {
-	l.Log(LevelWarn, operation, filePath, nil, message)
+	l.Log(LogLevelWarn, operation, filePath, nil, message)
 }
 
 func (l *Logger) Error(operation, filePath string, err error, message string) {
-	l.Log(LevelError, operation, filePath, err, message)
+	l.Log(LogLevelError, operation, filePath, err, message)
 }
 
+// Fatal 支持可测试的退出处理器
 func (l *Logger) Fatal(operation, filePath string, err error, message string) {
-	l.Log(LevelFatal, operation, filePath, err, message)
-	os.Exit(1)
+	l.Log(LogLevelFatal, operation, filePath, err, message)
+	if ExitHandler != nil {
+		ExitHandler(1)
+	} else {
+		os.Exit(1)
+	}
 }
 
 // Close 关闭日志文件
@@ -342,7 +361,14 @@ func sanitizeErrorMessage(errorMsg string) string {
 	}
 
 	// 移除Windows用户目录模式
-	errorMsg = strings.ReplaceAll(errorMsg, "C:\\Users\\", "<USER_DIR>\\")
+	if runtime.GOOS == "windows" {
+		systemDrive := os.Getenv("SYSTEMDRIVE")
+		if systemDrive == "" {
+			systemDrive = "C:"
+		}
+		usersPath := filepath.Join(systemDrive, "Users") + string(filepath.Separator)
+		errorMsg = strings.ReplaceAll(errorMsg, usersPath, "<USER_DIR>"+string(filepath.Separator))
+	}
 
 	// 限制错误信息长度
 	if len(errorMsg) > 200 {
@@ -360,8 +386,16 @@ func sanitizeMessage(message string) string {
 	}
 
 	// 移除系统路径信息
-	message = strings.ReplaceAll(message, "C:\\Windows\\", "<WINDOWS_DIR>\\")
-	message = strings.ReplaceAll(message, "C:\\Program Files\\", "<PROGRAM_FILES>\\")
+	if runtime.GOOS == "windows" {
+		systemDrive := os.Getenv("SYSTEMDRIVE")
+		if systemDrive == "" {
+			systemDrive = "C:"
+		}
+		windowsPath := filepath.Join(systemDrive, "Windows") + string(filepath.Separator)
+		programFilesPath := filepath.Join(systemDrive, "Program Files") + string(filepath.Separator)
+		message = strings.ReplaceAll(message, windowsPath, "<WINDOWS_DIR>"+string(filepath.Separator))
+		message = strings.ReplaceAll(message, programFilesPath, "<PROGRAM_FILES>"+string(filepath.Separator))
+	}
 
 	// 限制消息长度
 	if len(message) > 500 {

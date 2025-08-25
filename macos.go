@@ -79,10 +79,3 @@ func CheckFilePermissions(filePath string) (bool, error) {
 
 	return true, nil
 }
-
-// checkDiskSpace macOS平台检查磁盘空间 (stub实现)
-func checkDiskSpace(path string, requiredBytes int64) error {
-	// macOS平台暂不检查磁盘空间，直接返回成功
-	// 可以在未来实现使用syscall.Statfs检查磁盘空间
-	return nil
-}

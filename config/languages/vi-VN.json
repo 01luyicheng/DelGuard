@@ -1,0 +1,23 @@
+{
+  "参数解析失败: %v\n": "Lỗi phân tích tham số: %v\n",
+  "别名安装成功！请重启终端或运行 'source ~/.bashrc' 使别名生效。": "Cài đặt alias thành công! Khởi động lại terminal hoặc chạy 'source ~/.bashrc' để kích hoạt.",
+  "卸载功能尚未实现": "Chức năng gỡ cài đặt chưa được triển khai",
+  "恢复文件失败: %v\n": "Lỗi khôi phục tệp: %v\n",
+  "错误：无法解析路径 %s: %v\n": "Lỗi: không thể phân tích đường dẫn %s: %v\n",
+  "错误：无法访问 %s: %v\n": "Lỗi: không thể truy cập %s: %v\n",
+  "提示：%s 是目录，删除目录需使用 -r/--recursive\n": "Gợi ý: %s là thư mục; sử dụng -r/--recursive để xóa thư mục\n",
+  "删除 %s ? [y/N/a/q]: ": "Xóa %s ? [y/N/a/q]: ",
+  "已跳过 %s\n": "Đã bỏ qua %s\n",
+  "检测到关键路径，要求双重确认：%s\n": "Phát hiện đường dẫn quan trọng, cần xác nhận kép: %s\n",
+  "[DRY-RUN] 将把 %s 移动到回收站\n": "[THỬ NGHIỆM] Sẽ di chuyển %s vào Thùng rác\n",
+  "错误：无法删除 %s: %v\n": "Lỗi: không thể xóa %s: %v\n",
+  "已将 %s 移动到回收站\n": "Đã di chuyển %s vào Thùng rác\n",
+  "警告：当前以高权限运行（root/管理员），已强制启用交互确认。\n": "Cảnh báo: đang chạy với quyền cao (root/Administrator). Đã bắt buộc kích hoạt xác nhận tương tác.\n",
+  "当前平台 %s 暂不支持回收站功能\n": "Nền tảng hiện tại %s không hỗ trợ chức năng thùng rác\n",
+  "确认删除？[y/N]: ": "Xác nhận xóa? [y/N]: ",
+  "警告：文件 %s 为只读文件\n": "Cảnh báo: tệp %s là tệp chỉ đọc\n",
+  "错误：权限不足，无法删除 %s\n": "Lỗi: quyền không đủ để xóa %s\n",
+  "错误：系统保护文件，无法删除 %s\n": "Lỗi: tệp được bảo vệ hệ thống, không thể xóa %s\n",
+  "错误：路径包含非法字符: %s\n": "Lỗi: đường dẫn chứa ký tự không hợp lệ: %s\n",
+  "错误：路径过长: %s\n": "Lỗi: đường dẫn quá dài: %s\n"
+}

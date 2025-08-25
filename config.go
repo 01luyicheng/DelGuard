@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,6 +10,17 @@ import (
 	"strconv"
 	"strings"
 	"time"
+)
+
+// 配置默认常量
+const (
+	DefaultMaxBackupFiles    int64 = 1000
+	DefaultTrashMaxSize      int64 = 10000   // MB
+	DefaultMaxConfigFileSize int64 = 1048576 // 1MB 配置文件大小限制
+
+	// 配置限制常量
+	DefaultMaxPathLength    int = 4096 // 最大路径长度
+	DefaultMaxConcurrentOps int = 100  // 最大并发操作数
 )
 
 // Config 配置结构体
@@ -25,11 +37,12 @@ type Config struct {
 	SafeMode        string `json:"safe_mode"` // "strict", "normal", "relaxed"
 
 	// 限制设置
-	MaxBackupFiles   int64 `json:"max_backup_files"`
-	TrashMaxSize     int64 `json:"trash_max_size"` // MB
-	MaxFileSize      int64 `json:"max_file_size"`  // bytes
-	MaxPathLength    int   `json:"max_path_length"`
-	MaxConcurrentOps int   `json:"max_concurrent_ops"`
+	MaxBackupFiles      int64   `json:"max_backup_files"`
+	TrashMaxSize        int64   `json:"trash_max_size"` // MB
+	MaxFileSize         int64   `json:"max_file_size"`  // bytes
+	SimilarityThreshold float64 `json:"similarity_threshold"`
+	MaxPathLength       int     `json:"max_path_length"`
+	MaxConcurrentOps    int     `json:"max_concurrent_ops"`
 
 	// 安全设置
 	EnableSecurityChecks      bool `json:"enable_security_checks"`
@@ -114,6 +127,38 @@ func LoadConfig() (*Config, error) {
 	return config, nil
 }
 
+// LoadConfigWithOverride 允许通过外部传入的路径优先加载配置
+func LoadConfigWithOverride(overridePath string) (*Config, error) {
+	if defaultConfig != nil && defaultConfig.ConfigPath != "" {
+		return defaultConfig, nil
+	}
+
+	cfg := &Config{}
+	cfg.setDefaults()
+
+	var paths []string
+	if strings.TrimSpace(overridePath) != "" {
+		paths = []string{overridePath}
+	} else {
+		paths = cfg.findConfigPaths()
+	}
+
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			if err := cfg.loadFromFile(p); err != nil {
+				LogWarn("config", p, fmt.Sprintf("配置文件加载失败: %v", err))
+				continue
+			}
+			cfg.ConfigPath = p
+			break
+		}
+	}
+
+	cfg.loadFromEnv()
+	defaultConfig = cfg
+	return cfg, nil
+}
+
 // setDefaults 设置默认配置值
 func (c *Config) setDefaults() {
 	// 设置版本信息
@@ -123,14 +168,15 @@ func (c *Config) setDefaults() {
 	c.UseRecycleBin = true
 	c.InteractiveMode = "confirm"
 	c.Language = "auto"
-	c.LogLevel = "info"
+	c.LogLevel = LogLevelInfoStr
 	c.SafeMode = "normal"
 
-	c.MaxBackupFiles = 1000
-	c.TrashMaxSize = 10000      // 10GB
-	c.MaxFileSize = 10737418240 // 10GB
-	c.MaxPathLength = 4096
-	c.MaxConcurrentOps = 100
+	c.MaxBackupFiles = DefaultMaxBackupFiles
+	c.TrashMaxSize = DefaultTrashMaxSize
+	c.MaxFileSize = DefaultMaxFileSize
+	c.SimilarityThreshold = DefaultSimilarityThreshold
+	c.MaxPathLength = DefaultMaxPathLength
+	c.MaxConcurrentOps = DefaultMaxConcurrentOps
 
 	c.EnableSecurityChecks = true
 	c.EnableMalwareScan = false // 默认关闭，提高性能
@@ -169,21 +215,30 @@ func (c *Config) findConfigPaths() []string {
 
 	// 用户配置目录
 	if home, err := os.UserHomeDir(); err == nil {
-		paths = append(paths, filepath.Join(home, ".delguard", "config.json"))
+		// 兼容多扩展名
+		for _, name := range []string{"config.json", "config.jsonc", "config.ini", "config.cfg", "config.conf", ".env", "delguard.properties"} {
+			paths = append(paths, filepath.Join(home, ".delguard", name))
+		}
 	}
 
 	// 系统配置目录
 	switch runtime.GOOS {
 	case "windows":
 		if systemRoot := os.Getenv("SystemRoot"); systemRoot != "" {
-			paths = append(paths, filepath.Join(systemRoot, "delguard", "config.json"))
+			for _, name := range []string{"config.json", "config.jsonc", "config.ini", "config.cfg", "config.conf", ".env", "delguard.properties"} {
+				paths = append(paths, filepath.Join(systemRoot, "delguard", name))
+			}
 		}
 	default:
-		paths = append(paths, "/etc/delguard/config.json")
+		for _, name := range []string{"config.json", "config.jsonc", "config.ini", "config.cfg", "config.conf", ".env", "delguard.properties"} {
+			paths = append(paths, filepath.Join("/etc/delguard", name))
+		}
 	}
 
 	// 当前目录
-	paths = append(paths, "config.json")
+	for _, name := range []string{"config.json", "config.jsonc", "config.ini", "config.cfg", "config.conf", ".env", "delguard.properties"} {
+		paths = append(paths, name)
+	}
 
 	return paths
 }
@@ -200,7 +255,7 @@ func (c *Config) loadFromFile(path string) error {
 	if err != nil {
 		return err
 	}
-	if info.Size() > 1024*1024 { // 1MB 限制
+	if info.Size() > DefaultMaxConfigFileSize { // 使用常量限制配置文件大小
 		return fmt.Errorf("配置文件过大: %d bytes", info.Size())
 	}
 
@@ -210,13 +265,26 @@ func (c *Config) loadFromFile(path string) error {
 		return err
 	}
 
-	// 验证JSON内容，防止恶意输入
-	if err := validateJSONContent(data); err != nil {
-		return fmt.Errorf("JSON内容验证失败: %v", err)
+	// 根据扩展名解析
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".json":
+		if err := validateJSONContent(data); err != nil {
+			return fmt.Errorf("JSON内容验证失败: %v", err)
+		}
+		return safeJSONUnmarshal(data, c)
+	case ".jsonc":
+		cleaned := stripJSONComments(string(data))
+		if err := validateJSONContent([]byte(cleaned)); err != nil {
+			return fmt.Errorf("JSONC内容验证失败: %v", err)
+		}
+		return safeJSONUnmarshal([]byte(cleaned), c)
+	case ".ini", ".cfg", ".conf":
+		return parseINIIntoConfig(string(data), c)
+	case ".env", ".properties":
+		return parseEnvFileIntoConfig(string(data), c)
+	default:
+		return fmt.Errorf("不支持的配置文件类型: %s", filepath.Ext(path))
 	}
-
-	// 使用安全的JSON解析
-	return safeJSONUnmarshal(data, c)
 }
 
 // loadFromEnv 从环境变量加载配置
@@ -243,7 +311,7 @@ func (c *Config) loadFromEnv() {
 	}
 
 	if v := os.Getenv("DELGUARD_LOG_LEVEL"); v != "" {
-		if validateEnvString(v, []string{"debug", "info", "warn", "error", "fatal"}) {
+		if validateEnvString(v, []string{LogLevelDebugStr, LogLevelInfoStr, LogLevelWarnStr, LogLevelErrorStr, LogLevelFatalStr}) {
 			c.LogLevel = v
 		}
 	}
@@ -268,7 +336,7 @@ func (c *Config) loadFromEnv() {
 	}
 
 	if v := os.Getenv("DELGUARD_MAX_FILE_SIZE"); v != "" {
-		if i, err := strconv.ParseInt(v, 10, 64); err == nil && validateEnvInt64(i, 0, 100*1024*1024*1024) {
+		if i, err := strconv.ParseInt(v, 10, 64); err == nil && validateEnvInt64(i, 0, 100*GB) {
 			c.MaxFileSize = i
 		}
 	}
@@ -311,169 +379,33 @@ func (c *Config) GetSafeMode() string {
 	return c.SafeMode
 }
 
-// Validate 验证配置有效性
+// Validate 验证配置有效性 - 增强版
 func (c *Config) Validate() error {
 	var errs []error
 
-	// 验证日志级别
-	validLevels := map[string]bool{
-		"debug": true,
-		"info":  true,
-		"warn":  true,
-		"error": true,
-		"fatal": true,
-	}
-	if !validLevels[c.LogLevel] {
-		err := fmt.Errorf("无效的日志级别: %s (有效值: debug, info, warn, error, fatal)", c.LogLevel)
+	// 基础配置验证
+	if err := c.validateBasicSettings(); err != nil {
 		errs = append(errs, err)
 	}
 
-	// 验证交互模式
-	switch c.InteractiveMode {
-	case "always", "never", "confirm":
-	default:
-		err := fmt.Errorf("无效的交互模式: %s (有效值: always, never, confirm)", c.InteractiveMode)
+	// 数值范围验证
+	if err := c.validateNumericalRanges(); err != nil {
 		errs = append(errs, err)
 	}
 
-	// 验证安全模式
-	switch c.SafeMode {
-	case "strict", "normal", "relaxed":
-	default:
-		err := fmt.Errorf("无效的安全模式: %s (有效值: strict, normal, relaxed)", c.SafeMode)
+	// 安全设置验证
+	if err := c.validateSecuritySettings(); err != nil {
 		errs = append(errs, err)
 	}
 
-	// 验证数值范围
-	if c.MaxFileSize < 0 {
-		err := fmt.Errorf("最大文件大小不能为负数: %d", c.MaxFileSize)
-		errs = append(errs, err)
-	}
-	// 添加最大文件大小上限检查
-	if c.MaxFileSize > 100*1024*1024*1024 { // 100GB
-		err := fmt.Errorf("最大文件大小过大: %d (最大100GB)", c.MaxFileSize)
+	// 网络配置验证
+	if err := c.validateNetworkSettings(); err != nil {
 		errs = append(errs, err)
 	}
 
-	if c.MaxPathLength <= 0 {
-		err := fmt.Errorf("最大路径长度必须为正数: %d", c.MaxPathLength)
+	// 平台特定验证
+	if err := c.validatePlatformSpecific(); err != nil {
 		errs = append(errs, err)
-	}
-	// 添加路径长度上限检查
-	if c.MaxPathLength > 32767 { // Windows系统限制
-		err := fmt.Errorf("最大路径长度过长: %d (最大32767)", c.MaxPathLength)
-		errs = append(errs, err)
-	}
-
-	if c.MaxConcurrentOps <= 0 {
-		err := fmt.Errorf("最大并发操作数必须为正数: %d", c.MaxConcurrentOps)
-		errs = append(errs, err)
-	}
-	if c.MaxConcurrentOps > 100 {
-		err := fmt.Errorf("并发操作数过大: %d (最大100)", c.MaxConcurrentOps)
-		errs = append(errs, err)
-	}
-
-	if c.MaxBackupFiles < 0 {
-		err := fmt.Errorf("最大备份文件数不能为负数: %d", c.MaxBackupFiles)
-		errs = append(errs, err)
-	}
-	// 添加备份文件数上限检查
-	if c.MaxBackupFiles > 100000 {
-		err := fmt.Errorf("最大备份文件数过大: %d (最大100000)", c.MaxBackupFiles)
-		errs = append(errs, err)
-	}
-
-	if c.TrashMaxSize < 0 {
-		err := fmt.Errorf("回收站最大容量不能为负数: %d MB", c.TrashMaxSize)
-		errs = append(errs, err)
-	}
-	// 添加回收站大小上限检查
-	if c.TrashMaxSize > 1000000 { // 1TB
-		err := fmt.Errorf("回收站最大容量过大: %d MB (最大1TB)", c.TrashMaxSize)
-		errs = append(errs, err)
-	}
-
-	if c.BackupRetentionDays < 0 {
-		err := fmt.Errorf("备份保留天数不能为负数: %d", c.BackupRetentionDays)
-		errs = append(errs, err)
-	}
-	if c.BackupRetentionDays > 365 {
-		err := fmt.Errorf("备份保留天数过长: %d (最大365天)", c.BackupRetentionDays)
-		errs = append(errs, err)
-	}
-
-	if c.LogRetentionDays < 0 {
-		err := fmt.Errorf("日志保留天数不能为负数: %d", c.LogRetentionDays)
-		errs = append(errs, err)
-	}
-	if c.LogRetentionDays > 30 {
-		err := fmt.Errorf("日志保留天数过长: %d (最大30天)", c.LogRetentionDays)
-		errs = append(errs, err)
-	}
-
-	// 验证远程配置地址（如果启用）
-	if c.EnableTelemetry && c.TelemetryEndpoint != "" {
-		if err := validateURL(c.TelemetryEndpoint); err != nil {
-			err = fmt.Errorf("遥测端点URL无效: %v", err)
-			errs = append(errs, err)
-		}
-	}
-
-	// 验证语言设置
-	if !validateLanguage(c.Language) {
-		err := fmt.Errorf("不支持的语言: %s (支持: auto, zh, en)", c.Language)
-		errs = append(errs, err)
-	}
-
-	// 平台特定路径验证
-	if runtime.GOOS == "windows" {
-		if c.Windows.RecycleBinPath != "" {
-			// 验证路径安全性
-			if err := validatePath(c.Windows.RecycleBinPath); err != nil {
-				err = fmt.Errorf("Windows回收站路径不安全: %v", err)
-				errs = append(errs, err)
-			} else if _, err := os.Stat(c.Windows.RecycleBinPath); err != nil {
-				if os.IsNotExist(err) {
-					err = fmt.Errorf("Windows回收站路径不存在: %s", c.Windows.RecycleBinPath)
-				} else {
-					err = fmt.Errorf("Windows回收站路径访问失败: %v", err)
-				}
-				errs = append(errs, err)
-			}
-		}
-	} else {
-		if runtime.GOOS == "linux" {
-			if c.Linux.TrashDir != "" {
-				// 验证路径安全性
-				if err := validatePath(c.Linux.TrashDir); err != nil {
-					err = fmt.Errorf("Linux回收站路径不安全: %v", err)
-					errs = append(errs, err)
-				} else if _, err := os.Stat(c.Linux.TrashDir); err != nil {
-					if os.IsNotExist(err) {
-						err = fmt.Errorf("Linux回收站路径不存在: %s", c.Linux.TrashDir)
-					} else {
-						err = fmt.Errorf("Linux回收站路径访问失败: %v", err)
-					}
-					errs = append(errs, err)
-				}
-			}
-		} else if runtime.GOOS == "darwin" {
-			if c.Darwin.TrashDir != "" {
-				// 验证路径安全性
-				if err := validatePath(c.Darwin.TrashDir); err != nil {
-					err = fmt.Errorf("macOS回收站路径不安全: %v", err)
-					errs = append(errs, err)
-				} else if _, err := os.Stat(c.Darwin.TrashDir); err != nil {
-					if os.IsNotExist(err) {
-						err = fmt.Errorf("macOS回收站路径不存在: %s", c.Darwin.TrashDir)
-					} else {
-						err = fmt.Errorf("macOS回收站路径访问失败: %v", err)
-					}
-					errs = append(errs, err)
-				}
-			}
-		}
 	}
 
 	// 返回所有错误
@@ -485,6 +417,175 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("配置验证失败:\n%s", strings.Join(errorMsgs, "\n"))
 	}
 
+	return nil
+}
+
+// validateBasicSettings 验证基础设置
+func (c *Config) validateBasicSettings() error {
+	var errs []error
+
+	// 验证日志级别
+	validLevels := map[string]bool{
+		LogLevelDebugStr: true, LogLevelInfoStr: true, LogLevelWarnStr: true, LogLevelErrorStr: true, LogLevelFatalStr: true,
+	}
+	if !validLevels[c.LogLevel] {
+		errs = append(errs, fmt.Errorf("无效的日志级别: %s", c.LogLevel))
+	}
+
+	// 验证交互模式
+	switch c.InteractiveMode {
+	case "always", "never", "confirm":
+	default:
+		errs = append(errs, fmt.Errorf("无效的交互模式: %s", c.InteractiveMode))
+	}
+
+	// 验证安全模式
+	switch c.SafeMode {
+	case "strict", "normal", "relaxed":
+	default:
+		errs = append(errs, fmt.Errorf("无效的安全模式: %s", c.SafeMode))
+	}
+
+	// 验证语言设置
+	if !validateLanguage(c.Language) {
+		errs = append(errs, fmt.Errorf("不支持的语言: %s", c.Language))
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("基础设置验证失败: %v", errs)
+	}
+	return nil
+}
+
+// validateNumericalRanges 验证数值范围
+func (c *Config) validateNumericalRanges() error {
+	var errs []error
+
+	// 验证文件大小限制
+	if c.MaxFileSize < 0 {
+		errs = append(errs, fmt.Errorf("最大文件大小不能为负数: %d", c.MaxFileSize))
+	} else if c.MaxFileSize > 100*GB { // 100GB
+		errs = append(errs, fmt.Errorf("最大文件大小过大: %d (最大100GB)", c.MaxFileSize))
+	}
+
+	// 验证路径长度
+	if c.MaxPathLength <= 0 {
+		errs = append(errs, fmt.Errorf("最大路径长度必须为正数: %d", c.MaxPathLength))
+	} else if c.MaxPathLength > 32767 {
+		errs = append(errs, fmt.Errorf("最大路径长度过长: %d (最大32767)", c.MaxPathLength))
+	}
+
+	// 验证并发操作数
+	if c.MaxConcurrentOps <= 0 {
+		errs = append(errs, fmt.Errorf("最大并发操作数必须为正数: %d", c.MaxConcurrentOps))
+	} else if c.MaxConcurrentOps > 1000 {
+		errs = append(errs, fmt.Errorf("并发操作数过大: %d (最大1000)", c.MaxConcurrentOps))
+	}
+
+	// 验证其他数值
+	if c.MaxBackupFiles < 0 {
+		errs = append(errs, fmt.Errorf("最大备份文件数不能为负数: %d", c.MaxBackupFiles))
+	} else if c.MaxBackupFiles > 1000000 {
+		errs = append(errs, fmt.Errorf("最大备份文件数过大: %d (最大1000000)", c.MaxBackupFiles))
+	}
+
+	if c.TrashMaxSize < 0 {
+		errs = append(errs, fmt.Errorf("回收站最大容量不能为负数: %d MB", c.TrashMaxSize))
+	} else if c.TrashMaxSize > 10000000 { // 10TB
+		errs = append(errs, fmt.Errorf("回收站最大容量过大: %d MB (最大10TB)", c.TrashMaxSize))
+	}
+
+	if c.BackupRetentionDays < 0 {
+		errs = append(errs, fmt.Errorf("备份保留天数不能为负数: %d", c.BackupRetentionDays))
+	} else if c.BackupRetentionDays > 3650 {
+		errs = append(errs, fmt.Errorf("备份保留天数过长: %d (最大3650天)", c.BackupRetentionDays))
+	}
+
+	if c.LogRetentionDays < 0 {
+		errs = append(errs, fmt.Errorf("日志保留天数不能为负数: %d", c.LogRetentionDays))
+	} else if c.LogRetentionDays > 365 {
+		errs = append(errs, fmt.Errorf("日志保留天数过长: %d (最大365天)", c.LogRetentionDays))
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("数值范围验证失败: %v", errs)
+	}
+	return nil
+}
+
+// validateSecuritySettings 验证安全设置
+func (c *Config) validateSecuritySettings() error {
+	var errs []error
+
+	// 在严格模式下，必须启用某些安全检查
+	if c.SafeMode == "strict" {
+		if !c.EnableSecurityChecks {
+			errs = append(errs, fmt.Errorf("严格模式下必须启用安全检查"))
+		}
+		if !c.EnablePathValidation {
+			errs = append(errs, fmt.Errorf("严格模式下必须启用路径验证"))
+		}
+	}
+
+	// 检查不合理的组合
+	if !c.EnableSecurityChecks && c.EnableMalwareScan {
+		errs = append(errs, fmt.Errorf("在禁用安全检查的情况下不能启用恶意软件扫描"))
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("安全设置验证失败: %v", errs)
+	}
+	return nil
+}
+
+// validateNetworkSettings 验证网络设置
+func (c *Config) validateNetworkSettings() error {
+	var errs []error
+
+	if c.EnableTelemetry {
+		if c.TelemetryEndpoint == "" {
+			errs = append(errs, fmt.Errorf("启用遥测时必须设置遥测端点"))
+		} else if err := validateURL(c.TelemetryEndpoint); err != nil {
+			errs = append(errs, fmt.Errorf("遥测端点URL无效: %v", err))
+		} else if err := validateURLSecurity(c.TelemetryEndpoint); err != nil {
+			errs = append(errs, fmt.Errorf("遥测端点URL不安全: %v", err))
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("网络设置验证失败: %v", errs)
+	}
+	return nil
+}
+
+// validatePlatformSpecific 验证平台特定设置
+func (c *Config) validatePlatformSpecific() error {
+	var errs []error
+
+	switch runtime.GOOS {
+	case "windows":
+		if c.Windows.RecycleBinPath != "" {
+			if err := validatePath(c.Windows.RecycleBinPath); err != nil {
+				errs = append(errs, fmt.Errorf("Windows回收站路径不安全: %v", err))
+			}
+		}
+	case "linux":
+		if c.Linux.TrashDir != "" {
+			if err := validatePath(c.Linux.TrashDir); err != nil {
+				errs = append(errs, fmt.Errorf("Linux回收站路径不安全: %v", err))
+			}
+		}
+	case "darwin":
+		if c.Darwin.TrashDir != "" {
+			if err := validatePath(c.Darwin.TrashDir); err != nil {
+				errs = append(errs, fmt.Errorf("macOS回收站路径不安全: %v", err))
+			}
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("平台特定设置验证失败: %v", errs)
+	}
 	return nil
 }
 
@@ -505,61 +606,221 @@ func (c *Config) SaveConfig() error {
 	return c.SaveWithVersion(configPath, "1.0")
 }
 
-// validateConfigPath 验证配置文件路径安全性
-func validateConfigPath(path string) error {
-	// 清理路径
-	cleanPath := filepath.Clean(path)
+// 辅助函数
+func stripJSONComments(s string) string {
+	var b strings.Builder
+	inLine := false
+	inBlock := false
+	for i := 0; i < len(s); i++ {
+		if inLine {
+			if s[i] == '\n' {
+				inLine = false
+				b.WriteByte(s[i])
+			}
+			continue
+		}
+		if inBlock {
+			if i+1 < len(s) && s[i] == '*' && s[i+1] == '/' {
+				inBlock = false
+				i++
+			}
+			continue
+		}
+		if i+1 < len(s) {
+			if s[i] == '/' && s[i+1] == '/' {
+				inLine = true
+				i++
+				continue
+			}
+			if s[i] == '/' && s[i+1] == '*' {
+				inBlock = true
+				i++
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
 
-	// 检查路径遍历
+func parseEnvFileIntoConfig(content string, c *Config) error {
+	mp := map[string]string{}
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+		var key, val string
+		if idx := strings.IndexAny(line, "=:"); idx >= 0 {
+			key = strings.TrimSpace(line[:idx])
+			val = strings.TrimSpace(line[idx+1:])
+		} else {
+			continue
+		}
+		val = strings.Trim(val, "\"'")
+		if key != "" {
+			mp[strings.ToUpper(strings.ReplaceAll(key, ".", "_"))] = val
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	applyKVToConfig(mp, c)
+	return nil
+}
+
+func parseINIIntoConfig(content string, c *Config) error {
+	section := ""
+	kv := map[string]string{}
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			section = strings.TrimSpace(line[1 : len(line)-1])
+			continue
+		}
+		var key, val string
+		if idx := strings.IndexAny(line, "=:"); idx >= 0 {
+			key = strings.TrimSpace(line[:idx])
+			val = strings.TrimSpace(line[idx+1:])
+		} else {
+			continue
+		}
+		val = strings.Trim(val, "\"'")
+		fullKey := key
+		upKey := strings.ToUpper(key)
+		if !strings.HasPrefix(upKey, "DELGUARD_") {
+			if section != "" {
+				fullKey = section + "." + key
+			}
+		}
+		kv[strings.ToUpper(strings.ReplaceAll(fullKey, "-", "_"))] = val
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	applyKVToConfig(kv, c)
+	return nil
+}
+
+func applyKVToConfig(kv map[string]string, c *Config) {
+	// 布尔键
+	boolKeys := map[string]*bool{
+		"DELGUARD_USE_RECYCLE_BIN":              &c.UseRecycleBin,
+		"DELGUARD_ENABLE_SECURITY_CHECKS":       &c.EnableSecurityChecks,
+		"DELGUARD_ENABLE_MALWARE_SCAN":          &c.EnableMalwareScan,
+		"DELGUARD_ENABLE_PATH_VALIDATION":       &c.EnablePathValidation,
+		"DELGUARD_ENABLE_HIDDEN_CHECK":          &c.EnableHiddenCheck,
+		"DELGUARD_ENABLE_OVERWRITE_PROTECTION":  &c.EnableOverwriteProtection,
+		"DELGUARD_ENABLE_TELEMETRY":             &c.EnableTelemetry,
+		"DELGUARD_WINDOWS_USE_SYSTEM_TRASH":     &c.Windows.UseSystemTrash,
+		"DELGUARD_WINDOWS_ENABLE_UAC_PROMPT":    &c.Windows.EnableUACPrompt,
+		"DELGUARD_WINDOWS_CHECK_FILE_OWNERSHIP": &c.Windows.CheckFileOwnership,
+		"DELGUARD_LINUX_USE_XDG_TRASH":          &c.Linux.UseXDGTrash,
+		"DELGUARD_LINUX_CHECK_SELINUX":          &c.Linux.CheckSELinux,
+		"DELGUARD_LINUX_CHECK_APPARMOR":         &c.Linux.CheckAppArmor,
+		"DELGUARD_DARWIN_USE_SYSTEM_TRASH":      &c.Darwin.UseSystemTrash,
+		"DELGUARD_DARWIN_CHECK_FILEVAULT":       &c.Darwin.CheckFileVault,
+		"DELGUARD_DARWIN_CHECK_GATEKEEPER":      &c.Darwin.CheckGatekeeper,
+	}
+
+	for k, ptr := range boolKeys {
+		if v, ok := kv[k]; ok && validateEnvBool(v) {
+			if b, err := strconv.ParseBool(strings.ToLower(v)); err == nil {
+				*ptr = b
+			}
+		}
+	}
+
+	// 字符串键
+	strSet := map[string]*string{
+		"DELGUARD_INTERACTIVE_MODE":         &c.InteractiveMode,
+		"DELGUARD_LANGUAGE":                 &c.Language,
+		"DELGUARD_LOG_LEVEL":                &c.LogLevel,
+		"DELGUARD_SAFE_MODE":                &c.SafeMode,
+		"DELGUARD_TELEMETRY_ENDPOINT":       &c.TelemetryEndpoint,
+		"DELGUARD_WINDOWS_RECYCLE_BIN_PATH": &c.Windows.RecycleBinPath,
+		"DELGUARD_LINUX_TRASH_DIR":          &c.Linux.TrashDir,
+		"DELGUARD_DARWIN_TRASH_DIR":         &c.Darwin.TrashDir,
+	}
+	for k, ptr := range strSet {
+		if v, ok := kv[k]; ok {
+			*ptr = v
+		}
+	}
+
+	// 数值键
+	int64Set := map[string]*int64{
+		"DELGUARD_MAX_BACKUP_FILES": &c.MaxBackupFiles,
+		"DELGUARD_TRASH_MAX_SIZE":   &c.TrashMaxSize,
+		"DELGUARD_MAX_FILE_SIZE":    &c.MaxFileSize,
+	}
+	for k, ptr := range int64Set {
+		if v, ok := kv[k]; ok {
+			if i, err := strconv.ParseInt(v, 10, 64); err == nil {
+				*ptr = i
+			}
+		}
+	}
+	intSet := map[string]*int{
+		"DELGUARD_MAX_PATH_LENGTH":       &c.MaxPathLength,
+		"DELGUARD_MAX_CONCURRENT_OPS":    &c.MaxConcurrentOps,
+		"DELGUARD_BACKUP_RETENTION_DAYS": &c.BackupRetentionDays,
+		"DELGUARD_LOG_RETENTION_DAYS":    &c.LogRetentionDays,
+	}
+	for k, ptr := range intSet {
+		if v, ok := kv[k]; ok {
+			if i, err := strconv.Atoi(v); err == nil {
+				*ptr = i
+			}
+		}
+	}
+}
+
+// 验证和安全函数
+func validateConfigPath(path string) error {
+	cleanPath := filepath.Clean(path)
 	if strings.Contains(cleanPath, "..") {
 		return fmt.Errorf("检测到路径遍历攻击")
 	}
-
-	// 检查绝对路径
 	if !filepath.IsAbs(cleanPath) {
-		// 将相对路径转为绝对路径
 		abs, err := filepath.Abs(cleanPath)
 		if err != nil {
 			return fmt.Errorf("无法获取绝对路径: %v", err)
 		}
 		cleanPath = abs
 	}
-
-	// 检查文件扩展名
-	if filepath.Ext(cleanPath) != ".json" {
-		return fmt.Errorf("仅允许JSON配置文件")
+	allowed := map[string]bool{
+		".json": true, ".jsonc": true, ".ini": true, ".cfg": true, ".conf": true, ".env": true, ".properties": true,
 	}
-
+	if !allowed[strings.ToLower(filepath.Ext(cleanPath))] {
+		return fmt.Errorf("仅允许以下配置文件类型: .json/.jsonc/.ini/.cfg/.conf/.env/.properties")
+	}
 	return nil
 }
 
-// validateJSONContent 验证JSON内容安全性
 func validateJSONContent(data []byte) error {
-	// 检查内容长度
 	if len(data) == 0 {
 		return fmt.Errorf("JSON内容为空")
 	}
-
-	// 检查内容是否为有效JSON（预验证）
 	var temp interface{}
 	if err := json.Unmarshal(data, &temp); err != nil {
 		return fmt.Errorf("JSON格式无效: %v", err)
 	}
-
-	// 检查JSON嵌套深度，防止深度攻击
 	if err := checkJSONDepth(temp, 0, 10); err != nil {
 		return err
 	}
-
 	return nil
 }
 
-// checkJSONDepth 检查JSON嵌套深度
 func checkJSONDepth(data interface{}, currentDepth, maxDepth int) error {
 	if currentDepth > maxDepth {
 		return fmt.Errorf("JSON嵌套深度过大: %d", currentDepth)
 	}
-
 	switch v := data.(type) {
 	case map[string]interface{}:
 		for _, value := range v {
@@ -574,130 +835,87 @@ func checkJSONDepth(data interface{}, currentDepth, maxDepth int) error {
 			}
 		}
 	}
-
 	return nil
 }
 
-// safeJSONUnmarshal 安全的JSON解析（带版本管理）
 func safeJSONUnmarshal(data []byte, c *Config) error {
-	// 创建一个临时配置对象
 	tempConfig := &Config{}
-
-	// 设置默认值
 	tempConfig.setDefaults()
-
-	// 解析JSON
 	if err := json.Unmarshal(data, tempConfig); err != nil {
 		return fmt.Errorf("JSON解析失败: %v", err)
 	}
-
-	// 检查并升级配置版本
 	if err := upgradeConfigVersion(tempConfig); err != nil {
 		return fmt.Errorf("配置版本升级失败: %v", err)
 	}
-
-	// 验证解析后的配置
 	if err := tempConfig.Validate(); err != nil {
 		return fmt.Errorf("配置验证失败: %v", err)
 	}
-
-	// 只有在验证成功后才更新实际配置
 	*c = *tempConfig
-
 	return nil
 }
 
-// validateEnvString 验证环境变量字符串值
 func validateEnvString(value string, allowedValues []string) bool {
-	// 检查长度
 	if len(value) > 100 {
 		return false
 	}
-
-	// 检查是否在允许列表中
 	for _, allowed := range allowedValues {
 		if value == allowed {
 			return true
 		}
 	}
-
 	return false
 }
 
-// validateEnvBool 验证环境变量布尔值
 func validateEnvBool(value string) bool {
-	// 只允许特定的布尔值
 	allowedValues := []string{"true", "false", "1", "0", "yes", "no"}
 	lowerValue := strings.ToLower(value)
-
 	for _, allowed := range allowedValues {
 		if lowerValue == allowed {
 			return true
 		}
 	}
-
 	return false
 }
 
-// validateEnvInt64 验证环境变量整数值
 func validateEnvInt64(value, min, max int64) bool {
 	return value >= min && value <= max
 }
 
-// validateURL 验证URL格式
 func validateURL(urlStr string) error {
 	if urlStr == "" {
 		return fmt.Errorf("URL不能为空")
 	}
-
-	// 检查URL长度
 	if len(urlStr) > 2048 {
 		return fmt.Errorf("URL太长")
 	}
-
-	// 检查URL是否包含非法字符
 	for _, char := range urlStr {
 		if char < 32 || char == 127 {
 			return fmt.Errorf("URL包含非法字符")
 		}
 	}
-
-	// 检查协议白名单
 	if !strings.HasPrefix(urlStr, "https://") && !strings.HasPrefix(urlStr, "http://") {
 		return fmt.Errorf("仅允许HTTP/HTTPS协议")
 	}
-
 	return nil
 }
 
-// validatePath 验证路径安全性
 func validatePath(path string) error {
 	if path == "" {
 		return fmt.Errorf("路径不能为空")
 	}
-
-	// 检查路径长度
 	if len(path) > 32767 {
 		return fmt.Errorf("路径太长")
 	}
-
-	// 清理路径
 	cleanPath := filepath.Clean(path)
-
-	// 检查路径遍历
 	if strings.Contains(cleanPath, "..") {
 		return fmt.Errorf("检测到路径遍历攻击")
 	}
-
-	// 检查是否为绝对路径
 	if !filepath.IsAbs(cleanPath) {
 		return fmt.Errorf("必须为绝对路径")
 	}
-
 	return nil
 }
 
-// validateLanguage 验证语言设置
 func validateLanguage(lang string) bool {
 	allowedLanguages := []string{"auto", "zh", "en", "zh-CN", "en-US"}
 	for _, allowed := range allowedLanguages {
@@ -708,118 +926,83 @@ func validateLanguage(lang string) bool {
 	return false
 }
 
-// upgradeConfigVersion 升级配置版本
 func upgradeConfigVersion(config *Config) error {
 	currentSchemaVersion := "1.0"
-
-	// 如果没有版本信息，认为是旧版本
 	if config.Version == "" {
-		config.Version = "0.9.0" // 假设的旧版本
+		config.Version = "0.9.0"
 	}
 	if config.SchemaVersion == "" {
-		config.SchemaVersion = "0.9" // 假设的旧架构版本
+		config.SchemaVersion = "0.9"
 	}
-
-	// 检查是否需要升级
 	if config.SchemaVersion == currentSchemaVersion {
-		return nil // 无需升级
+		return nil
 	}
-
-	// 执行版本升级
 	switch config.SchemaVersion {
 	case "0.9":
 		if err := upgradeFrom09To10(config); err != nil {
 			return fmt.Errorf("从0.9升级到1.0失败: %v", err)
 		}
-		fallthrough // 继续升级到更高版本
+		fallthrough
 	default:
-		// 不支持的版本
 		if config.SchemaVersion != currentSchemaVersion {
 			return fmt.Errorf("不支持的配置架构版本: %s", config.SchemaVersion)
 		}
 	}
-
-	// 更新版本信息
 	config.Version = "1.0.0"
 	config.SchemaVersion = currentSchemaVersion
-
 	return nil
 }
 
-// upgradeFrom09To10 从0.9版本升级到1.0版本
 func upgradeFrom09To10(config *Config) error {
-	// 在这里添加具体的升级逻辑
-	// 例如：新增字段的默认值设置、字段重命名等
-
-	// 示例：设置新增的安全选项默认值
 	if !hasField(config, "EnableOverwriteProtection") {
 		config.EnableOverwriteProtection = true
 	}
-
-	// 示例：调整旧的配置值
-	if config.MaxConcurrentOps > 100 {
-		config.MaxConcurrentOps = 100 // 限制最大并发数
+	if config.MaxConcurrentOps > 1000 {
+		config.MaxConcurrentOps = 1000
 	}
-
 	return nil
 }
 
-// hasField 检查配置中是否包含指定字段（简化实现）
 func hasField(config *Config, fieldName string) bool {
-	// 这里是一个简化的实现
-	// 在实际使用中，可以使用反射或其他方法来检查
 	switch fieldName {
 	case "EnableOverwriteProtection":
-		return true // 假设字段存在
+		return true
 	default:
 		return false
 	}
 }
 
-// Save 保存配置到指定文件
 func (c *Config) Save(path string) error {
-	// 验证配置
 	if err := c.Validate(); err != nil {
 		return fmt.Errorf("配置验证失败: %w", err)
 	}
-
-	// 确保配置目录存在
 	configDir := filepath.Dir(path)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return fmt.Errorf("无法创建配置目录: %w", err)
 	}
-
-	// 创建临时文件
 	tempFile := path + ".tmp"
 	file, err := os.Create(tempFile)
 	if err != nil {
 		return fmt.Errorf("无法创建临时配置文件: %w", err)
 	}
 	defer file.Close()
-
-	// 使用JSON编码配置
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(c); err != nil {
 		os.Remove(tempFile)
 		return fmt.Errorf("配置文件编码失败: %w", err)
 	}
-
-	// 原子性替换配置文件
 	if err := os.Rename(tempFile, path); err != nil {
 		os.Remove(tempFile)
 		return fmt.Errorf("无法保存配置文件: %w", err)
 	}
-
 	return nil
 }
 
-// GetConfigVersion 获取配置版本信息
 func (c *Config) GetConfigVersion() (string, string) {
 	return c.Version, c.SchemaVersion
 }
 
-// IsConfigVersionSupported 检查配置版本是否支持
 func (c *Config) IsConfigVersionSupported() bool {
 	supportedVersions := []string{"1.0", "0.9"}
 	for _, version := range supportedVersions {
@@ -830,66 +1013,65 @@ func (c *Config) IsConfigVersionSupported() bool {
 	return false
 }
 
-// SaveWithVersion 保存配置并指定版本
 func (c *Config) SaveWithVersion(filePath, version string) error {
-	// 设置配置版本
 	c.Version = version
-
-	// 验证配置
 	if err := c.Validate(); err != nil {
 		return fmt.Errorf("配置验证失败: %v", err)
 	}
-
-	// 创建备份
 	if _, err := os.Stat(filePath); err == nil {
 		backupPath := filePath + ".bak"
 		if err := copyFile(filePath, backupPath); err != nil {
 			LogWarn("config", filePath, fmt.Sprintf("无法创建配置备份: %v", err))
 		}
 	}
-
-	// 保存配置
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return fmt.Errorf("序列化配置失败: %v", err)
 	}
-
-	// 写入临时文件
 	tempPath := filePath + ".tmp"
 	if err := os.WriteFile(tempPath, data, 0644); err != nil {
 		return fmt.Errorf("写入临时配置文件失败: %v", err)
 	}
-
-	// 原子性地替换原文件
 	if err := os.Rename(tempPath, filePath); err != nil {
 		return fmt.Errorf("替换配置文件失败: %v", err)
 	}
-
 	LogInfo("config", filePath, "配置已保存")
 	return nil
 }
 
-// getConfigPath 获取配置文件路径
 func getConfigPath() (string, error) {
-	// 获取用户配置目录
 	configDir, err := os.UserConfigDir()
 	if err != nil {
-		// 如果获取失败，尝试使用用户主目录
 		homeDir, homeErr := os.UserHomeDir()
 		if homeErr != nil {
 			return "", fmt.Errorf("无法获取用户主目录: %v", homeErr)
 		}
 		configDir = filepath.Join(homeDir, ".config")
 	}
-	
-	// 创建DelGuard配置目录路径
 	delguardDir := filepath.Join(configDir, "delguard")
 	configPath := filepath.Join(delguardDir, "config.json")
-	
-	// 检查路径是否有效
 	if err := validateConfigPath(configPath); err != nil {
 		return "", fmt.Errorf("配置路径无效: %v", err)
 	}
-	
 	return configPath, nil
+}
+
+func validateURLSecurity(urlStr string) error {
+	if !strings.HasPrefix(urlStr, "https://") {
+		return fmt.Errorf("URL必须使用HTTPS协议")
+	}
+	if strings.Contains(urlStr, "localhost") || strings.Contains(urlStr, "127.0.0.1") {
+		return fmt.Errorf("不允许使用本地地址")
+	}
+	dangerousPatterns := []string{
+		"192.168.", "10.", "172.16.", "172.17.", "172.18.", "172.19.",
+		"172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.",
+		"172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.",
+	}
+	for _, pattern := range dangerousPatterns {
+		if strings.Contains(urlStr, pattern) {
+			return fmt.Errorf("不允许使用内网地址")
+		}
+	}
+	return nil
 }

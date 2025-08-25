@@ -5,21 +5,8 @@ package main
 
 import (
 	"os"
-	"runtime"
 	"syscall"
 )
-
-// moveToTrashPlatform 平台特定的移动到回收站实现
-func moveToTrashPlatform(filePath string) error {
-	switch runtime.GOOS {
-	case "darwin":
-		return moveToTrashMacOS(filePath)
-	case "linux":
-		return moveToTrashLinux(filePath)
-	default:
-		return ErrUnsupportedPlatform
-	}
-}
 
 // isEXDEV 检查是否为跨设备错误
 func isEXDEV(err error) bool {

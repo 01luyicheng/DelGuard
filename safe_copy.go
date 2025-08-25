@@ -1,13 +1,15 @@
 package main
 
 import (
-	"bufio"
 	"crypto/sha256"
+	"delguard/utils"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // SafeCopyOptions 安全复制选项
@@ -22,57 +24,42 @@ type SafeCopyOptions struct {
 // SafeCopy 安全复制文件
 // 如果目标文件已存在，会计算两个文件的哈希值进行比较，并在文件不同时提示用户确认
 func SafeCopy(src, dst string, opts SafeCopyOptions) error {
+
 	// 检查源文件是否存在
 	srcInfo, err := os.Stat(src)
 	if err != nil {
+		log.Printf("[ERROR] 无法访问源文件 %s: %v", src, err)
 		return fmt.Errorf("无法访问源文件 %s: %v", src, err)
 	}
 
 	// 处理目录复制
 	if srcInfo.IsDir() {
 		if !opts.Recursive {
+			log.Printf("[WARN] 源路径 %s 是目录，未指定递归参数 -r", src)
 			return fmt.Errorf("源路径 %s 是目录，使用 -r 参数进行递归复制", src)
 		}
+		log.Printf("[INFO] 递归复制目录: %s -> %s", src, dst)
 		return copyDirectory(src, dst, opts)
 	}
 
-	// 检查目标文件是否存在
-	if _, err := os.Stat(dst); err == nil {
-		// 目标文件存在，进行安全检查
-		return handleExistingFile(src, dst, opts)
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("检查目标文件时出错 %s: %v", dst, err)
+	// 正确处理目标为目录的情况：若 dst 是目录，拼接文件名
+	dstInfo, dstErr := os.Stat(dst)
+	if dstErr == nil && dstInfo.IsDir() {
+		dst = filepath.Join(dst, filepath.Base(src))
+		// 重新获取组合后的目标信息
+		dstInfo, dstErr = os.Stat(dst)
 	}
 
-	// 如果目标文件存在
-	if err == nil {
-		// 检查目标是否为目录
-		if info, err := os.Stat(dst); err != nil {
-			return fmt.Errorf("检查目标文件时出错 %s: %v", dst, err)
-		} else if info.IsDir() {
-			// 如果目标是目录，则将源文件复制到该目录下
-			dst = filepath.Join(dst, filepath.Base(src))
-			// 再次检查这个组合路径
-			_, err = os.Stat(dst)
-			if err != nil && !os.IsNotExist(err) {
-				return fmt.Errorf("检查目标文件时出错 %s: %v", dst, err)
-			}
-			// 如果仍然存在，则继续处理
-			if err == nil {
-				// 目标文件存在，继续下面的逻辑
-				// 如果目标文件存在且不是目录，进行安全检查
-				return handleExistingFile(src, dst, opts)
-			} else {
-				// 目标文件不存在，直接复制
-				return copyFileSafe(src, dst, opts)
-			}
-		}
-
-		// 如果目标文件存在且不是目录，进行安全检查
+	if dstErr == nil {
+		log.Printf("[INFO] 目标文件已存在: %s，执行安全覆盖检查", dst)
 		return handleExistingFile(src, dst, opts)
 	}
-	
-	// 目标文件不存在，直接复制
+	if dstErr != nil && !os.IsNotExist(dstErr) {
+		log.Printf("[ERROR] 检查目标文件时出错 %s: %v", dst, dstErr)
+		return fmt.Errorf("检查目标文件时出错 %s: %v", dst, dstErr)
+	}
+
+	log.Printf("[INFO] 复制文件: %s -> %s", src, dst)
 	return copyFileSafe(src, dst, opts)
 }
 
@@ -81,8 +68,9 @@ func handleExistingFile(src, dst string, opts SafeCopyOptions) error {
 	if opts.Force {
 		// 强制模式下直接覆盖，但仍将原文件移入回收站
 		if err := backupExistingFile(dst); err != nil {
-			fmt.Printf("警告：无法备份现有文件 %s: %v\n", dst, err)
+			log.Printf("[WARN] 无法备份现有文件 %s: %v", dst, err)
 		}
+		log.Printf("[INFO] 强制覆盖文件: %s -> %s", src, dst)
 		return copyFileInternal(src, dst)
 	}
 
@@ -100,84 +88,76 @@ func handleExistingFile(src, dst string, opts SafeCopyOptions) error {
 	// 比较哈希值
 	if srcHash == dstHash {
 		if opts.Verbose {
-			fmt.Printf("源文件和目标文件内容相同，跳过复制：%s\n", src)
+			log.Printf("[INFO] 源文件和目标文件内容相同，跳过复制：%s", src)
 		}
 		return nil
 	}
 
 	// 文件内容不同，提示用户
-	fmt.Printf("目标文件已存在且内容不同:\n")
-	fmt.Printf("  源文件: %s (SHA256: %s)\n", src, srcHash[:16])
-	fmt.Printf("  目标文件: %s (SHA256: %s)\n", dst, dstHash[:16])
+	log.Printf("[INFO] 目标文件已存在且内容不同: 源文件: %s (SHA256: %s), 目标文件: %s (SHA256: %s)", src, srcHash[:16], dst, dstHash[:16])
 
 	if opts.Interactive {
-		fmt.Print("目标文件已存在且内容不同，是否覆盖？[y/N] ")
-		reader := bufio.NewReader(os.Stdin)
-		input, _ := reader.ReadString('\n')
-		input = strings.TrimSpace(strings.ToLower(input))
+		log.Printf("[PROMPT] 目标文件已存在且内容不同，是否覆盖？[y/N]")
+		var input string
+		if isStdinInteractive() {
+			if s, ok := readLineWithTimeout(30 * time.Second); ok {
+				input = strings.TrimSpace(strings.ToLower(s))
+			} else {
+				input = ""
+			}
+		} else {
+			input = ""
+		}
 		if input != "y" && input != "yes" {
-			fmt.Printf("安全复制已取消：%s\n", src+" -> "+dst)
+			log.Printf("[INFO] 安全复制已取消：%s -> %s", src, dst)
 			return nil
 		}
 	} else {
-		fmt.Println("使用 -i 参数以交互模式运行可选择是否覆盖")
+		log.Printf("[INFO] 使用 -i 参数以交互模式运行可选择是否覆盖")
 		return nil
 	}
 
 	// 用户确认覆盖，先备份现有文件
 	if err := backupExistingFile(dst); err != nil {
+		log.Printf("[ERROR] 备份现有文件失败 %s: %v", dst, err)
 		return fmt.Errorf("备份现有文件失败 %s: %v", dst, err)
 	}
 
-	// 执行复制
+	log.Printf("[INFO] 覆盖并复制文件: %s -> %s", src, dst)
 	return copyFileInternal(src, dst)
 }
 
 // backupExistingFile 将现有文件备份到回收站
 func backupExistingFile(filePath string) error {
-	fmt.Printf("正在将现有文件 %s 移动到回收站...\n", filePath)
+	log.Printf("[INFO] 正在将现有文件 %s 移动到回收站...", filePath)
 
 	// 使用现有的 moveToTrashPlatform 函数
 	err := moveToTrashPlatform(filePath)
 	if err != nil {
+		log.Printf("[ERROR] 移动文件到回收站失败: %v", err)
 		return fmt.Errorf("移动文件到回收站失败: %v", err)
 	}
 
-	fmt.Printf("已将现有文件 %s 移动到回收站\n", filePath)
+	log.Printf("[INFO] 已将现有文件 %s 移动到回收站", filePath)
 	return nil
 }
 
 // copyFileInternal 执行实际的文件复制操作
 func copyFileInternal(src, dst string) error {
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("无法打开源文件 %s: %v", src, err)
-	}
-	defer srcFile.Close()
-
 	// 确保目标目录存在
-	dstDir := filepath.Dir(dst)
-	if err := os.MkdirAll(dstDir, 0755); err != nil {
-		return fmt.Errorf("无法创建目标目录 %s: %v", dstDir, err)
+	destDir := filepath.Dir(dst)
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		log.Printf("[ERROR] 无法创建目标目录 %s: %v", destDir, err)
+		return fmt.Errorf("无法创建目标目录 %s: %v", destDir, err)
 	}
 
-	dstFile, err := os.Create(dst)
-	if err != nil {
-		return fmt.Errorf("无法创建目标文件 %s: %v", dst, err)
-	}
-	defer dstFile.Close()
-
-	_, err = io.Copy(dstFile, srcFile)
-	if err != nil {
+	// 使用统一的文件复制函数
+	if err := utils.CopyFile(src, dst); err != nil {
+		log.Printf("[ERROR] 安全复制失败: %s -> %s: %v", src, dst, err)
 		return fmt.Errorf("安全复制失败: %s -> %s: %v", src, dst, err)
 	}
 
-	// 同步确保数据写入磁盘
-	err = dstFile.Sync()
-	if err != nil {
-		return fmt.Errorf("同步文件时出错 %s: %v", dst, err)
-	}
-
+	log.Printf("[INFO] 文件复制完成: %s -> %s", src, dst)
 	return nil
 }
 

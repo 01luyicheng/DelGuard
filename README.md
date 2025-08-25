@@ -1,3 +1,11 @@
+## 🌐 语言包（i18n）
+
+外部语言包放置于 `config/languages/` 目录，支持多格式：`<lang>.(json|jsonc|ini|cfg|conf|env|properties)`。
+
+- 示例：`en-US.json`、`fr-FR.ini`、`de-DE.properties`、`ja.jsonc`
+- 语义：键为中文原文，值为目标语言译文
+- 外部语言包会覆盖内置翻译；缺少目标语言时回退到英文 `en-US`；中文 `zh-CN` 为源语言无需语言包
+- 详细格式与示例见 `config/languages/README.md`
 # DelGuard - 跨平台安全删除工具
 
 DelGuard 是一个现代化的跨平台安全删除工具，支持 Windows、macOS 和 Linux 系统。它通过将文件移动到系统回收站而非直接删除，为您的数据提供额外的安全保障。
@@ -7,7 +15,7 @@ DelGuard 是一个现代化的跨平台安全删除工具，支持 Windows、mac
 - **跨平台支持**: 完美支持 Windows、macOS、Linux
 - **安全删除**: 文件移动到回收站，可随时恢复
 - **智能检测**: 自动识别系统语言和配置
-- **别名支持**: 兼容传统的 `del` 和 `rm` 命令
+- **别名支持**: 兼容传统的 `del` 和 `rm` 、‘cp’命令
 - **路径保护**: 防止意外删除关键系统目录
 - **交互模式**: 删除前确认，避免误操作
 - **多语言**: 支持中文、英文界面
@@ -222,18 +230,29 @@ $ delguard --safe-copy --force important.txt backup/important.txt
 --protect               启用文件覆盖保护
 --disable-protect       禁用文件覆盖保护
 --safe-copy             安全复制模式
---install               安装shell别名（默认启用交互模式）
+--install               安装 shell 别名（默认启用交互模式）
 --version               显示版本信息
 --help                  显示帮助信息
 ```
 
 ## ⚙️ 配置
 
-DelGuard 支持通过配置文件进行自定义，配置文件位置：
-- Windows: `%USERPROFILE%\.delguard\config.json`
-- macOS/Linux: `~/.delguard/config.json`
+DelGuard 支持多格式配置文件与外部覆盖：
 
-配置示例：
+- 支持扩展名：`.json`、`.jsonc`（支持注释）、`.ini`、`.cfg`、`.conf`、`.env`、`.properties`
+- 默认查找顺序（按先后优先级）：
+  - 用户目录：`~/.delguard/config.(json|jsonc|ini|cfg|conf)`、`~/.delguard/.env`、`~/.delguard/delguard.properties`
+  - 系统目录：
+    - Windows: `%SystemRoot%\delguard\`
+    - macOS/Linux: `/etc/delguard/`
+  - 当前目录：`config.(json|jsonc|ini|cfg|conf)`、`.env`、`delguard.properties`
+- 指定外部配置路径：
+  - 使用 `--config` 明确指定文件路径（优先级最高）
+  - 示例：
+    - Windows: `delguard --config C:\\Users\\User\\.delguard\\config.jsonc`
+    - Linux/macOS: `delguard --config ~/.delguard/config.ini`
+
+配置示例（JSON）：
 ```json
 {
   "use_recycle_bin": true,
@@ -246,6 +265,23 @@ DelGuard 支持通过配置文件进行自定义，配置文件位置：
   "enable_overwrite_protection": true
 }
 ```
+
+配置示例（.env/.properties）：
+```properties
+use_recycle_bin=true
+interactive_mode=confirm
+language=zh-CN
+log_level=info
+safe_mode=normal
+max_file_size=10737418240
+enable_security_checks=true
+enable_overwrite_protection=true
+```
+
+说明：
+- `.jsonc` 会自动移除注释后再解析
+- `.ini/.cfg/.conf` 支持 `key=value` 或 `key: value` 格式，忽略 `[section]` 名称
+- `.env/.properties` 使用简单的 `key=value` 键值对格式
 
 ## 🧪 测试
 

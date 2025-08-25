@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bufio"
+	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -13,6 +17,14 @@ var (
 	i18nMu        sync.RWMutex
 )
 
+// 初始化：加载语言包并自动设置语言
+func init() {
+	// 尝试加载外部语言包（可选）
+	_ = LoadLanguagePacks(filepath.Join("config", "languages"))
+	// 自动检测并设置语言（含回退）
+	SetLocale("auto")
+}
+
 // SetLocale sets current locale ("zh-CN" | "en-US" | "auto")
 // "auto" 根据系统环境自动选择（默认）
 func SetLocale(locale string) {
@@ -21,15 +33,269 @@ func SetLocale(locale string) {
 	l := strings.ToLower(strings.TrimSpace(locale))
 	switch l {
 	case "auto", "":
-		currentLocale = DetectSystemLocale()
+		detected := DetectSystemLocale()
+		// 如果未提供对应语言包，则回退到 en-US（zh-CN 为源语言，不需要包）
+		if detected != "zh-CN" && !hasLanguage(detected) {
+			currentLocale = "en-US"
+		} else {
+			currentLocale = detected
+		}
 	case "zh", "zh-cn", "zh_cn", "zh-hans":
 		currentLocale = "zh-CN"
 	case "en", "en-us", "en_us":
 		currentLocale = "en-US"
 	default:
-		// fallback en-US
-		currentLocale = "en-US"
+		// 优先使用外部或内置语言包
+		norm := normalizeLangCode(l)
+		if norm == "zh-CN" || hasLanguage(norm) {
+			currentLocale = norm
+		} else {
+			// fallback en-US
+			currentLocale = "en-US"
+		}
 	}
+}
+
+// hasLanguage 检查是否存在语言包
+func hasLanguage(code string) bool {
+	_, ok := translations[code]
+	return ok
+}
+
+// normalizeLangCode 规范化语言代码
+func normalizeLangCode(code string) string {
+	c := strings.TrimSpace(code)
+	c = strings.ReplaceAll(c, "_", "-")
+	c = strings.ToLower(c)
+	switch c {
+	case "zh", "zh-cn", "zh-hans":
+		return "zh-CN"
+	case "en", "en-us":
+		return "en-US"
+	case "ja", "ja-jp":
+		return "ja"
+	default:
+		// 首字母区域部分大写，例如 en-gb -> en-GB
+		parts := strings.Split(c, "-")
+		if len(parts) == 2 {
+			return strings.ToLower(parts[0]) + "-" + strings.ToUpper(parts[1])
+		}
+		return c
+	}
+}
+
+// guessLocaleFromRaw 根据原始字符串猜测语言（用于环境变量/系统输出）
+func guessLocaleFromRaw(raw string) string {
+	v := strings.ToLower(strings.TrimSpace(raw))
+	if strings.Contains(v, "zh") {
+		return "zh-CN"
+	}
+	if strings.Contains(v, "ja") {
+		return "ja"
+	}
+	if strings.Contains(v, "en") {
+		return "en-US"
+	}
+	// 通用模式：如 fr-FR, de-DE 等，若有外部包则使用
+	// 尝试提取前两段
+	v = strings.ReplaceAll(v, "_", "-")
+	parts := strings.Split(v, ".") // 去除编码如 UTF-8
+	base := parts[0]
+	if base != "" {
+		norm := normalizeLangCode(base)
+		if hasLanguage(norm) {
+			return norm
+		}
+	}
+	return "en-US"
+}
+
+// shouldPrefix 判断是否需要添加前缀（避免多行或已包含前缀的内容）
+func shouldPrefix(s string) bool {
+	if s == "" {
+		return false
+	}
+	if strings.HasPrefix(s, "DelGuard:") {
+		return false
+	}
+	if strings.Contains(s, "\n") {
+		return false
+	}
+	return true
+}
+
+// LoadLanguagePacks 从目录加载外部语言包（外部覆盖内置）
+// 支持文件命名：<lang>.(json|jsonc|ini|cfg|conf|env|properties)
+// 统一语义：均解析为 map[string]string，其中 key 为中文原文，value 为目标语言译文
+func LoadLanguagePacks(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		// 目录不存在不视为错误
+		return nil
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		ext := strings.ToLower(filepath.Ext(name))
+		switch ext {
+		case ".json", ".jsonc", ".ini", ".cfg", ".conf", ".env", ".properties":
+			// supported
+		default:
+			continue
+		}
+		lang := strings.TrimSuffix(name, filepath.Ext(name))
+		lang = normalizeLangCode(lang)
+		// 读取文件
+		content, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "LoadLanguagePacks: 读取失败 %s: %v\n", name, err)
+			continue
+		}
+		var mp map[string]string
+		switch ext {
+		case ".json":
+			if err := json.Unmarshal(content, &mp); err != nil {
+				fmt.Fprintf(os.Stderr, "LoadLanguagePacks: JSON解析失败 %s: %v\n", name, err)
+				continue
+			}
+		case ".jsonc":
+			cleaned := stripJSONComments(string(content))
+			if err := json.Unmarshal([]byte(cleaned), &mp); err != nil {
+				fmt.Fprintf(os.Stderr, "LoadLanguagePacks: JSONC解析失败 %s: %v\n", name, err)
+				continue
+			}
+		case ".ini", ".cfg", ".conf":
+			mp = parseINIToMap(string(content))
+		case ".env", ".properties":
+			mp = parseKVToMap(string(content))
+		default:
+			continue
+		}
+		if translations[lang] == nil {
+			translations[lang] = map[string]string{}
+		}
+		// 合并（外部覆盖内置）
+		for k, v := range mp {
+			translations[lang][k] = v
+		}
+	}
+	return nil
+}
+
+// parseINIToMap 将 INI/CFG/CONF 文本解析为 map[string]string
+// 支持 key=value 或 key: value，忽略 [section]，# 和 ; 注释
+func parseINIToMap(s string) map[string]string {
+	out := make(map[string]string)
+	scanner := bufio.NewScanner(strings.NewReader(s))
+	for scanner.Scan() {
+		raw := scanner.Text()
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		// 保留行尾空格，仅用于注释判断做左侧裁剪
+		ltrim := strings.TrimLeft(raw, " \t")
+		if strings.HasPrefix(ltrim, "#") || strings.HasPrefix(ltrim, ";") {
+			continue
+		}
+		if strings.HasPrefix(ltrim, "[") && strings.HasSuffix(ltrim, "]") {
+			// section ignored
+			continue
+		}
+		// allow inline comments preceded by # or ; if not in quotes
+		line := stripInlineComment(raw)
+		var key, val string
+		if idx := strings.Index(line, "="); idx >= 0 {
+			// 优先使用 '=' 作为分隔符
+			key = strings.TrimLeft(line[:idx], " \t")
+			val = strings.TrimLeft(line[idx+1:], " \t")
+		} else if idx := strings.Index(line, ":"); idx >= 0 {
+			// 回退支持 ':'
+			key = strings.TrimLeft(line[:idx], " \t")
+			val = strings.TrimLeft(line[idx+1:], " \t")
+		} else {
+			continue
+		}
+		val = trimQuotes(val)
+		if strings.TrimSpace(key) != "" {
+			out[key] = val
+		}
+	}
+	return out
+}
+
+// parseKVToMap 解析 .env/.properties 样式的 key=value
+func parseKVToMap(s string) map[string]string {
+	out := make(map[string]string)
+	scanner := bufio.NewScanner(strings.NewReader(s))
+	for scanner.Scan() {
+		raw := scanner.Text()
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		ltrim := strings.TrimLeft(raw, " \t")
+		if strings.HasPrefix(ltrim, "#") || strings.HasPrefix(ltrim, ";") {
+			continue
+		}
+		line := stripInlineComment(raw)
+		var key, val string
+		if idx := strings.Index(line, "="); idx >= 0 {
+			key = strings.TrimLeft(line[:idx], " \t")
+			val = strings.TrimLeft(line[idx+1:], " \t")
+		} else if idx := strings.Index(line, ":"); idx >= 0 { // tolerate ':'
+			key = strings.TrimLeft(line[:idx], " \t")
+			val = strings.TrimLeft(line[idx+1:], " \t")
+		} else {
+			continue
+		}
+		val = trimQuotes(val)
+		if strings.TrimSpace(key) != "" {
+			out[key] = val
+		}
+	}
+	return out
+}
+
+// stripInlineComment 移除行尾注释（# 或 ;），不处理引号内
+func stripInlineComment(line string) string {
+	inStr := false
+	esc := false
+	var b strings.Builder
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		if inStr {
+			b.WriteByte(c)
+			if esc {
+				esc = false
+				continue
+			}
+			if c == '\\' {
+				esc = true
+			} else if c == '"' {
+				inStr = false
+			}
+			continue
+		}
+		if c == '"' {
+			inStr = true
+			b.WriteByte(c)
+			continue
+		}
+		if c == '#' || c == ';' {
+			break
+		}
+		b.WriteByte(c)
+	}
+	// 保留行尾空格，去除可能的前导空格
+	return strings.TrimLeft(b.String(), " \t")
+}
+
+func trimQuotes(v string) string {
+	if len(v) >= 2 && ((strings.HasPrefix(v, "\"") && strings.HasSuffix(v, "\"")) || (strings.HasPrefix(v, "'") && strings.HasSuffix(v, "'"))) {
+		return v[1 : len(v)-1]
+	}
+	return v
 }
 
 // Locale returns current locale
@@ -44,15 +310,7 @@ func DetectSystemLocale() string {
 	// Prefer standard envs
 	for _, k := range []string{"LANGUAGE", "LC_ALL", "LANG"} {
 		if v := os.Getenv(k); v != "" {
-			v = strings.ToLower(v)
-			if strings.Contains(v, "zh") {
-				return "zh-CN"
-			}
-			if strings.Contains(v, "en") {
-				return "en-US"
-			}
-			// 如果环境变量值不是中文也不是英文，继续检查其他环境变量
-			continue
+			return guessLocaleFromRaw(v)
 		}
 	}
 
@@ -61,10 +319,7 @@ func DetectSystemLocale() string {
 		// Check Windows UI language environment variables
 		for _, k := range []string{"LANG", "LC_CTYPE", "LC_MESSAGES"} {
 			if v := os.Getenv(k); v != "" {
-				v = strings.ToLower(v)
-				if strings.Contains(v, "zh") {
-					return "zh-CN"
-				}
+				return guessLocaleFromRaw(v)
 			}
 		}
 
@@ -114,13 +369,7 @@ func getWindowsSystemLanguage() string {
 	}
 
 	lang := strings.TrimSpace(string(output))
-	if strings.Contains(strings.ToLower(lang), "zh") {
-		return "zh-CN"
-	}
-	if strings.Contains(strings.ToLower(lang), "en") {
-		return "en-US"
-	}
-	return ""
+	return guessLocaleFromRaw(lang)
 }
 
 // isChineseWindowsEnvironment checks various indicators of Chinese Windows environment
@@ -169,15 +418,40 @@ func containsChinese(s string) bool {
 func T(s string) string {
 	i18nMu.RLock()
 	defer i18nMu.RUnlock()
+	// 翻译
+	var translated string
 	if currentLocale == "zh-CN" {
-		return s
-	}
-	if m, ok := translations["en-US"]; ok {
+		translated = s
+	} else if m, ok := translations[currentLocale]; ok {
 		if tr, ok2 := m[s]; ok2 {
-			return tr
+			translated = tr
+		} else {
+			// 语言包缺失键时回退到英文
+			if em, ok3 := translations["en-US"]; ok3 {
+				if tr2, ok4 := em[s]; ok4 {
+					translated = tr2
+				} else {
+					translated = s
+				}
+			} else {
+				translated = s
+			}
 		}
+	} else if m, ok := translations["en-US"]; ok {
+		if tr, ok2 := m[s]; ok2 {
+			translated = tr
+		} else {
+			translated = s
+		}
+	} else {
+		translated = s
 	}
-	return s
+
+	// 单行消息自动添加前缀 "DelGuard: "
+	if shouldPrefix(translated) {
+		return "DelGuard: " + translated
+	}
+	return translated
 }
 
 var translations = map[string]map[string]string{

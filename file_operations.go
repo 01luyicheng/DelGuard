@@ -1,8 +1,10 @@
 package main
 
 import (
+	"delguard/utils"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -42,17 +44,18 @@ func (fo *fileOperations) CopyFile(source, destination string, protectOverwrite 
 	if protectOverwrite {
 		config, err := LoadConfig()
 		if err != nil {
+			log.Printf("[ERROR] 加载配置失败: %v", err)
 			return fmt.Errorf("加载配置失败: %w", err)
 		}
-
 		if config.EnableOverwriteProtection {
 			protector := NewOverwriteProtector(config)
 			if err := protector.ProtectOverwrite(destination); err != nil {
+				log.Printf("[ERROR] 覆盖保护失败: %v", err)
 				return fmt.Errorf("覆盖保护失败: %w", err)
 			}
 		}
 	}
-
+	log.Printf("[INFO] 开始复制文件: %s -> %s", source, destination)
 	return copyFile(source, destination)
 }
 
@@ -61,17 +64,18 @@ func (fo *fileOperations) MoveFile(source, destination string, protectOverwrite 
 	if protectOverwrite {
 		config, err := LoadConfig()
 		if err != nil {
+			log.Printf("[ERROR] 加载配置失败: %v", err)
 			return fmt.Errorf("加载配置失败: %w", err)
 		}
-
 		if config.EnableOverwriteProtection {
 			protector := NewOverwriteProtector(config)
 			if err := protector.ProtectOverwrite(destination); err != nil {
+				log.Printf("[ERROR] 覆盖保护失败: %v", err)
 				return fmt.Errorf("覆盖保护失败: %w", err)
 			}
 		}
 	}
-
+	log.Printf("[INFO] 移动文件: %s -> %s", source, destination)
 	return os.Rename(source, destination)
 }
 
@@ -80,17 +84,18 @@ func (fo *fileOperations) WriteFile(filename string, data []byte, perm os.FileMo
 	if protectOverwrite {
 		config, err := LoadConfig()
 		if err != nil {
+			log.Printf("[ERROR] 加载配置失败: %v", err)
 			return fmt.Errorf("加载配置失败: %w", err)
 		}
-
 		if config.EnableOverwriteProtection {
 			protector := NewOverwriteProtector(config)
 			if err := protector.ProtectOverwrite(filename); err != nil {
+				log.Printf("[ERROR] 覆盖保护失败: %v", err)
 				return fmt.Errorf("覆盖保护失败: %w", err)
 			}
 		}
 	}
-
+	log.Printf("[INFO] 写入文件: %s", filename)
 	return os.WriteFile(filename, data, perm)
 }
 
@@ -99,36 +104,24 @@ func (fo *fileOperations) CreateFile(filename string, protectOverwrite bool) (*o
 	if protectOverwrite {
 		config, err := LoadConfig()
 		if err != nil {
+			log.Printf("[ERROR] 加载配置失败: %v", err)
 			return nil, fmt.Errorf("加载配置失败: %w", err)
 		}
-
 		if config.EnableOverwriteProtection {
 			protector := NewOverwriteProtector(config)
 			if err := protector.ProtectOverwrite(filename); err != nil {
+				log.Printf("[ERROR] 覆盖保护失败: %v", err)
 				return nil, fmt.Errorf("覆盖保护失败: %w", err)
 			}
 		}
 	}
-
+	log.Printf("[INFO] 创建文件: %s", filename)
 	return os.Create(filename)
 }
 
 // copyFile 实际执行文件复制操作
 func copyFile(src, dst string) error {
-	sourceFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer sourceFile.Close()
-
-	destinationFile, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer destinationFile.Close()
-
-	_, err = io.Copy(destinationFile, sourceFile)
-	return err
+	return utils.CopyFile(src, dst)
 }
 
 // BackupFileBeforeOverwrite 在覆盖前备份文件

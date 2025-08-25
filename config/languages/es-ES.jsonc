@@ -1,0 +1,10 @@
+{
+  // Confirm prompt
+  "删除 %s ? [y/N/a/q]: ": "¿Eliminar %s? [y/N/a/q]: ",
+  // Moved to Trash
+  "已将 %s 移动到回收站\n": "%s se movió a la Papelera\n",
+  // Error line
+  "错误：无法删除 %s: %v\n": "Error: no se puede eliminar %s: %v\n",
+  // Tip line
+  "提示：%s 是目录，删除目录需使用 -r/--recursive\n": "Consejo: %s es un directorio; use -r/--recursive para eliminarlo\n"
+}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"delguard/utils"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -94,7 +95,7 @@ func (fv *FileValidator) ValidateFile(filePath string) (*FileValidationResult, e
 	// 检查文件大小
 	if info.Size() > fv.MaxFileSize {
 		result.Errors = append(result.Errors, fmt.Sprintf("文件大小超过限制 (%s > %s)",
-			formatBytes(info.Size()), formatBytes(fv.MaxFileSize)))
+			utils.FormatBytes(info.Size()), utils.FormatBytes(fv.MaxFileSize)))
 		result.IsValid = false
 	}
 
@@ -225,9 +226,9 @@ func PrintValidationResult(result *FileValidationResult) {
 	fmt.Printf("%s %s\n", status, result.FileName)
 
 	if len(result.Errors) > 0 {
-		fmt.Println("  错误:")
+		logger.Error("文件验证失败", "error", fmt.Errorf("验证错误"), "file")
 		for _, err := range result.Errors {
-			fmt.Printf("    - %s\n", err)
+			logger.Error("验证详情", "error", fmt.Errorf(err), "detail")
 		}
 	}
 

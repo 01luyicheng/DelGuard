@@ -1,6 +1,7 @@
 package main
 
 import (
+	"delguard/utils"
 	"errors"
 	"fmt"
 	"os"
@@ -50,18 +51,11 @@ func restoreFromTrash(pattern string, opts RestoreOptions) error {
 		return restoreFromTrashWindows(pattern, opts)
 	case "darwin":
 		return restoreFromTrashMacOS(pattern, opts)
-	default:
+	case "linux":
 		return restoreFromTrashLinux(pattern, opts)
+	default:
+		return ErrRestoreNotSupported
 	}
-}
-
-// restoreFromTrashWindows Windows平台恢复实现
-func restoreFromTrashWindows(pattern string, opts RestoreOptions) error {
-	if runtime.GOOS != "windows" {
-		return ErrUnsupportedPlatform
-	}
-	// 具体实现在 restore_windows.go 中
-	return fmt.Errorf("Windows恢复功能在当前构建中不可用")
 }
 
 // restoreFromTrashMacOS macOS平台恢复实现
@@ -69,8 +63,8 @@ func restoreFromTrashMacOS(pattern string, opts RestoreOptions) error {
 	if runtime.GOOS != "darwin" {
 		return ErrUnsupportedPlatform
 	}
-	// 具体实现在 restore_darwin.go 中
-	return fmt.Errorf("macOS恢复功能在当前构建中不可用")
+	// 调用平台特定实现
+	return restoreFromTrashMacOSImpl(pattern, opts)
 }
 
 // restoreFromTrashLinux Linux平台恢复实现
@@ -78,8 +72,8 @@ func restoreFromTrashLinux(pattern string, opts RestoreOptions) error {
 	if runtime.GOOS != "linux" {
 		return ErrUnsupportedPlatform
 	}
-	// 具体实现在 restore_linux.go 中
-	return fmt.Errorf("Linux恢复功能在当前构建中不可用")
+	// 调用平台特定实现
+	return restoreFromTrashLinuxImpl(pattern, opts)
 }
 
 // listRecoverableFiles 列出可恢复的文件
@@ -118,8 +112,8 @@ func listRecoverableFiles(pattern string) error {
 	for i, item := range filtered {
 		fmt.Printf("%d. %s\n", i+1, item.Name)
 		fmt.Printf("   原始路径: %s\n", item.OriginalPath)
-		fmt.Printf("   文件大小: %s\n", formatBytes(item.Size))
-		fmt.Printf("   删除时间: %s\n", item.DeletedTime.Format("2006-01-02 15:04:05"))
+		fmt.Printf("   文件大小: %s\n", utils.FormatBytes(item.Size))
+		fmt.Printf("   删除时间: %s\n", item.DeletedTime.Format(TimeFormatStandard))
 		fmt.Println()
 	}
 
@@ -130,8 +124,8 @@ func listRecoverableFiles(pattern string) error {
 func listRecycleBinItems() ([]RecycleBinItem, error) {
 	switch runtime.GOOS {
 	case "windows":
-		// Windows平台的实现在 restore_windows.go 中
-		return []RecycleBinItem{}, fmt.Errorf("Windows回收站功能在当前构建中不可用")
+		// 调用 Windows 平台特定实现（在 restore_windows.go 中，带有 build tag）
+		return listRecycleBinItemsWindows()
 	case "darwin":
 		return listRecycleBinItemsMacOS()
 	case "linux":
@@ -146,8 +140,8 @@ func listRecycleBinItemsMacOS() ([]RecycleBinItem, error) {
 	if runtime.GOOS != "darwin" {
 		return nil, ErrUnsupportedPlatform
 	}
-	// 由于平台特定文件有构建标签，这里使用通用实现
-	return []RecycleBinItem{}, nil
+	// 调用平台特定实现
+	return listMacOSTrashItems()
 }
 
 // listRecycleBinItemsLinux 获取Linux回收站项目
@@ -155,8 +149,8 @@ func listRecycleBinItemsLinux() ([]RecycleBinItem, error) {
 	if runtime.GOOS != "linux" {
 		return nil, ErrUnsupportedPlatform
 	}
-	// 由于平台特定文件有构建标签，这里使用通用实现
-	return []RecycleBinItem{}, nil
+	// 调用平台特定实现
+	return listLinuxTrashItems()
 }
 
 // EnhancedRestore 执行增强恢复操作
@@ -201,7 +195,7 @@ func EnhancedRestore(pattern string, opts RestoreOptions, enhancedOpts EnhancedR
 		// 检查文件大小限制
 		if enhancedOpts.MaxFileSize > 0 && item.Size > enhancedOpts.MaxFileSize {
 			fmt.Printf("跳过文件 %s (大小 %s 超过限制 %s)\n",
-				item.Name, formatBytes(item.Size), formatBytes(enhancedOpts.MaxFileSize))
+				item.Name, utils.FormatBytes(item.Size), utils.FormatBytes(enhancedOpts.MaxFileSize))
 			continue
 		}
 
@@ -231,13 +225,21 @@ func EnhancedRestore(pattern string, opts RestoreOptions, enhancedOpts EnhancedR
 	if opts.Interactive {
 		fmt.Printf("找到 %d 个符合条件的文件:\n", len(enhancedFiltered))
 		for i, item := range enhancedFiltered {
-			fmt.Printf("%d. %s (%s)\n", i+1, item.Name, formatBytes(item.Size))
+			fmt.Printf("%d. %s (%s)\n", i+1, item.Name, utils.FormatBytes(item.Size))
 		}
 
 		fmt.Print("确认恢复这些文件? [y/N]: ")
 		var input string
-		fmt.Scanln(&input)
-		if strings.ToLower(input) != "y" && strings.ToLower(input) != "yes" {
+		if isStdinInteractive() {
+			if s, ok := readLineWithTimeout(30 * time.Second); ok {
+				input = strings.ToLower(strings.TrimSpace(s))
+			} else {
+				input = ""
+			}
+		} else {
+			input = ""
+		}
+		if input != "y" && input != "yes" {
 			fmt.Println("操作已取消")
 			return nil
 		}

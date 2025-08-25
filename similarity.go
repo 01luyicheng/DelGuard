@@ -93,7 +93,7 @@ func CalculateSimilarity(s1, s2 string) float64 {
 	return similarity
 }
 
-// FindSimilarStrings 在字符串切片中查找与目标字符串相似的项
+// FindSimilarStrings 支持传入阈值（建议由 config.SimilarityThreshold 提供）
 func FindSimilarStrings(target string, candidates []string, threshold float64) []SimilarMatch {
 	var matches []SimilarMatch
 

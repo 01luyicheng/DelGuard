@@ -4,6 +4,7 @@
 package main
 
 import (
+	"delguard/utils"
 	"fmt"
 	"net/url"
 	"os"
@@ -290,7 +291,7 @@ func checkDiskSpace(path string, requiredBytes int64) error {
 	// 检查可用空间
 	if int64(freeBytesAvailable) < requiredBytes {
 		return fmt.Errorf("磁盘空间不足，需要 %s，可用 %s",
-			formatBytes(requiredBytes), formatBytes(int64(freeBytesAvailable)))
+			utils.FormatBytes(requiredBytes), utils.FormatBytes(int64(freeBytesAvailable)))
 	}
 
 	return nil

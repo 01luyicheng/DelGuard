@@ -4,13 +4,14 @@
 package main
 
 import (
+	"delguard/utils"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // restoreFromTrashMacOSImpl macOS平台恢复实现
@@ -18,7 +19,7 @@ func restoreFromTrashMacOSImpl(pattern string, opts RestoreOptions) error {
 	// 获取废纸篓中的所有文件
 	items, err := listMacOSTrashItems()
 	if err != nil {
-		return fmt.Errorf("无法访问废纸篓: %w", err)
+		return fmt.Errorf(T("无法访问废纸篓: %w"), err)
 	}
 
 	if len(items) == 0 {
@@ -33,14 +34,15 @@ func restoreFromTrashMacOSImpl(pattern string, opts RestoreOptions) error {
 		// 支持通配符匹配
 		regex := wildcardToRegex(pattern)
 		for _, item := range items {
-			if regexp.MustCompile(regex).MatchString(strings.ToLower(item.Name)) {
+			matchedName := strings.ToLower(item.Name)
+			if regexp.MustCompile(regex).MatchString(matchedName) {
 				matchedItems = append(matchedItems, item)
 			}
 		}
 	}
 
 	if len(matchedItems) == 0 {
-		return fmt.Errorf("没有找到匹配的文件: %s", pattern)
+		return fmt.Errorf(T("没有找到匹配的文件: %s"), pattern)
 	}
 
 	// 限制最大文件数
@@ -50,36 +52,51 @@ func restoreFromTrashMacOSImpl(pattern string, opts RestoreOptions) error {
 
 	// 交互模式确认
 	if opts.Interactive {
-		fmt.Printf("找到 %d 个匹配文件:\n", len(matchedItems))
+		fmt.Printf(T("找到 %d 个匹配文件:\n"), len(matchedItems))
 		for i, item := range matchedItems {
 			fmt.Printf("%d. %s (%s) - 删除时间: %s\n",
-				i+1, item.Name, formatBytes(item.Size),
-				item.DeletedTime.Format("2006-01-02 15:04:05"))
+				i+1, item.Name, utils.FormatBytes(item.Size),
+				item.DeletedTime.Format(TimeFormatStandard))
 		}
 
-		fmt.Print("确认恢复这些文件吗? (y/N): ")
+		fmt.Print(T("确认恢复这些文件吗? (y/N): "))
 		var response string
-		fmt.Scanln(&response)
-		if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
-			return fmt.Errorf("用户取消操作")
+		if isStdinInteractive() {
+			if s, ok := readLineWithTimeout(20 * time.Second); ok {
+				response = strings.TrimSpace(strings.ToLower(s))
+			} else {
+				response = ""
+			}
+		} else {
+			response = ""
+		}
+		if response != "y" && response != "yes" {
+			return fmt.Errorf(T("用户取消操作"))
 		}
 	}
 
 	// 恢复文件
 	successCount := 0
 	for _, item := range matchedItems {
+		// 验证恢复路径安全性
+		if err := validateRestorePath(item.OriginalPath); err != nil {
+			fmt.Printf(T("恢复路径验证失败 %s: %v\n"), item.Name, err)
+			continue
+		}
+		
 		if err := restoreSingleFileMacOS(item); err != nil {
-			fmt.Printf("恢复文件失败 %s: %v\n", item.Name, err)
+			fmt.Printf(T("恢复文件失败 %s: %v\n"), item.Name, err)
 		} else {
-			fmt.Printf("成功恢复: %s -> %s\n", item.Name, item.OriginalPath)
+			fmt.Printf(T("成功恢复: %s -> %s\n"), item.Name, item.OriginalPath)
 			successCount++
 		}
 	}
 
 	if successCount == 0 {
-		return fmt.Errorf("所有文件恢复失败")
+		return fmt.Errorf(T("所有文件恢复失败"))
 	}
 
+	fmt.Printf(T("成功恢复 %d 个文件\n"), successCount)
 	return nil
 }
 
@@ -176,20 +193,7 @@ func restoreSingleFileMacOS(item RecycleBinItem) error {
 
 // copyFileMacOS 复制文件作为恢复备选方案
 func copyFileMacOS(src, dst string) error {
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer srcFile.Close()
-
-	dstFile, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer dstFile.Close()
-
-	_, err = io.Copy(dstFile, srcFile)
-	if err != nil {
+	if err := utils.CopyFile(src, dst); err != nil {
 		return err
 	}
 
@@ -202,20 +206,20 @@ func getFileTypeByPath(filename string) string {
 	ext := strings.ToLower(filepath.Ext(filename))
 	switch ext {
 	case ".txt":
-		return "文本文件"
+		return T("文本文件")
 	case ".doc", ".docx":
-		return "Word文档"
+		return T("Word文档")
 	case ".xls", ".xlsx":
-		return "Excel表格"
+		return T("Excel表格")
 	case ".pdf":
-		return "PDF文档"
+		return T("PDF文档")
 	case ".jpg", ".jpeg", ".png", ".gif":
-		return "图片文件"
+		return T("图片文件")
 	case ".mp4", ".avi", ".mkv":
-		return "视频文件"
+		return T("视频文件")
 	case ".mp3", ".wav", ".flac":
-		return "音频文件"
+		return T("音频文件")
 	default:
-		return "其他文件"
+		return T("其他文件")
 	}
 }

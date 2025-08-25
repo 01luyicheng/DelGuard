@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bufio"
+	"delguard/utils"
 	"fmt"
 	"net/url"
 	"os"
@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"unicode/utf8"
+	"time"
 )
 
 // sanitizeFileName 验证和清理文件名，防止路径遍历攻击
@@ -32,10 +33,10 @@ func sanitizeFileName(filename string) (string, error) {
 		return "", fmt.Errorf("检测到路径遍历攻击")
 	}
 
-	// 检查非法字符
+	// 检查非法字符（但允许通配符）
 	if runtime.GOOS == "windows" {
-		// Windows非法字符
-		if matched, _ := regexp.MatchString(`[<>:"|?*]`, filename); matched {
+		// Windows非法字符（不包括 * 和 ?，它们是合法的通配符）
+		if matched, _ := regexp.MatchString(`[<>:"|]`, filename); matched {
 			return "", fmt.Errorf("包含Windows非法字符")
 		}
 
@@ -74,6 +75,168 @@ func sanitizeFileName(filename string) (string, error) {
 	}
 
 	return filename, nil
+}
+
+// isDelGuardProject 检查路径是否为DelGuard项目目录
+func isDelGuardProject(path string) bool {
+	cleanPath := filepath.Clean(path)
+
+	// 获取当前可执行文件的目录与路径（保留对自身的保护）
+	if execPath, err := os.Executable(); err == nil {
+		// 保护可执行文件本身
+		if strings.EqualFold(cleanPath, filepath.Clean(execPath)) {
+			return true
+		}
+	}
+
+	// 定义核心源文件集合
+	coreFiles := []string{"main.go", "config.go", "protect.go"}
+
+	// helper：判断某个目录是否为DelGuard项目目录（包含核心文件）
+	isProjectDir := func(dir string) bool {
+		for _, f := range coreFiles {
+			if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
+				return false
+			}
+		}
+		return true
+	}
+
+	// 如果传入的是目录：判断该目录是否为项目目录
+	if info, err := os.Stat(cleanPath); err == nil && info.IsDir() {
+		if isProjectDir(cleanPath) {
+			return true
+		}
+	}
+
+	// 如果传入的是文件：判断父目录是否为项目目录
+	parent := filepath.Dir(cleanPath)
+	if parent != "" && parent != "." {
+		if isProjectDir(parent) {
+			return true
+		}
+	}
+
+	// 核心可执行名保护（当传入的是文件名本身时）
+	basename := filepath.Base(cleanPath)
+	if strings.EqualFold(basename, "delguard.exe") ||
+		strings.EqualFold(basename, "delguard") ||
+		strings.EqualFold(basename, "DelGuard.exe") ||
+		strings.EqualFold(basename, "DelGuard") {
+		return true
+	}
+
+	return false
+}
+
+// isTrashDirectory 检查是否为回收站目录
+func isTrashDirectory(path string) bool {
+	cleanPath := filepath.Clean(strings.ToLower(path))
+
+	// 常见的回收站目录名称
+	trashNames := []string{
+		"recycle", "recycled", "recycler", "$recycle.bin",
+		"trash", "trashes", ".trash", ".trashes",
+		"wastebasket", "bin", ".bin",
+	}
+
+	baseName := strings.ToLower(filepath.Base(cleanPath))
+	for _, trashName := range trashNames {
+		if baseName == trashName {
+			return true
+		}
+	}
+
+	// 检查路径中是否包含回收站关键词
+	for _, trashName := range trashNames {
+		if strings.Contains(cleanPath, trashName) {
+			return true
+		}
+	}
+
+	// 平台特定的回收站检查
+	switch runtime.GOOS {
+	case "windows":
+		// Windows回收站路径
+		if strings.Contains(cleanPath, "$recycle.bin") ||
+			strings.Contains(cleanPath, "recycler") ||
+			strings.Contains(cleanPath, "recycled") {
+			return true
+		}
+	case "darwin":
+		// macOS回收站
+		if strings.Contains(cleanPath, ".trash") ||
+			strings.Contains(cleanPath, "/.trashes") {
+			return true
+		}
+	case "linux":
+		// Linux回收站
+		if strings.Contains(cleanPath, ".local/share/trash") ||
+			strings.Contains(cleanPath, "/.trash") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// checkCriticalProtection 检查关键文件保护
+func checkCriticalProtection(path string, force bool) error {
+	cleanPath := filepath.Clean(path)
+
+	// 1. 检查DelGuard项目保护
+	if isDelGuardProject(cleanPath) {
+		if !force {
+			return fmt.Errorf("检测到DelGuard项目文件: %s\n为了安全，默认不允许删除DelGuard项目文件\n如果确实需要删除，请使用 --force 参数", cleanPath)
+		}
+		// 强制模式下给出警告
+		fmt.Printf(T("⚠️  警告：正在删除DelGuard项目文件: %s\n"), cleanPath)
+		if !confirmDangerousOperation("确定要删除DelGuard项目文件吗") {
+			return fmt.Errorf("用户取消删除DelGuard项目文件")
+		}
+	}
+
+	// 2. 检查回收站目录保护
+	if isTrashDirectory(cleanPath) {
+		if !force {
+			return fmt.Errorf("检测到回收站/废纸篓目录: %s\n为了防止数据丢失，默认不允许直接删除回收站目录\n如果需要清空回收站，请使用系统自带的清空功能\n如果确实需要删除，请使用 --force 参数", cleanPath)
+		}
+		// 强制模式下给出警告
+		fmt.Printf(T("⚠️  警告：正在删除回收站/废纸篓目录: %s\n"), cleanPath)
+		fmt.Printf(T("警告：这将永久性删除回收站中的所有文件！\n"))
+		if !confirmDangerousOperation("确定要删除回收站目录吗") {
+			return fmt.Errorf("用户取消删除回收站目录")
+		}
+	}
+
+	// 3. 检查系统关键文件（使用现有的函数）
+	info, err := os.Stat(cleanPath)
+	if err == nil {
+		if isSpecialFile(info, cleanPath) {
+			if !force {
+				return fmt.Errorf("检测到系统关键文件: %s\n为了防止系统损坏，默认不允许删除系统关键文件\n如果确实需要删除，请使用 --force 参数", cleanPath)
+			}
+			// 强制模式下给出警告
+			fmt.Printf(T("⚠️  警告：正在删除系统关键文件: %s\n"), cleanPath)
+			if !confirmDangerousOperation("确定要删除系统关键文件吗") {
+				return fmt.Errorf("用户取消删除系统关键文件")
+			}
+		}
+	}
+
+	return nil
+}
+
+// confirmDangerousOperation 危险操作确认
+func confirmDangerousOperation(message string) bool {
+	fmt.Printf(T("%s (y/N): "), message)
+	var input string
+	if isStdinInteractive() {
+		if s, ok := readLineWithTimeout(20 * time.Second); ok {
+			input = strings.ToLower(strings.TrimSpace(s))
+		}
+	}
+	return input == "y" || input == "yes"
 }
 
 // isSpecialFile 检查是否为特殊文件类型
@@ -134,13 +297,18 @@ func isRootDirectory(path string) bool {
 
 // isWindowsSpecialFile 检查Windows特殊文件
 func isWindowsSpecialFile(path string) bool {
-	// 检查Windows系统关键文件
+	// 检查Windows系统关键文件（仅保护真正重要的系统目录）
+	systemDrive := os.Getenv("SYSTEMDRIVE")
+	if systemDrive == "" {
+		systemDrive = "C:"
+	}
 	criticalPaths := []string{
-		`C:\Windows`,
-		`C:\Program Files`,
-		`C:\Program Files (x86)`,
-		`C:\ProgramData`,
-		`C:\Users`,
+		filepath.Join(systemDrive, "Windows", "System32"),
+		filepath.Join(systemDrive, "Windows", "SysWOW64"),
+		filepath.Join(systemDrive, "Windows", "Boot"),
+		filepath.Join(systemDrive, "Windows", "Fonts"),
+		filepath.Join(systemDrive, "Program Files", "Windows NT"),
+		filepath.Join(systemDrive, "ProgramData", "Microsoft", "Windows"),
 	}
 
 	cleanPath := filepath.Clean(strings.ToLower(path))
@@ -150,6 +318,13 @@ func isWindowsSpecialFile(path string) bool {
 		if cleanPath == criticalClean || strings.HasPrefix(cleanPath, criticalClean+string(filepath.Separator)) {
 			return true
 		}
+	}
+
+	// 检查是否为系统启动文件
+	if strings.HasSuffix(strings.ToLower(path), "bootmgr") ||
+		strings.HasSuffix(strings.ToLower(path), "ntldr") ||
+		strings.HasSuffix(strings.ToLower(path), "boot.ini") {
+		return true
 	}
 
 	return false
@@ -193,7 +368,7 @@ func checkFileSize(path string) error {
 	maxFileSize := config.GetMaxFileSize()
 
 	if info.Size() > maxFileSize {
-		return fmt.Errorf("文件过大，超过限制 %s", formatBytes(maxFileSize))
+		return fmt.Errorf("文件过大，超过限制 %s", utils.FormatBytes(maxFileSize))
 	}
 
 	return nil
@@ -202,10 +377,11 @@ func checkFileSize(path string) error {
 // checkFilePermissions 检查文件权限
 func checkFilePermissions(path string, info os.FileInfo) error {
 	// 检查是否具有读取权限（至少需要读取权限才能安全删除）
-	_, err := os.Open(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("无读取权限: %v", err)
 	}
+	file.Close()
 
 	// 检查写入权限
 	if runtime.GOOS != "windows" {
@@ -244,10 +420,12 @@ func confirmHiddenFileDeletion(path string) bool {
 	if config.EnableHiddenCheck {
 		fmt.Printf("⚠️  检测到隐藏文件: %s\n", path)
 		fmt.Print("是否确认删除? [y/N]: ")
-
-		reader := bufio.NewReader(os.Stdin)
-		input, _ := reader.ReadString('\n')
-		input = strings.TrimSpace(strings.ToLower(input))
+		var input string
+		if isStdinInteractive() {
+			if s, ok := readLineWithTimeout(20 * time.Second); ok {
+				input = strings.TrimSpace(strings.ToLower(s))
+			}
+		}
 
 		return input == "y" || input == "yes"
 	}
@@ -261,28 +439,32 @@ func IsCriticalPath(path string) bool {
 
 	// Windows关键路径
 	if runtime.GOOS == "windows" {
+		systemDrive := os.Getenv("SYSTEMDRIVE")
+		if systemDrive == "" {
+			systemDrive = "C:"
+		}
 		criticalPaths := []string{
-			"C:\\Windows",
-			"C:\\Program Files",
-			"C:\\Program Files (x86)",
-			"C:\\ProgramData",
-			"C:\\System Volume Information",
-			"C:\\Recovery",
-			"C:\\$Recycle.Bin",
+			filepath.Join(systemDrive, "Windows"),
+			filepath.Join(systemDrive, "Program Files"),
+			filepath.Join(systemDrive, "Program Files (x86)"),
+			filepath.Join(systemDrive, "ProgramData"),
+			filepath.Join(systemDrive, "System Volume Information"),
+			filepath.Join(systemDrive, "Recovery"),
+			filepath.Join(systemDrive, "$Recycle.Bin"),
 			os.Getenv("SYSTEMROOT"),
 			os.Getenv("PROGRAMFILES"),
 			os.Getenv("PROGRAMFILES(X86)"),
 			os.Getenv("PROGRAMDATA"),
 			os.Getenv("WINDIR"),
-			os.Getenv("SYSTEMDRIVE") + "\\Windows",
+			filepath.Join(systemDrive, "Windows"),
 		}
 
 		// 添加用户特定的关键目录
 		if userProfile := os.Getenv("USERPROFILE"); userProfile != "" {
 			criticalPaths = append(criticalPaths,
-				userProfile+"\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu",
-				userProfile+"\\AppData\\Local\\Microsoft\\Windows",
-				userProfile+"\\NTUSER.DAT",
+				filepath.Join(userProfile, "AppData", "Roaming", "Microsoft", "Windows", "Start Menu"),
+				filepath.Join(userProfile, "AppData", "Local", "Microsoft", "Windows"),
+				filepath.Join(userProfile, "NTUSER.DAT"),
 			)
 		}
 
@@ -395,9 +577,9 @@ func IsCriticalPath(path string) bool {
 		}
 	}
 
-	// 检查是否包含当前可执行文件
+	// 检查是否为当前可执行文件本身（不包括整个目录）
 	if exe, err := os.Executable(); err == nil {
-		if strings.HasPrefix(cleanPath, filepath.Dir(exe)) {
+		if strings.EqualFold(cleanPath, filepath.Clean(exe)) {
 			return true
 		}
 	}
@@ -409,10 +591,12 @@ func IsCriticalPath(path string) bool {
 func ConfirmCritical(path string) bool {
 	fmt.Printf("🚨 警告: 检测到关键系统路径: %s\n", path)
 	fmt.Print("删除关键系统文件可能导致系统不稳定或无法启动!\n是否确认删除? 输入 'DELETE' 确认: ")
-
-	reader := bufio.NewReader(os.Stdin)
-	input, _ := reader.ReadString('\n')
-	input = strings.TrimSpace(input)
+	var input string
+	if isStdinInteractive() {
+		if s, ok := readLineWithTimeout(30 * time.Second); ok {
+			input = strings.TrimSpace(s)
+		}
+	}
 
 	return input == "DELETE"
 }
