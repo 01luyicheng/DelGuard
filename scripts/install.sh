@@ -1,159 +1,346 @@
-#!/usr/bin/env bash
-# DelGuard macOS/Linux 一键安装（用户级，无 sudo）
-# 用法（本地仓库内执行，优先使用本地产物/本机构建）:
-#   bash scripts/install.sh
-#   bash scripts/install.sh --default-interactive
-#
-# 用法（远程下载，需事先导出 GitHub 仓库 owner/repo）:
-#   export DELGUARD_GITHUB_REPO="YourOrg/DelGuard"
-#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/${DELGUARD_GITHUB_REPO}/main/scripts/install.sh)" -- --default-interactive
-#
-# 下载检查：若发布资产包含 .sha256，将自动校验
+#!/bin/bash
+# DelGuard Universal Shell Installer
+# Supports: bash, zsh, fish, and other POSIX shells
+# Author: DelGuard Team
+# Version: 1.0
 
-set -euo pipefail
+set -e
 
-DEFAULT_INTERACTIVE=0
-if [[ "${1:-}" == "--default-interactive" ]]; then
-  DEFAULT_INTERACTIVE=1
-fi
+# Configuration
+INSTALL_PATH="${INSTALL_PATH:-$HOME/bin}"
+FORCE="${FORCE:-false}"
+QUIET="${QUIET:-false}"
+UNINSTALL="${UNINSTALL:-false}"
 
-script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )" || script_dir=""
-proj_dir=""
-if [[ -n "${script_dir}" && -d "${script_dir}/.." ]]; then
-  proj_dir="$( cd "${script_dir}/.." && pwd )"
-fi
-
-target_dir="${HOME}/.local/bin"
-mkdir -p "${target_dir}"
-
-# 体系结构与平台判定
-detect_os_arch() {
-  local os arch
-  case "$(uname -s)" in
-    Linux)  os="linux" ;;
-    Darwin) os="darwin" ;;
-    *) echo "不支持的系统：$(uname -s)" >&2; return 1 ;;
-  esac
-  case "$(uname -m)" in
-    x86_64|amd64)   arch="amd64" ;;
-    arm64|aarch64)  arch="arm64" ;;
-    *) echo "不支持的架构：$(uname -m)" >&2; return 1 ;;
-  esac
-  echo "${os} ${arch}"
-}
-
-# 首选本地二进制
-detect_src() {
-  [[ -n "${proj_dir}" ]] || return 1
-  local os arch
-  read -r os arch < <(detect_os_arch) || return 1
-  local candidates=(
-    "${proj_dir}/build/delguard-${os}-${arch}"
-    "${proj_dir}/delguard"
-  )
-  for c in "${candidates[@]}"; do
-    if [[ -f "$c" && -x "$c" ]]; then
-      echo "$c"; return 0
+# Color output functions
+print_color() {
+    local color="$1"
+    local message="$2"
+    if [[ "$QUIET" != "true" ]]; then
+        case "$color" in
+            red)     echo -e "\033[31m$message\033[0m" ;;
+            green)   echo -e "\033[32m$message\033[0m" ;;
+            yellow)  echo -e "\033[33m$message\033[0m" ;;
+            blue)    echo -e "\033[34m$message\033[0m" ;;
+            cyan)    echo -e "\033[36m$message\033[0m" ;;
+            *)       echo "$message" ;;
+        esac
     fi
-  done
-  return 1
 }
 
-have() { command -v "$1" >/dev/null 2>&1; }
+print_success() { print_color green "$1"; }
+print_warning() { print_color yellow "$1"; }
+print_error() { print_color red "$1"; }
+print_info() { print_color cyan "$1"; }
 
-download_file() {
-  # $1=url $2=dest
-  if have curl; then
-    curl -fsSL "$1" -o "$2"
-  elif have wget; then
-    wget -qO "$2" "$1"
-  else
-    echo "缺少下载工具：请安装 curl 或 wget" >&2
-    return 1
-  fi
+# Platform detection
+detect_platform() {
+    case "$(uname -s)" in
+        Linux*)     PLATFORM="linux" ;;
+        Darwin*)    PLATFORM="macos" ;;
+        CYGWIN*|MINGW*|MSYS*) PLATFORM="windows" ;;
+        *)          PLATFORM="unknown" ;;
+    esac
 }
 
-install_from_remote() {
-  local repo="${DELGUARD_GITHUB_REPO:-}"
-  if [[ -z "${repo}" ]]; then
-    echo "未找到本地二进制，也未设置 DELGUARD_GITHUB_REPO（形如 YourOrg/DelGuard）以执行远程安装。" >&2
-    return 1
-  fi
-  local os arch
-  read -r os arch < <(detect_os_arch)
+# Shell detection
+detect_shell() {
+    CURRENT_SHELL=$(basename "$SHELL")
+    case "$CURRENT_SHELL" in
+        bash)   SHELL_CONFIG="$HOME/.bashrc" ;;
+        zsh)    SHELL_CONFIG="$HOME/.zshrc" ;;
+        fish)   SHELL_CONFIG="$HOME/.config/fish/config.fish" ;;
+        *)      SHELL_CONFIG="$HOME/.profile" ;;
+    esac
+}
 
-  local asset="delguard-${os}-${arch}"
-  local base="https://github.com/${repo}/releases/latest/download"
-  local url_bin="${base}/${asset}"
-  local url_sha="${url_bin}.sha256"
+# Parse command line arguments
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --install-path)
+                INSTALL_PATH="$2"
+                shift 2
+                ;;
+            --force)
+                FORCE="true"
+                shift
+                ;;
+            --quiet)
+                QUIET="true"
+                shift
+                ;;
+            --uninstall)
+                UNINSTALL="true"
+                shift
+                ;;
+            --help)
+                show_help
+                exit 0
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                show_help
+                exit 1
+                ;;
+        esac
+    done
+}
 
-  local tmp="$(mktemp -t delguard.XXXXXX)"
-  trap 'rm -f "$tmp" "$tmp.sha256" 2>/dev/null || true' EXIT
+show_help() {
+    cat << EOF
+DelGuard Universal Shell Installer
 
-  echo "下载 ${url_bin} ..."
-  download_file "${url_bin}" "${tmp}"
+Usage: $0 [OPTIONS]
 
-  # 可选校验
-  if download_file "${url_sha}" "${tmp}.sha256"; then
-    echo "正在校验 SHA256..."
-    if have sha256sum; then
-      # 兼容 "HASH  FILENAME" 或 "HASH FILENAME"
-      # 将文件名替换为临时名后校验
-      awk '{print $1"  '"${tmp//\//\\/}"'"}' "${tmp}.sha256" | sha256sum -c -
-    elif have shasum; then
-      local expected
-      expected="$(awk '{print $1}' "${tmp}.sha256")"
-      local actual
-      actual="$(shasum -a 256 "${tmp}" | awk '{print $1}')"
-      if [[ "${expected^^}" != "${actual^^}" ]]; then
-        echo "校验失败：期望 ${expected} 实际 ${actual}" >&2
-        return 1
-      fi
-    else
-      echo "未找到校验工具（sha256sum/shasum），跳过校验。" >&2
+Options:
+    --install-path PATH    Install to specific path (default: \$HOME/bin)
+    --force               Force overwrite existing installation
+    --quiet               Suppress output messages
+    --uninstall           Remove DelGuard installation
+    --help                Show this help message
+
+Examples:
+    $0                              # Install to default location
+    $0 --install-path /usr/local/bin # Install to system-wide location
+    $0 --uninstall                  # Remove DelGuard
+EOF
+}
+
+# Uninstall function
+uninstall_delguard() {
+    print_info "Uninstalling DelGuard..."
+    
+    # Remove executable
+    local exe_path="$INSTALL_PATH/delguard"
+    if [[ -f "$exe_path" ]]; then
+        rm -f "$exe_path"
+        print_success "Removed executable: $exe_path"
     fi
-  else
-    echo "未找到校验文件，跳过校验。"
-  fi
-
-  install -m 0755 "${tmp}" "${target_dir}/delguard"
-  echo "已安装到 ${target_dir}/delguard"
+    
+    # Remove from shell configurations
+    local configs=("$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile" "$HOME/.config/fish/config.fish")
+    for config in "${configs[@]}"; do
+        if [[ -f "$config" ]]; then
+            # Remove DelGuard configuration block
+            if grep -q "# DelGuard Shell Configuration" "$config"; then
+                sed -i '/# DelGuard Shell Configuration/,/# End DelGuard Configuration/d' "$config" 2>/dev/null || true
+                print_success "Removed DelGuard configuration from: $config"
+            fi
+        fi
+    done
+    
+    print_success "DelGuard uninstalled successfully!"
+    print_info "Please restart your shell or run: source ~/.bashrc (or your shell config)"
 }
 
-# 优先本地，其次远程，最后本机构建
-if src="$(detect_src)"; then
-  cp -f "${src}" "${target_dir}/delguard"
-  chmod +x "${target_dir}/delguard"
+# Main installation function
+install_delguard() {
+    detect_platform
+    detect_shell
+    
+    print_info "=== DelGuard Universal Installer ==="
+    print_info "Platform: $PLATFORM"
+    print_info "Shell: $CURRENT_SHELL"
+    print_info "Install path: $INSTALL_PATH"
+    
+    # Create install directory
+    if [[ ! -d "$INSTALL_PATH" ]]; then
+        mkdir -p "$INSTALL_PATH"
+        print_success "Created directory: $INSTALL_PATH"
+    fi
+    
+    # Find source executable
+    local source_exe=""
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    
+    # Try different locations
+    for location in "$script_dir/../delguard" "$script_dir/delguard" "./delguard"; do
+        if [[ -f "$location" ]]; then
+            source_exe="$location"
+            break
+        fi
+    done
+    
+    if [[ -z "$source_exe" ]]; then
+        print_error "DelGuard executable not found. Please build the project first."
+        print_error "Run: go build -o delguard"
+        exit 1
+    fi
+    
+    local target_exe="$INSTALL_PATH/delguard"
+    
+    # Check if already installed
+    if [[ -f "$target_exe" && "$FORCE" != "true" ]]; then
+        print_warning "DelGuard is already installed at: $target_exe"
+        print_warning "Use --force to overwrite"
+        exit 1
+    fi
+    
+    # Copy executable
+    cp "$source_exe" "$target_exe"
+    chmod +x "$target_exe"
+    print_success "Copied executable to: $target_exe"
+    
+    # Add to PATH if not already there
+    if [[ ":$PATH:" != *":$INSTALL_PATH:"* ]]; then
+        print_info "Adding $INSTALL_PATH to PATH in shell configuration"
+    fi
+    
+    # Create shell configuration
+    local config_block=""
+    if [[ "$CURRENT_SHELL" == "fish" ]]; then
+        config_block="# DelGuard Shell Configuration
+# Generated: $(date '+%Y-%m-%d %H:%M:%S')
+# Version: DelGuard 1.0 for Fish Shell
+
+set -gx DELGUARD_PATH '$target_exe'
+
+if test -f \$DELGUARD_PATH
+    # Add to PATH if not already there
+    if not contains '$INSTALL_PATH' \$PATH
+        set -gx PATH '$INSTALL_PATH' \$PATH
+    end
+    
+    # Define alias functions
+    function del
+        \$DELGUARD_PATH -i \$argv
+    end
+    
+    function rm
+        \$DELGUARD_PATH -i \$argv
+    end
+    
+    function cp
+        \$DELGUARD_PATH --cp \$argv
+    end
+    
+    function delguard
+        \$DELGUARD_PATH \$argv
+    end
+    
+    # Show loading message only once per session
+    if not set -q DELGUARD_LOADED
+        echo 'DelGuard aliases loaded successfully'
+        echo 'Commands: del, rm, cp, delguard'
+        echo 'Use --help for detailed help'
+        set -g DELGUARD_LOADED true
+    end
 else
-  if ! install_from_remote; then
-    # 远程失败则尝试本机构建
-    if ! have go; then
-      echo "无法安装：未找到可用二进制，也无法下载，且未检测到 Go 构建环境。" >&2
-      exit 1
-    fi
-    if [[ -n "${proj_dir}" ]]; then
-      ( cd "${proj_dir}" && go build -o "${target_dir}/delguard" . )
+    echo 'Warning: DelGuard executable not found: '\$DELGUARD_PATH
+end
+# End DelGuard Configuration"
     else
-      echo "无法定位源码目录进行本地构建。" >&2
-      exit 1
+        config_block="# DelGuard Shell Configuration
+# Generated: $(date '+%Y-%m-%d %H:%M:%S')
+# Version: DelGuard 1.0 for POSIX Shells
+
+DELGUARD_PATH='$target_exe'
+
+if [ -f \"\$DELGUARD_PATH\" ]; then
+    # Add to PATH if not already there
+    case \":\$PATH:\" in
+        *:$INSTALL_PATH:*) ;;
+        *) export PATH=\"$INSTALL_PATH:\$PATH\" ;;
+    esac
+    
+    # Define alias functions
+    del() {
+        \"\$DELGUARD_PATH\" -i \"\$@\"
+    }
+    
+    rm() {
+        \"\$DELGUARD_PATH\" -i \"\$@\"
+    }
+    
+    cp() {
+        \"\$DELGUARD_PATH\" --cp \"\$@\"
+    }
+    
+    delguard() {
+        \"\$DELGUARD_PATH\" \"\$@\"
+    }
+    
+    # Show loading message only once per session
+    if [ -z \"\$DELGUARD_LOADED\" ]; then
+        echo 'DelGuard aliases loaded successfully'
+        echo 'Commands: del, rm, cp, delguard'
+        echo 'Use --help for detailed help'
+        export DELGUARD_LOADED=true
     fi
-  fi
-fi
-
-# PATH 提示
-case ":${PATH}:" in
-  *":${HOME}/.local/bin:"*) ;;
-  *) echo '提示：请将 ~/.local/bin 加入 PATH，例如在 ~/.bashrc 或 ~/.zshrc 添加： export PATH="$HOME/.local/bin:$PATH"';;
-esac
-
-# 安装别名
-if [[ "${DEFAULT_INTERACTIVE}" == "1" ]]; then
-  "${target_dir}/delguard" --install --default-interactive
 else
-  "${target_dir}/delguard" --install
+    echo 'Warning: DelGuard executable not found: '\$DELGUARD_PATH
 fi
+# End DelGuard Configuration"
+    fi
+    
+    # Update shell configuration files
+    local configs=()
+    if [[ "$CURRENT_SHELL" == "fish" ]]; then
+        configs=("$HOME/.config/fish/config.fish")
+    else
+        configs=("$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile")
+    fi
+    
+    for config in "${configs[@]}"; do
+        # Skip if file doesn't exist and it's not the primary config
+        if [[ ! -f "$config" && "$config" != "$SHELL_CONFIG" ]]; then
+            continue
+        fi
+        
+        # Create config directory if needed
+        local config_dir="$(dirname "$config")"
+        if [[ ! -d "$config_dir" ]]; then
+            mkdir -p "$config_dir"
+            print_success "Created config directory: $config_dir"
+        fi
+        
+        # Check existing content
+        local existing_content=""
+        if [[ -f "$config" ]]; then
+            existing_content="$(cat "$config")"
+        fi
+        
+        if echo "$existing_content" | grep -q "# DelGuard Shell Configuration"; then
+            if [[ "$FORCE" != "true" ]]; then
+                print_warning "DelGuard configuration already exists in: $config"
+                print_warning "Use --force to overwrite"
+                continue
+            fi
+            # Remove existing DelGuard configuration
+            sed -i '/# DelGuard Shell Configuration/,/# End DelGuard Configuration/d' "$config" 2>/dev/null || true
+        fi
+        
+        # Append new configuration
+        echo "" >> "$config"
+        echo "$config_block" >> "$config"
+        print_success "Updated shell configuration: $config"
+    done
+    
+    print_success "=== Installation Complete ==="
+    print_info "DelGuard has been installed successfully!"
+    print_info "Available commands: del, rm, cp, delguard"
+    print_info "Restart your shell or run: source $SHELL_CONFIG"
+    
+    # Test installation
+    print_info "Testing installation..."
+    if "$target_exe" --version >/dev/null 2>&1; then
+        print_success "✓ DelGuard is working correctly"
+    else
+        print_warning "⚠ DelGuard may not be working properly"
+    fi
+}
 
-echo
-echo "安装完成。新开一个终端后可使用："
-echo "  rm -i file.txt     # 交互删除"
-echo "  rm -rf folder      # 递归强制删除（将进入回收站）"
+# Main execution
+main() {
+    parse_args "$@"
+    
+    if [[ "$UNINSTALL" == "true" ]]; then
+        uninstall_delguard
+    else
+        install_delguard
+    fi
+}
+
+# Run main function with all arguments
+main "$@"

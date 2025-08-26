@@ -1,6 +1,6 @@
 #!/usr/bin/env pwsh
-# DelGuard Universal PowerShell Installer
-# Supports: Windows PowerShell 5.1+ and PowerShell 7+ (Cross-platform)
+# DelGuard Universal Cross-Platform Installer
+# Works on Windows, macOS, and Linux with PowerShell 7+
 # Author: DelGuard Team
 # Version: 1.0
 
@@ -8,8 +8,14 @@ param(
     [string]$InstallPath = "",
     [switch]$Force,
     [switch]$Quiet,
-    [switch]$Uninstall
+    [switch]$Uninstall,
+    [switch]$Help
 )
+
+# Cross-platform compatibility
+$IsWindowsOS = $PSVersionTable.PSVersion.Major -ge 6 ? $IsWindows : ($env:OS -eq "Windows_NT")
+$IsMacOS = $PSVersionTable.PSVersion.Major -ge 6 ? $IsMacOS : $false
+$IsLinuxOS = $PSVersionTable.PSVersion.Major -ge 6 ? $IsLinux : $false
 
 # Color output functions
 function Write-ColorOutput {
@@ -31,34 +37,63 @@ function Write-Warning { param([string]$Message) Write-ColorOutput $Message "Yel
 function Write-Error { param([string]$Message) Write-ColorOutput $Message "Red" }
 function Write-Info { param([string]$Message) Write-ColorOutput $Message "Cyan" }
 
-# Platform detection
-$IsWindowsOS = $PSVersionTable.PSVersion.Major -ge 6 ? $IsWindows : ($env:OS -eq "Windows_NT")
-$IsMacOS = $PSVersionTable.PSVersion.Major -ge 6 ? $IsMacOS : $false
-$IsLinuxOS = $PSVersionTable.PSVersion.Major -ge 6 ? $IsLinux : $false
+function Show-Help {
+    Write-Host @"
+DelGuard Universal Cross-Platform Installer
 
-Write-Info "=== DelGuard Universal Installer ==="
-Write-Info "Platform: $(if($IsWindowsOS){'Windows'}elseif($IsMacOS){'macOS'}elseif($IsLinuxOS){'Linux'}else{'Unknown'})"
-Write-Info "PowerShell: $($PSVersionTable.PSVersion)"
+Usage: pwsh -File universal_install.ps1 [OPTIONS]
 
-# Determine executable name and paths
+Options:
+    -InstallPath PATH     Install to specific path
+    -Force               Force overwrite existing installation
+    -Quiet               Suppress output messages
+    -Uninstall           Remove DelGuard installation
+    -Help                Show this help message
+
+Default Install Paths:
+    Windows: `$env:USERPROFILE\bin
+    macOS:   `$HOME/.local/bin
+    Linux:   `$HOME/.local/bin
+
+Examples:
+    pwsh -File universal_install.ps1
+    pwsh -File universal_install.ps1 -Force
+    pwsh -File universal_install.ps1 -InstallPath "/usr/local/bin"
+    pwsh -File universal_install.ps1 -Uninstall
+
+"@
+}
+
+if ($Help) {
+    Show-Help
+    exit 0
+}
+
+# Determine platform-specific settings
 if ($IsWindowsOS) {
     $ExeName = "delguard.exe"
     $DefaultInstallPath = "$env:USERPROFILE\bin"
+    $PathSeparator = ";"
     $ProfilePaths = @(
         "$env:USERPROFILE\Documents\PowerShell\Microsoft.PowerShell_profile.ps1",
         "$env:USERPROFILE\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1"
     )
 } else {
     $ExeName = "delguard"
-    $DefaultInstallPath = "$env:HOME/bin"
+    $DefaultInstallPath = "$env:HOME/.local/bin"
+    $PathSeparator = ":"
     $ProfilePaths = @(
         "$env:HOME/.config/powershell/Microsoft.PowerShell_profile.ps1"
     )
 }
 
-# Use provided path or default
 $FinalInstallPath = if ($InstallPath) { $InstallPath } else { $DefaultInstallPath }
 $ExecutablePath = Join-Path $FinalInstallPath $ExeName
+
+Write-Info "=== DelGuard Universal Installer ==="
+Write-Info "Platform: $(if($IsWindowsOS){'Windows'}elseif($IsMacOS){'macOS'}elseif($IsLinuxOS){'Linux'}else{'Unknown'})"
+Write-Info "PowerShell: $($PSVersionTable.PSVersion)"
+Write-Info "Install Path: $FinalInstallPath"
 
 # Uninstall mode
 if ($Uninstall) {
@@ -74,21 +109,35 @@ if ($Uninstall) {
     foreach ($ProfilePath in $ProfilePaths) {
         if (Test-Path $ProfilePath) {
             $content = Get-Content $ProfilePath -Raw -ErrorAction SilentlyContinue
-            if ($content -and $content.Contains("# DelGuard PowerShell Configuration")) {
-                # Remove DelGuard configuration block
-                $newContent = $content -replace '(?s)# DelGuard PowerShell Configuration.*?# End DelGuard Configuration\r?\n?', ''
+            if ($content -and $content.Contains("# DelGuard Configuration")) {
+                $newContent = $content -replace '(?s)# DelGuard Configuration.*?# End DelGuard Configuration\r?\n?', ''
                 Set-Content $ProfilePath $newContent -Encoding UTF8
                 Write-Success "Removed DelGuard configuration from: $ProfilePath"
             }
         }
     }
     
+    # Remove from shell configs on Unix-like systems
+    if (-not $IsWindowsOS) {
+        $ShellConfigs = @("$env:HOME/.bashrc", "$env:HOME/.zshrc", "$env:HOME/.profile")
+        foreach ($config in $ShellConfigs) {
+            if (Test-Path $config) {
+                $content = Get-Content $config -Raw -ErrorAction SilentlyContinue
+                if ($content -and $content.Contains("# DelGuard Configuration")) {
+                    $newContent = $content -replace '(?s)# DelGuard Configuration.*?# End DelGuard Configuration\r?\n?', ''
+                    Set-Content $config $newContent -Encoding UTF8
+                    Write-Success "Removed DelGuard configuration from: $config"
+                }
+            }
+        }
+    }
+    
     Write-Success "DelGuard uninstalled successfully!"
-    return
+    exit 0
 }
 
 # Installation mode
-Write-Info "Installing DelGuard to: $FinalInstallPath"
+Write-Info "Installing DelGuard..."
 
 # Create install directory
 if (-not (Test-Path $FinalInstallPath)) {
@@ -96,14 +145,22 @@ if (-not (Test-Path $FinalInstallPath)) {
     Write-Success "Created directory: $FinalInstallPath"
 }
 
-# Copy executable
-$SourceExe = Join-Path $PSScriptRoot ".." $ExeName
-if (-not (Test-Path $SourceExe)) {
-    # Try to find in current directory
-    $SourceExe = Join-Path (Get-Location) $ExeName
+# Find source executable
+$SourceExe = $null
+$PossibleSources = @(
+    (Join-Path $PSScriptRoot ".." $ExeName),
+    (Join-Path $PSScriptRoot ".." "build" $ExeName),
+    (Join-Path (Get-Location) $ExeName)
+)
+
+foreach ($source in $PossibleSources) {
+    if (Test-Path $source) {
+        $SourceExe = $source
+        break
+    }
 }
 
-if (-not (Test-Path $SourceExe)) {
+if (-not $SourceExe) {
     Write-Error "DelGuard executable not found. Please build the project first."
     Write-Error "Run: go build -o $ExeName"
     exit 1
@@ -116,38 +173,20 @@ if ((Test-Path $ExecutablePath) -and -not $Force) {
     exit 1
 }
 
+# Copy executable
 Copy-Item $SourceExe $ExecutablePath -Force
 Write-Success "Copied executable to: $ExecutablePath"
 
 # Make executable on Unix-like systems
 if (-not $IsWindowsOS) {
-    chmod +x $ExecutablePath 2>$null
+    & chmod +x $ExecutablePath 2>$null
 }
 
-# Add to PATH if not already there
-$PathSeparator = if ($IsWindowsOS) { ";" } else { ":" }
-$CurrentPath = $env:PATH
-if (-not $CurrentPath.Contains($FinalInstallPath)) {
-    if ($IsWindowsOS) {
-        # Add to user PATH on Windows
-        $UserPath = [Environment]::GetEnvironmentVariable("PATH", "User")
-        if (-not $UserPath.Contains($FinalInstallPath)) {
-            [Environment]::SetEnvironmentVariable("PATH", "$UserPath$PathSeparator$FinalInstallPath", "User")
-            Write-Success "Added to user PATH: $FinalInstallPath"
-        }
-    } else {
-        Write-Info "Please add $FinalInstallPath to your PATH manually:"
-        Write-Info "echo 'export PATH=\"$FinalInstallPath:\$PATH\"' >> ~/.bashrc"
-        Write-Info "echo 'export PATH=\"$FinalInstallPath:\$PATH\"' >> ~/.zshrc"
-    }
-}
-
-# PowerShell profile configuration
+# PowerShell configuration
 $ConfigBlock = @"
-# DelGuard PowerShell Configuration
+# DelGuard Configuration
 # Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-# Version: DelGuard 1.0 for PowerShell 7+
-# Supports: del, rm, cp, copy, delguard commands
+# Version: DelGuard 1.0 Cross-Platform
 
 `$delguardPath = '$ExecutablePath'
 
@@ -160,7 +199,7 @@ if (Test-Path `$delguardPath) {
         Remove-Item Alias:copy -Force -ErrorAction SilentlyContinue
     } catch { }
     
-    # Define robust alias functions for all 5 commands
+    # Define cross-platform alias functions
     function global:del {
         param([Parameter(ValueFromRemainingArguments=`$true)][string[]]`$Arguments)
         & `$delguardPath -i @Arguments
@@ -176,11 +215,6 @@ if (Test-Path `$delguardPath) {
         & `$delguardPath --cp @Arguments
     }
     
-    function global:copy {
-        param([Parameter(ValueFromRemainingArguments=`$true)][string[]]`$Arguments)
-        & `$delguardPath --cp @Arguments
-    }
-    
     function global:delguard {
         param([Parameter(ValueFromRemainingArguments=`$true)][string[]]`$Arguments)
         & `$delguardPath @Arguments
@@ -188,8 +222,8 @@ if (Test-Path `$delguardPath) {
     
     # Show loading message only once per session
     if (-not `$global:DelGuardLoaded) {
-        Write-Host 'DelGuard aliases loaded successfully' -ForegroundColor Green
-        Write-Host 'Commands: del, rm, cp, copy, delguard' -ForegroundColor Cyan
+        Write-Host 'DelGuard loaded successfully' -ForegroundColor Green
+        Write-Host 'Commands: del, rm, cp, delguard' -ForegroundColor Cyan
         Write-Host 'Use --help for detailed help' -ForegroundColor Gray
         `$global:DelGuardLoaded = `$true
     }
@@ -203,39 +237,50 @@ if (Test-Path `$delguardPath) {
 foreach ($ProfilePath in $ProfilePaths) {
     $ProfileDir = Split-Path $ProfilePath -Parent
     
-    # Create profile directory if it doesn't exist
     if (-not (Test-Path $ProfileDir)) {
         New-Item -ItemType Directory -Path $ProfileDir -Force | Out-Null
         Write-Success "Created profile directory: $ProfileDir"
     }
     
-    # Check if profile exists and has DelGuard config
     $ExistingContent = ""
     if (Test-Path $ProfilePath) {
         $ExistingContent = Get-Content $ProfilePath -Raw -ErrorAction SilentlyContinue
     }
     
-    if ($ExistingContent -and $ExistingContent.Contains("# DelGuard PowerShell Configuration")) {
+    if ($ExistingContent -and $ExistingContent.Contains("# DelGuard Configuration")) {
         if (-not $Force) {
             Write-Warning "DelGuard configuration already exists in: $ProfilePath"
             Write-Warning "Use -Force to overwrite"
             continue
         }
-        # Remove existing DelGuard configuration
-        $ExistingContent = $ExistingContent -replace '(?s)# DelGuard PowerShell Configuration.*?# End DelGuard Configuration\r?\n?', ''
+        $ExistingContent = $ExistingContent -replace '(?s)# DelGuard Configuration.*?# End DelGuard Configuration\r?\n?', ''
     }
     
-    # Append new configuration
     $NewContent = $ExistingContent + "`n" + $ConfigBlock + "`n"
     Set-Content $ProfilePath $NewContent -Encoding UTF8
     Write-Success "Updated PowerShell profile: $ProfilePath"
 }
 
+# Add to PATH
+$CurrentPath = $env:PATH
+if (-not $CurrentPath.Contains($FinalInstallPath)) {
+    if ($IsWindowsOS) {
+        $UserPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+        if (-not $UserPath.Contains($FinalInstallPath)) {
+            [Environment]::SetEnvironmentVariable("PATH", "$UserPath$PathSeparator$FinalInstallPath", "User")
+            Write-Success "Added to user PATH: $FinalInstallPath"
+        }
+    } else {
+        Write-Info "Please add $FinalInstallPath to your PATH manually:"
+        Write-Info "echo 'export PATH=\"$FinalInstallPath:\$PATH\"' >> ~/.bashrc"
+        Write-Info "echo 'export PATH=\"$FinalInstallPath:\$PATH\"' >> ~/.zshrc"
+    }
+}
+
 Write-Success "=== Installation Complete ==="
 Write-Info "DelGuard has been installed successfully!"
-Write-Info "Available commands: del, rm, cp, copy, delguard"
-Write-Info "Restart your PowerShell session to use the new commands."
-Write-Info "Or run: . `$PROFILE"
+Write-Info "Available commands: del, rm, cp, delguard"
+Write-Info "Restart your shell session to use the new commands."
 
 # Test installation
 Write-Info "Testing installation..."

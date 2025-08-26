@@ -1,0 +1,125 @@
+{
+  "version": "2.1.0",
+  "name": "DelGuard",
+  "description": "Safe Delete Tool with Cross-Platform Support",
+  "default_settings": {
+    "install_path": {
+      "windows": "%USERPROFILE%\\bin",
+      "linux": "$HOME/.local/bin",
+      "macos": "$HOME/.local/bin"
+    },
+    "system_wide_path": {
+      "windows": "%ProgramFiles%\\DelGuard",
+      "linux": "/usr/local/bin",
+      "macos": "/usr/local/bin"
+    },
+    "aliases": {
+      "enabled": true,
+      "commands": ["del", "rm", "cp", "copy"]
+    },
+    "shell_integration": {
+      "powershell": true,
+      "bash": true,
+      "zsh": true,
+      "fish": false
+    }
+  },
+  "build_settings": {
+    "go_flags": "-ldflags \"-s -w\"",
+    "target_platforms": [
+      "windows/amd64",
+      "linux/amd64",
+      "darwin/amd64",
+      "darwin/arm64"
+    ],
+    "output_names": {
+      "windows": "delguard.exe",
+      "linux": "delguard",
+      "darwin": "delguard"
+    }
+  },
+  "security": {
+    "verify_checksums": true,
+    "require_admin_for_system_install": true,
+    "backup_existing_aliases": true,
+    "safe_uninstall": true
+  },
+  "features": {
+    "auto_update": false,
+    "telemetry": false,
+    "crash_reporting": false,
+    "usage_analytics": false
+  },
+  "paths": {
+    "config_dir": {
+      "windows": "%APPDATA%\\DelGuard",
+      "linux": "$HOME/.config/delguard",
+      "macos": "$HOME/.config/delguard"
+    },
+    "log_dir": {
+      "windows": "%LOCALAPPDATA%\\DelGuard\\logs",
+      "linux": "$HOME/.local/share/delguard/logs",
+      "macos": "$HOME/.local/share/delguard/logs"
+    },
+    "cache_dir": {
+      "windows": "%LOCALAPPDATA%\\DelGuard\\cache",
+      "linux": "$HOME/.cache/delguard",
+      "macos": "$HOME/.cache/delguard"
+    }
+  },
+  "supported_shells": {
+    "powershell": {
+      "profile_paths": [
+        "$PROFILE.CurrentUserCurrentHost",
+        "$PROFILE.CurrentUserAllHosts",
+        "$env:USERPROFILE\\Documents\\WindowsPowerShell\\Microsoft.PowerShell_profile.ps1",
+        "$env:USERPROFILE\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1"
+      ],
+      "alias_syntax": "Set-Alias -Name {name} -Value {command} -Force"
+    },
+    "bash": {
+      "profile_paths": [
+        "$HOME/.bashrc",
+        "$HOME/.bash_profile",
+        "$HOME/.profile"
+      ],
+      "alias_syntax": "alias {name}='{command}'"
+    },
+    "zsh": {
+      "profile_paths": [
+        "$HOME/.zshrc",
+        "$HOME/.zprofile"
+      ],
+      "alias_syntax": "alias {name}='{command}'"
+    },
+    "fish": {
+      "profile_paths": [
+        "$HOME/.config/fish/config.fish"
+      ],
+      "alias_syntax": "alias {name} '{command}'"
+    }
+  },
+  "installation_modes": {
+    "user": {
+      "description": "Install for current user only",
+      "requires_admin": false,
+      "default": true
+    },
+    "system": {
+      "description": "Install system-wide for all users",
+      "requires_admin": true,
+      "default": false
+    },
+    "portable": {
+      "description": "Portable installation (no PATH modification)",
+      "requires_admin": false,
+      "default": false
+    }
+  },
+  "uninstall_options": {
+    "remove_config": false,
+    "remove_logs": false,
+    "restore_original_aliases": true,
+    "cleanup_empty_dirs": true
+  }
+}

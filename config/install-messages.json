@@ -1,0 +1,110 @@
+{
+  "messages": {
+    "zh-cn": {
+      "welcome": "欢迎使用 DelGuard 安全删除工具安装程序",
+      "platform_detected": "检测到平台: {platform} ({arch})",
+      "checking_deps": "正在检查系统依赖...",
+      "deps_ok": "所有依赖项检查通过",
+      "deps_missing": "缺少必需的依赖项: {deps}",
+      "building": "正在构建 DelGuard 可执行文件...",
+      "build_success": "构建成功完成",
+      "build_failed": "构建失败: {error}",
+      "installing": "正在安装到: {path}",
+      "install_success": "安装成功完成！",
+      "install_failed": "安装失败: {error}",
+      "configuring_shell": "正在配置 Shell 别名...",
+      "shell_config_success": "Shell 配置完成",
+      "shell_config_failed": "Shell 配置失败: {error}",
+      "verification": "正在验证安装...",
+      "verification_success": "安装验证成功",
+      "verification_failed": "安装验证失败",
+      "uninstall_start": "开始卸载 DelGuard...",
+      "uninstall_success": "卸载完成",
+      "permission_error": "权限不足，请使用管理员权限运行",
+      "path_error": "路径错误: {path}",
+      "network_error": "网络连接错误: {error}",
+      "file_error": "文件操作错误: {error}",
+      "next_steps": "下一步操作:",
+      "restart_shell": "重启终端或运行: source ~/.bashrc",
+      "test_command": "测试命令: delguard --version",
+      "usage_help": "使用帮助: delguard --help"
+    },
+    "en": {
+      "welcome": "Welcome to DelGuard Safe Delete Tool Installer",
+      "platform_detected": "Platform detected: {platform} ({arch})",
+      "checking_deps": "Checking system dependencies...",
+      "deps_ok": "All dependencies check passed",
+      "deps_missing": "Missing required dependencies: {deps}",
+      "building": "Building DelGuard executable...",
+      "build_success": "Build completed successfully",
+      "build_failed": "Build failed: {error}",
+      "installing": "Installing to: {path}",
+      "install_success": "Installation completed successfully!",
+      "install_failed": "Installation failed: {error}",
+      "configuring_shell": "Configuring shell aliases...",
+      "shell_config_success": "Shell configuration completed",
+      "shell_config_failed": "Shell configuration failed: {error}",
+      "verification": "Verifying installation...",
+      "verification_success": "Installation verification successful",
+      "verification_failed": "Installation verification failed",
+      "uninstall_start": "Starting DelGuard uninstallation...",
+      "uninstall_success": "Uninstallation completed",
+      "permission_error": "Insufficient permissions, please run as administrator",
+      "path_error": "Path error: {path}",
+      "network_error": "Network connection error: {error}",
+      "file_error": "File operation error: {error}",
+      "next_steps": "Next steps:",
+      "restart_shell": "Restart terminal or run: source ~/.bashrc",
+      "test_command": "Test command: delguard --version",
+      "usage_help": "Usage help: delguard --help"
+    }
+  },
+  "error_codes": {
+    "DEPS_MISSING": 1001,
+    "BUILD_FAILED": 1002,
+    "INSTALL_FAILED": 1003,
+    "PERMISSION_DENIED": 1004,
+    "PATH_NOT_FOUND": 1005,
+    "NETWORK_ERROR": 1006,
+    "FILE_ERROR": 1007,
+    "VERIFICATION_FAILED": 1008,
+    "CONFIG_ERROR": 1009,
+    "UNKNOWN_ERROR": 9999
+  },
+  "recovery_suggestions": {
+    "DEPS_MISSING": {
+      "windows": [
+        "安装 Go 语言环境: https://golang.org/dl/",
+        "确保 PowerShell 执行策略允许脚本运行",
+        "检查网络连接"
+      ],
+      "linux": [
+        "使用包管理器安装依赖: sudo apt-get install curl tar",
+        "安装 Go 语言: sudo apt-get install golang-go",
+        "检查网络连接"
+      ],
+      "darwin": [
+        "安装 Homebrew: /bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"",
+        "使用 Homebrew 安装依赖: brew install go curl",
+        "检查网络连接"
+      ]
+    },
+    "BUILD_FAILED": [
+      "检查 Go 语言环境是否正确安装",
+      "确保项目目录完整且包含 go.mod 文件",
+      "检查网络连接以下载依赖包",
+      "尝试手动运行: go mod tidy && go build"
+    ],
+    "INSTALL_FAILED": [
+      "检查目标安装目录的写入权限",
+      "确保有足够的磁盘空间",
+      "尝试使用 --force 参数强制安装",
+      "尝试更改安装路径: --install-path /other/path"
+    ],
+    "PERMISSION_DENIED": [
+      "Windows: 以管理员身份运行 PowerShell 或命令提示符",
+      "Linux/macOS: 使用 sudo 运行脚本或选择用户目录安装",
+      "检查目标目录的权限设置"
+    ]
+  }
+}
