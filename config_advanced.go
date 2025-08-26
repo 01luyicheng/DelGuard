@@ -427,12 +427,7 @@ func (acm *AdvancedConfigManager) detectFormat(content []byte) ConfigFormatter {
 		return &PropertiesFormatter{}
 	}
 
-	// TOML格式检测
-	if strings.Contains(s, "[[") || (strings.Contains(s, "[") && strings.Contains(s, "=")) {
-		return &TOMLFormatter{}
-	}
-
-	// 默认尝试JSON
+	// 默认使用JSON格式
 	return &JSONFormatter{}
 }
 
@@ -541,37 +536,37 @@ func (yf *YAMLFormatter) Validate(content []byte) error {
 }
 
 func (tf *TOMLFormatter) Parse(content []byte) (*AdvancedConfig, error) {
-	return nil, fmt.Errorf("TOML格式暂未实现")
+	return nil, fmt.Errorf("TOML格式暂未实现，请使用JSON格式")
 }
 
 func (tf *TOMLFormatter) Format(config *AdvancedConfig) ([]byte, error) {
-	return nil, fmt.Errorf("TOML格式化暂未实现")
+	return nil, fmt.Errorf("TOML格式化暂未实现，请使用JSON格式")
 }
 
 func (tf *TOMLFormatter) Validate(content []byte) error {
-	return fmt.Errorf("TOML验证暂未实现")
+	return fmt.Errorf("TOML验证暂未实现，请使用JSON格式")
 }
 
 func (inf *INIFormatter) Parse(content []byte) (*AdvancedConfig, error) {
-	return nil, fmt.Errorf("INI格式暂未实现")
+	return nil, fmt.Errorf("INI格式暂未实现，请使用JSON格式")
 }
 
 func (inf *INIFormatter) Format(config *AdvancedConfig) ([]byte, error) {
-	return nil, fmt.Errorf("INI格式化暂未实现")
+	return nil, fmt.Errorf("INI格式化暂未实现，请使用JSON格式")
 }
 
 func (inf *INIFormatter) Validate(content []byte) error {
-	return fmt.Errorf("INI验证暂未实现")
+	return fmt.Errorf("INI验证暂未实现，请使用JSON格式")
 }
 
 func (pf *PropertiesFormatter) Parse(content []byte) (*AdvancedConfig, error) {
-	return nil, fmt.Errorf("Properties格式暂未实现")
+	return nil, fmt.Errorf("Properties格式暂未实现，请使用JSON格式")
 }
 
 func (pf *PropertiesFormatter) Format(config *AdvancedConfig) ([]byte, error) {
-	return nil, fmt.Errorf("Properties格式化暂未实现")
+	return nil, fmt.Errorf("Properties格式化暂未实现，请使用JSON格式")
 }
 
 func (pf *PropertiesFormatter) Validate(content []byte) error {
-	return fmt.Errorf("Properties验证暂未实现")
+	return fmt.Errorf("Properties验证暂未实现，请使用JSON格式")
 }

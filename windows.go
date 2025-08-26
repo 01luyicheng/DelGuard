@@ -41,6 +41,7 @@ const (
 	FOF_ALLOWUNDO      = 0x0040
 	FOF_NOCONFIRMATION = 0x0010
 	FOF_SILENT         = 0x0004
+	FOF_NOERRORUI      = 0x0400 // 不显示错误对话框
 
 	// Name format constants for GetUserNameEx
 	NameSamCompatible = 2
@@ -87,13 +88,22 @@ func moveToTrashWindows(filePath string) error {
 		return E(KindIO, "moveToTrash", absPath, err, "UTF16转换失败")
 	}
 
+	// 检查是否为目录，如果是目录则需要递归删除标志
+	info, err := os.Stat(absPath)
+	var flags uint16 = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT
+	if err == nil && info.IsDir() {
+		// 对于目录，不需要额外标志，SHFileOperationW 会自动递归删除
+		// 但我们可以添加 FOF_NOERRORUI 来避免错误对话框
+		flags |= FOF_NOERRORUI
+	}
+
 	// 初始化SHFILEOPSTRUCT结构体
 	fileOp := SHFILEOPSTRUCT{
 		Hwnd:                  0,
 		WFunc:                 FO_DELETE,
 		PFrom:                 &u16[0],
 		PTo:                   nil,
-		FFlags:                FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT,
+		FFlags:                flags,
 		FAnyOperationsAborted: false,
 		HNameMappings:         0,
 		LpszProgressTitle:     nil,

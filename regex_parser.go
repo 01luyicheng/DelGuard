@@ -22,7 +22,7 @@ func NewRegexParser(pattern string) (*RegexParser, error) {
 		regexPattern := convertWildcardToRegex(pattern)
 		regex, err := regexp.Compile(regexPattern)
 		if err != nil {
-			return nil, fmt.Errorf("通配符模式编译失败: %v", err)
+			return nil, fmt.Errorf(T("通配符模式编译失败: %s"), translateRegexError(err))
 		}
 		return &RegexParser{
 			pattern: pattern,
@@ -33,13 +33,40 @@ func NewRegexParser(pattern string) (*RegexParser, error) {
 	// 尝试编译为正则表达式
 	regex, err := regexp.Compile(pattern)
 	if err != nil {
-		return nil, fmt.Errorf("正则表达式编译失败: %v", err)
+		return nil, fmt.Errorf(T("正则表达式编译失败: %s"), translateRegexError(err))
 	}
 
 	return &RegexParser{
 		pattern: pattern,
 		regex:   regex,
 	}, nil
+}
+
+// translateRegexError 将正则表达式错误翻译为中文
+func translateRegexError(err error) string {
+	errStr := err.Error()
+
+	// 常见的正则表达式错误翻译
+	translations := map[string]string{
+		"error parsing regexp":      "正则表达式解析错误",
+		"missing closing )":         "缺少右括号 )",
+		"missing closing ]":         "缺少右方括号 ]",
+		"invalid character class":   "无效的字符类",
+		"invalid escape sequence":   "无效的转义序列",
+		"invalid repeat count":      "无效的重复次数",
+		"invalid nested repetition": "无效的嵌套重复",
+		"pattern":                   "模式",
+		"syntax error":              "语法错误",
+	}
+
+	// 尝试翻译常见错误
+	for eng, chn := range translations {
+		if strings.Contains(errStr, eng) {
+			errStr = strings.ReplaceAll(errStr, eng, chn)
+		}
+	}
+
+	return errStr
 }
 
 // isWildcardPattern 检查是否为通配符模式

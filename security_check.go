@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // RunSecurityCheckTool 运行安全检查工具
@@ -20,8 +21,8 @@ func RunSecurityCheckTool(args []string) {
 			log.Println("[INFO] 显示安全检查工具帮助")
 			fmt.Println(T("DelGuard 安全检查工具"))
 			fmt.Println(T("用法:"))
-			fmt.Println(T("  go run security_check.go --security-check  执行安全检查"))
-			fmt.Println(T("  go run security_check.go --help           显示帮助"))
+			fmt.Println(T("  delguard --security-check  执行安全检查"))
+			fmt.Println(T("  delguard --help           显示帮助"))
 		default:
 			log.Printf("[WARN] 未知选项: %s", args[1])
 			fmt.Printf(T("未知选项: %s\n"), args[1])
@@ -32,7 +33,7 @@ func RunSecurityCheckTool(args []string) {
 
 	fmt.Println(T("DelGuard 安全检查工具"))
 	fmt.Println(T("使用 --security-check 执行安全检查"))
-	fmt.Println(T("使用 --help 查看用法信息"))
+	fmt.Println(T("使用 --help 显示帮助信息"))
 }
 
 // RunBasicSecurityChecks 运行基本安全检查
@@ -139,6 +140,30 @@ func RunBasicSecurityChecks() {
 		}
 	}
 
+	// 运行简单安全检查
+	log.Println("[INFO] === 文件安全检查 ===")
+	fmt.Println(T("\n=== 文件安全检查 ==="))
+	
+	// 扫描当前目录
+	currentDir, _ := os.Getwd()
+	fmt.Printf(T("正在检查当前目录: %s\n"), currentDir)
+	
+	result := RunSimpleSecurityCheck(currentDir)
+	
+	fmt.Printf(T("检查完成，耗时: %v\n"), result.Duration)
+	fmt.Printf(T("检查文件: %d\n"), result.FilesScanned)
+	fmt.Printf(T("安全提醒: %d\n"), result.Warnings)
+	
+	if result.Warnings > 0 {
+		fmt.Println(T("⚠️  发现安全提醒:"))
+		for _, msg := range result.Messages {
+			fmt.Printf("  %s\n", msg)
+		}
+		fmt.Println(T("提示: 这些是安全提醒，帮助您识别潜在风险文件"))
+	} else {
+		fmt.Println(T("✅ 文件安全检查通过"))
+	}
+
 	// 生成安全建议
 	log.Println("[INFO] === 安全建议 ===")
 	fmt.Println(T("\n=== 安全建议 ==="))
@@ -147,8 +172,8 @@ func RunBasicSecurityChecks() {
 	fmt.Println(T("• 使用强密码策略"))
 	fmt.Println(T("• 检查文件权限设置"))
 
-	log.Println("[INFO] 提示: 完整的安全检查实现仍在进行中")
-	fmt.Println(T("\n提示: 完整的安全检查实现仍在进行中"))
+	log.Println("[INFO] 提示: 安全检查完成")
+	fmt.Println(T("\n提示: 安全检查完成"))
 }
 
 // validateConfig 验证配置
@@ -198,74 +223,115 @@ func CheckSystemIntegrity() error {
 	return nil
 }
 
-// createDefaultSecurityConfig 创建默认安全配置
-func createDefaultSecurityConfig(filename string) error {
-	// 确保目录存在
-	dir := filepath.Dir(filename)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-
-	// 创建默认配置内容
-	defaultConfig := `{
-		"version": "1.0",
-		"critical_paths": [
-			"/etc",
-			"/bin", 
-			"/usr/bin",
-			"/System",
-			filepath.Join(os.Getenv("SYSTEMDRIVE"), "Windows"),
-			filepath.Join(os.Getenv("SYSTEMDRIVE"), "Program Files")
-		],
-		"max_file_size": 1073741824,
-		"allowed_extensions": [
-			".txt", ".doc", ".docx", ".pdf", ".jpg", ".png", ".gif"
-		],
-		"enable_encryption": true,
-		"backup_count": 3
-	}`
-
-	return os.WriteFile(filename, []byte(defaultConfig), 0644)
+// SimpleSecurityChecker 简单的安全检查器
+type SimpleSecurityChecker struct {
+	Name string
 }
 
-// VerifySecurityFeatures 验证安全功能
-func VerifySecurityFeatures() []string {
-	var issues []string
+// BasicSecurityResult 基础安全检查结果
+type BasicSecurityResult struct {
+	FilesScanned int
+	Warnings     int
+	Messages     []string
+	ScanPath     string
+	Duration     time.Duration
+}
 
-	// 检查路径遍历保护
-	testPaths := []string{
-		"../../../etc/passwd",
-		"..\\..\\windows\\system32\\cmd.exe",
-		"/etc/shadow",
+// CheckFile 检查单个文件的安全性
+func (s *SimpleSecurityChecker) CheckFile(filePath string) *BasicSecurityResult {
+	result := &BasicSecurityResult{
+		FilesScanned: 1,
+		ScanPath:     filePath,
+		Messages:     []string{},
 	}
 
-	for _, path := range testPaths {
-		if strings.Contains(path, "..") {
-			// 应该被阻止 - 检查清理后的路径是否包含..
-			cleanPath := filepath.Clean(path)
-			if strings.Contains(cleanPath, ".."+string(filepath.Separator)) ||
-				strings.Contains(cleanPath, "..\\") ||
-				strings.Contains(cleanPath, "../") {
-				// 路径遍历检测正常
-				continue
-			} else {
-				issues = append(issues, fmt.Sprintf("Path traversal protection may not be working for: %s", path))
-			}
+	// 基础安全检查：文件扩展名检查
+	ext := strings.ToLower(filepath.Ext(filePath))
+	suspiciousExts := map[string]bool{
+		".exe": true, ".bat": true, ".cmd": true, ".scr": true, ".pif": true,
+		".com": true, ".vbs": true, ".js": true, ".jar": true,
+	}
+
+	if suspiciousExts[ext] {
+		result.Warnings++
+		result.Messages = append(result.Messages, fmt.Sprintf("⚠️  可执行文件: %s", filePath))
+	}
+
+	// 检查文件名是否包含可疑关键词
+	name := strings.ToLower(filepath.Base(filePath))
+	suspiciousKeywords := []string{"malware", "virus", "trojan", "hack", "crack", "keygen"}
+	for _, keyword := range suspiciousKeywords {
+		if strings.Contains(name, keyword) {
+			result.Warnings++
+			result.Messages = append(result.Messages, fmt.Sprintf("⚠️  可疑文件名: %s (包含 '%s')", filePath, keyword))
+			break
 		}
 	}
 
-	// 检查系统路径保护
-	systemPaths := []string{
-		"/etc/passwd",
-		"/bin/sh",
-		filepath.Join(os.Getenv("SYSTEMDRIVE"), "Windows", "System32", "cmd.exe"),
+	return result
+}
+
+// CheckDirectory 检查目录的安全性
+func (s *SimpleSecurityChecker) CheckDirectory(dirPath string) *BasicSecurityResult {
+	result := &BasicSecurityResult{
+		ScanPath: dirPath,
+		Messages: []string{},
 	}
 
-	for _, path := range systemPaths {
-		if !IsCriticalPath(path) {
-			issues = append(issues, fmt.Sprintf("Critical path protection not working for: %s", path))
+	startTime := time.Now()
+
+	filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+
+		fileResult := s.CheckFile(path)
+		result.FilesScanned += fileResult.FilesScanned
+		result.Warnings += fileResult.Warnings
+		result.Messages = append(result.Messages, fileResult.Messages...)
+
+		return nil
+	})
+
+	result.Duration = time.Since(startTime)
+	return result
+}
+
+// RunSimpleSecurityCheck 运行简单的安全检查
+func RunSimpleSecurityCheck(targetPath string) *BasicSecurityResult {
+	checker := &SimpleSecurityChecker{Name: "DelGuard安全助手"}
+	
+	info, err := os.Stat(targetPath)
+	if err != nil {
+		return &BasicSecurityResult{
+			ScanPath: targetPath,
+			Messages: []string{fmt.Sprintf("❌ 无法访问路径: %v", err)},
 		}
 	}
 
-	return issues
+	if info.IsDir() {
+		return checker.CheckDirectory(targetPath)
+	} else {
+		return checker.CheckFile(targetPath)
+	}
+}
+
+// createDefaultSecurityConfig 创建默认安全配置
+func createDefaultSecurityConfig(filePath string) error {
+	defaultConfig := `{
+  "security": {
+    "enabled": true,
+    "check_interval": "24h",
+    "max_file_size": "100MB",
+    "suspicious_extensions": [".exe", ".bat", ".cmd", ".scr", ".pif"],
+    "suspicious_keywords": ["malware", "virus", "trojan", "hack"]
+  },
+  "alerts": {
+    "enabled": true,
+    "email": "",
+    "webhook": ""
+  }
+}`
+
+	return os.WriteFile(filePath, []byte(defaultConfig), 0644)
 }

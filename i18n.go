@@ -411,15 +411,13 @@ func containsChinese(s string) bool {
 	}
 	return false
 }
-
-// T translates a zh-CN source string to current locale.
 // Convention: Source strings in code are zh-CN; for en-US we map to English.
 // If no mapping exists, returns s itself.
 func T(s string) string {
-	i18nMu.RLock()
-	defer i18nMu.RUnlock()
-	// 翻译
-	var translated string
+    i18nMu.RLock()
+    defer i18nMu.RUnlock()
+    // 翻译
+    var translated string
 	if currentLocale == "zh-CN" {
 		translated = s
 	} else if m, ok := translations[currentLocale]; ok {
@@ -447,76 +445,73 @@ func T(s string) string {
 		translated = s
 	}
 
-	// 单行消息自动添加前缀 "DelGuard: "
-	if shouldPrefix(translated) {
-		return "DelGuard: " + translated
-	}
-	return translated
+    // 直接返回翻译结果，不添加任何前缀
+    return translated
 }
 
 var translations = map[string]map[string]string{
-	"ja": {
-		"safe_copy_skip_same": "ソースファイルと宛先ファイルは同一のため、コピーをスキップします：%s",
-		"safe_copy_confirm":   "宛先ファイルが存在し、内容が異なります。上書きしますか？[y/N] ",
-		"safe_copy_cancelled": "セーフコピーがキャンセルされました：%s",
-		"safe_copy_backup":    "既存のファイル %s をゴミ箱に移動しました",
-		"safe_copy_success":   "セーフコピーが完了しました：%s -> %s",
-		"safe_copy_failed":    "セーフコピーに失敗しました：%s -> %s: %v",
-	},
-	"en-US": {
-		"safe_copy_skip_same": "Skipping copy as source and destination are identical: %s",
-		"safe_copy_confirm":   "Destination file exists and differs. Overwrite? [y/N] ",
-		"safe_copy_cancelled": "Safe copy cancelled: %s",
-		"safe_copy_backup":    "Moved existing file %s to Trash",
-		"safe_copy_success":   "Safe copy completed: %s -> %s",
-		"safe_copy_failed":    "Safe copy failed: %s -> %s: %v",
-		"参数解析失败: %v\n":        "Failed to parse arguments: %v\n",
-		"别名安装成功！请重启终端或运行 'source ~/.bashrc' 使别名生效。": "Aliases installed. Restart your terminal or run 'source ~/.bashrc' to take effect.",
-		"卸载功能尚未实现":                           "Uninstall is not implemented yet",
-		"恢复文件失败: %v\n":                       "Failed to restore files: %v\n",
-		"错误：无法解析路径 %s: %v\n":                 "Error: cannot resolve path %s: %v\n",
-		"错误：无法访问 %s: %v\n":                   "Error: cannot access %s: %v\n",
-		"提示：%s 是目录，删除目录需使用 -r/--recursive\n": "Tip: %s is a directory; use -r/--recursive to delete directories\n",
-		"即将删除 %d 个目标（其中目录 %d 个）。选择模式 [a]全部同意/[n]全部拒绝/[i]逐项/[q]退出 (默认 i): ": "About to delete %d target(s) (%d directorie(s)). Choose [a] accept all / [n] reject all / [i] item-by-item / [q] quit (default i): ",
-		"已取消所有删除。":                     "All deletions cancelled.",
-		"计划删除：%s (绝对路径: %s, 类型: %s)\n": "Plan to delete: %s (abs: %s, type: %s)\n",
-		"删除 %s ? [y/N/a/q]: ":          "Delete %s ? [y/N/a/q]: ",
-		"已跳过 %s\n":                     "Skipped %s\n",
-		"检测到关键路径，要求双重确认：%s\n":          "Critical path detected, double confirmation required: %s\n",
-		"已取消关键路径 %s 的删除\n":             "Deletion of critical path %s cancelled\n",
-		"[DRY-RUN] 将把 %s 移动到回收站\n":     "[DRY-RUN] Would move %s to Trash\n",
-		"错误：无法删除 %s: %v\n":             "Error: failed to delete %s: %v\n",
-		"已将 %s 移动到回收站\n":               "Moved %s to Trash\n",
-		"警告：当前以高权限运行（root/管理员），已强制启用交互确认。\n": "Warning: running with elevated privileges (root/Administrator). Interactive confirmation enforced.\n",
-		"当前平台 %s 暂不支持回收站功能\n":                "Platform %s does not support trash functionality\n",
-		// 新增的安全警告和确认消息
-		"警告：即将删除关键路径: %s\n":             "Warning: about to delete critical path: %s\n",
-		"为确认风险，请输入完整路径继续（或直接回车取消）：":     "To confirm the risk, enter the full path to continue (or press Enter to cancel): ",
-		"警告：当前以管理员/root权限运行，即将删除: %s\n": "Warning: running as administrator/root, about to delete: %s\n",
-		"确认删除？[y/N]: ":                  "Confirm deletion? [y/N]: ",
-		"警告：文件 %s 为只读文件\n":              "Warning: file %s is read-only\n",
-		"确认删除只读文件？[y/N]: ":              "Confirm deletion of read-only file? [y/N]: ",
-		"警告：检测到回收站/废纸篓目录: %s\n":         "Warning: detected trash/recycle bin directory: %s\n",
-		"确认删除回收站目录？[y/N]: ":             "Confirm deletion of trash directory? [y/N]: ",
-		"警告：检测到DelGuard程序目录: %s\n":      "Warning: detected DelGuard program directory: %s\n",
-		"确认删除程序目录？[y/N]: ":              "Confirm deletion of program directory? [y/N]: ",
-		"错误：权限不足，无法删除 %s\n":             "Error: insufficient permissions to delete %s\n",
-		"错误：系统保护文件，无法删除 %s\n":           "Error: system protected file, cannot delete %s\n",
-		"错误：路径包含非法字符: %s\n":             "Error: path contains invalid characters: %s\n",
-		"错误：路径过长: %s\n":                 "Error: path too long: %s\n",
-		"错误：磁盘空间不足，无法删除 %s\n":           "Error: insufficient disk space to delete %s\n",
-		"错误：文件正在被使用: %s\n":              "Error: file is in use: %s\n",
-		"错误：网络路径不可访问: %s\n":             "Error: network path not accessible: %s\n",
-		"错误：符号链接目标不存在: %s\n":            "Error: symlink target does not exist: %s\n",
-		"错误：硬链接计数异常: %s\n":              "Error: hard link count异常: %s\n",
-		"错误：文件系统只读: %s\n":               "Error: filesystem is read-only: %s\n",
-		"错误：磁盘错误: %s\n":                 "Error: disk error: %s\n",
-		"错误：内存不足: %s\n":                 "Error: out of memory: %s\n",
-		"错误：操作超时: %s\n":                 "Error: operation timed out: %s\n",
-		"错误：系统调用失败: %s\n":               "Error: system call failed: %s\n",
-		"错误：未知错误: %s\n":                 "Error: unknown error: %s\n",
-		// Usage block translation
-		`DelGuard v%s - 跨平台安全删除工具
+    "ja": {
+        "safe_copy_skip_same": "ソースファイルと宛先ファイルは同一のため、コピーをスキップします：%s",
+        "safe_copy_confirm":   "宛先ファイルが存在し、内容が異なります。上書きしますか？[y/N] ",
+        "safe_copy_cancelled": "セーフコピーがキャンセルされました：%s",
+        "safe_copy_backup":    "既存のファイル %s をゴミ箱に移動しました",
+        "safe_copy_success":   "セーフコピーが完了しました：%s -> %s",
+        "safe_copy_failed":    "セーフコピーに失敗しました：%s -> %s: %v",
+    },
+    "en-US": {
+        "safe_copy_skip_same": "Skipping copy as source and destination are identical: %s",
+        "safe_copy_confirm":   "Destination file exists and differs. Overwrite? [y/N] ",
+        "safe_copy_cancelled": "Safe copy cancelled: %s",
+        "safe_copy_backup":    "Moved existing file %s to Trash",
+        "safe_copy_success":   "Safe copy completed: %s -> %s",
+        "safe_copy_failed":    "Safe copy failed: %s -> %s: %v",
+        "参数解析失败: %v\n":        "Failed to parse arguments: %v\n",
+        "别名安装成功！请重启终端或运行 'source ~/.bashrc' 使别名生效。": "Aliases installed. Restart your terminal or run 'source ~/.bashrc' to take effect.",
+        "卸载功能尚未实现":                           "Uninstall is not implemented yet",
+        "恢复文件失败: %v\n":                       "Failed to restore files: %v\n",
+        "错误：无法解析路径 %s: %v\n":                 "Error: cannot resolve path %s: %v\n",
+        "错误：无法访问 %s: %v\n":                   "Error: cannot access %s: %v\n",
+        "提示：%s 是目录，删除目录需使用 -r/--recursive\n": "Tip: %s is a directory; use -r/--recursive to delete directories\n",
+        "即将删除 %d 个目标（其中目录 %d 个）。选择模式 [a]全部同意/[n]全部拒绝/[i]逐项/[q]退出 (默认 i): ": "About to delete %d target(s) (%d directorie(s)). Choose [a] accept all / [n] reject all / [i] item-by-item / [q] quit (default i): ",
+        "已取消所有删除。":                     "All deletions cancelled.",
+        "计划删除：%s (绝对路径: %s, 类型: %s)\n": "Plan to delete: %s (abs: %s, type: %s)\n",
+        "删除 %s ? [y/N/a/q]: ":          "Delete %s ? [y/N/a/q]: ",
+        "已跳过 %s\n":                     "Skipped %s\n",
+        "检测到关键路径，要求双重确认：%s\n":          "Critical path detected, double confirmation required: %s\n",
+        "已取消关键路径 %s 的删除\n":             "Deletion of critical path %s cancelled\n",
+        "[DRY-RUN] 将把 %s 移动到回收站\n":     "[DRY-RUN] Would move %s to Trash\n",
+        "错误：无法删除 %s: %v\n":             "Error: failed to delete %s: %v\n",
+        "已将 %s 移动到回收站\n":               "Moved %s to Trash\n",
+        "警告：当前以高权限运行（root/管理员），已强制启用交互确认。\n": "Warning: running with elevated privileges (root/Administrator). Interactive confirmation enforced.\n",
+        "当前平台 %s 暂不支持回收站功能\n":                "Platform %s does not support trash functionality\n",
+        // 新增的安全警告和确认消息
+        "警告：即将删除关键路径: %s\n":             "Warning: about to delete critical path: %s\n",
+        "为确认风险，请输入完整路径继续（或直接回车取消）：":     "To confirm the risk, enter the full path to continue (or press Enter to cancel): ",
+        "警告：当前以管理员/root权限运行，即将删除: %s\n": "Warning: running as administrator/root, about to delete: %s\n",
+        "确认删除？[y/N]: ":                  "Confirm deletion? [y/N]: ",
+        "警告：文件 %s 为只读文件\n":              "Warning: file %s is read-only\n",
+        "确认删除只读文件？[y/N]: ":              "Confirm deletion of read-only file? [y/N]: ",
+        "警告：检测到回收站/废纸篓目录: %s\n":         "Warning: detected trash/recycle bin directory: %s\n",
+        "确认删除回收站目录？[y/N]: ":             "Confirm deletion of trash directory? [y/N]: ",
+        "警告：检测到DelGuard程序目录: %s\n":      "Warning: detected DelGuard program directory: %s\n",
+        "确认删除程序目录？[y/N]: ":              "Confirm deletion of program directory? [y/N]: ",
+        "错误：权限不足，无法删除 %s\n":             "Error: insufficient permissions to delete %s\n",
+        "错误：系统保护文件，无法删除 %s\n":           "Error: system protected file, cannot delete %s\n",
+        "错误：路径包含非法字符: %s\n":             "Error: path contains invalid characters: %s\n",
+        "错误：路径过长: %s\n":                 "Error: path too long: %s\n",
+        "错误：磁盘空间不足，无法删除 %s\n":           "Error: insufficient disk space to delete %s\n",
+        "错误：文件正在被使用: %s\n":              "Error: file is in use: %s\n",
+        "错误：网络路径不可访问: %s\n":             "Error: network path not accessible: %s\n",
+        "错误：符号链接目标不存在: %s\n":            "Error: symlink target does not exist: %s\n",
+        "错误：硬链接计数异常: %s\n":              "Error: hard link count异常: %s\n",
+        "错误：文件系统只读: %s\n":               "Error: filesystem is read-only: %s\n",
+        "错误：磁盘错误: %s\n":                 "Error: disk error: %s\n",
+        "错误：内存不足: %s\n":                 "Error: out of memory: %s\n",
+        "错误：操作超时: %s\n":                 "Error: operation timed out: %s\n",
+        "错误：系统调用失败: %s\n":               "Error: system call failed: %s\n",
+        "错误：未知错误: %s\n":                 "Error: unknown error: %s\n",
+        // Usage block translation
+        `DelGuard v%s - 跨平台安全删除工具
 
 用法:
   delguard [选项] <文件或目录>
@@ -574,146 +569,8 @@ Notes:
   - Interactive priority: CLI(-i) > ENV(DELGUARD_INTERACTIVE/DELGUARD_DEFAULT_INTERACTIVE) > config
   - Double-confirm for critical paths (system root, system dirs, user home, etc.)
   - Batch interactive mode: accept all / reject all / item-by-item / quit when multiple targets
-  - Windows Recycle Bin allows duplicate names (handled by system)
-  - Windows CMD & PowerShell support rm and del; Linux/macOS also provide del via aliases
+      - Windows Recycle Bin allows duplicate names (handled by system)
+      - Windows CMD & PowerShell support rm and del; Linux/macOS also provide del via aliases
 `,
-	},
-}
-
-// 错误信息国际化映射
-var errorMessages = map[string]map[string]string{
-	"zh": {
-		"file_not_found":                "文件不存在：%s",
-		"permission_denied":             "权限不足：%s",
-		"critical_path_warning":         "⚠️ 警告：您正在尝试删除系统关键路径 %s",
-		"confirm_delete":                "确认删除 %s 吗？",
-		"confirm_critical_delete":       "⚠️ 您确定要删除系统关键路径 %s 吗？此操作可能导致系统不稳定！",
-		"delete_success":                "✅ 成功删除：%s",
-		"delete_failed":                 "❌ 删除失败：%s",
-		"trash_success":                 "🗑️ 已将 %s 移至回收站",
-		"permanent_delete":              "⚠️ 已永久删除：%s",
-		"disk_space_warning":            "⚠️ 磁盘空间不足，无法完成操作",
-		"file_locked":                   "文件被锁定：%s",
-		"path_too_long":                 "路径过长：%s",
-		"invalid_characters":            "路径包含非法字符：%s",
-		"network_path":                  "不支持删除网络路径：%s",
-		"hidden_file_warning":           "👁️ 这是一个隐藏文件：%s",
-		"system_file_warning":           "⚙️ 这是一个系统文件：%s",
-		"readonly_file_warning":         "🔒 这是一个只读文件：%s",
-		"large_file_warning":            "📁 这是一个大文件（%s），确认删除吗？",
-		"batch_delete_warning":          "⚠️ 您即将删除 %d 个文件，确认继续吗？",
-		"recursive_delete_warning":      "⚠️ 您即将递归删除整个目录 %s，确认继续吗？",
-		"empty_trash_confirm":           "🗑️ 您确定要清空回收站吗？此操作不可恢复！",
-		"restore_success":               "✅ 成功恢复：%s",
-		"restore_failed":                "❌ 恢复失败：%s",
-		"backup_created":                "💾 已创建备份：%s",
-		"config_error":                  "配置错误：%s",
-		"memory_warning":                "⚠️ 内存使用过高，可能影响性能",
-		"timeout_warning":               "⏰ 操作超时，已自动取消",
-		"invalid_config":                "配置无效：%s",
-		"config_restored":               "配置已从备份恢复",
-		"config_saved":                  "✅ 配置已保存",
-		"overwrite_protected":           "🛡️ 文件覆盖保护已激活：%s",
-		"overwrite_backup_created":      "💾 已创建覆盖文件备份：%s -> %s",
-		"overwrite_protection_disabled": "⚠️ 文件覆盖保护已禁用",
-		"overwrite_protection_enabled":  "✅ 文件覆盖保护已启用",
-		"invalid_language":              "不支持的语言设置：%s",
-		"invalid_range":                 "参数超出有效范围：%s",
-		"backup_failed":                 "备份失败：%s",
-		"validation_error":              "验证失败：%s",
-		"security_error":                "安全检查失败：%s",
-		"path_validation_error":         "路径验证失败：%s",
-		"symlink_error":                 "符号链接检查失败：%s",
-		"unc_path_error":                "UNC路径不受支持：%s",
-		"device_path_error":             "设备路径不受支持：%s",
-		"reserved_name_error":           "Windows保留设备名不被允许：%s",
-	},
-	"en": {
-		"file_not_found":                "File not found: %s",
-		"permission_denied":             "Permission denied: %s",
-		"critical_path_warning":         "⚠️ Warning: You are attempting to delete a critical system path %s",
-		"confirm_delete":                "Confirm deletion of %s?",
-		"confirm_critical_delete":       "⚠️ Are you sure you want to delete the critical system path %s? This may cause system instability!",
-		"delete_success":                "✅ Successfully deleted: %s",
-		"delete_failed":                 "❌ Failed to delete: %s",
-		"trash_success":                 "🗑️ Moved %s to trash",
-		"permanent_delete":              "⚠️ Permanently deleted: %s",
-		"disk_space_warning":            "⚠️ Insufficient disk space to complete operation",
-		"file_locked":                   "File is locked: %s",
-		"path_too_long":                 "Path too long: %s",
-		"invalid_characters":            "Path contains invalid characters: %s",
-		"network_path":                  "Network paths are not supported: %s",
-		"hidden_file_warning":           "👁️ This is a hidden file: %s",
-		"system_file_warning":           "⚙️ This is a system file: %s",
-		"readonly_file_warning":         "🔒 This is a read-only file: %s",
-		"large_file_warning":            "📁 This is a large file (%s), confirm deletion?",
-		"batch_delete_warning":          "⚠️ You are about to delete %d files, continue?",
-		"recursive_delete_warning":      "⚠️ You are about to recursively delete the entire directory %s, continue?",
-		"empty_trash_confirm":           "🗑️ Are you sure you want to empty the trash? This cannot be undone!",
-		"restore_success":               "✅ Successfully restored: %s",
-		"restore_failed":                "❌ Failed to restore: %s",
-		"backup_created":                "💾 Backup created: %s",
-		"config_error":                  "Configuration error: %s",
-		"memory_warning":                "⚠️ High memory usage, may affect performance",
-		"timeout_warning":               "⏰ Operation timeout, automatically cancelled",
-		"invalid_config":                "Invalid configuration: %s",
-		"config_restored":               "Configuration restored from backup",
-		"config_saved":                  "✅ Configuration saved",
-		"overwrite_protected":           "🛡️ File overwrite protection activated: %s",
-		"overwrite_backup_created":      "💾 Overwrite file backup created: %s -> %s",
-		"overwrite_protection_disabled": "⚠️ File overwrite protection disabled",
-		"overwrite_protection_enabled":  "✅ File overwrite protection enabled",
-		"invalid_language":              "Unsupported language setting: %s",
-		"invalid_range":                 "Parameter out of valid range: %s",
-		"backup_failed":                 "Backup failed: %s",
-		"validation_error":              "Validation failed: %s",
-		"security_error":                "Security check failed: %s",
-		"path_validation_error":         "Path validation failed: %s",
-		"symlink_error":                 "Symbolic link check failed: %s",
-		"unc_path_error":                "UNC paths are not supported: %s",
-		"device_path_error":             "Device paths are not supported: %s",
-		"reserved_name_error":           "Windows reserved device names are not allowed: %s",
-	},
-	"ja": {
-		"file_not_found":           "ファイルが見つかりません: %s",
-		"permission_denied":        "アクセス権限がありません: %s",
-		"critical_path_warning":    "⚠️ 警告: システムの重要なパス %s を削除しようとしています",
-		"confirm_delete":           "%s を削除してもよろしいですか？",
-		"confirm_critical_delete":  "⚠️ 本当にシステムの重要なパス %s を削除してもよろしいですか？システムが不安定になる可能性があります！",
-		"delete_success":           "✅ 正常に削除されました: %s",
-		"delete_failed":            "❌ 削除に失敗しました: %s",
-		"trash_success":            "🗑️ %s をゴミ箱に移動しました",
-		"permanent_delete":         "⚠️ 完全に削除されました: %s",
-		"disk_space_warning":       "⚠️ ディスク容量不足のため、操作を完了できません",
-		"file_locked":              "ファイルがロックされています: %s",
-		"path_too_long":            "パスが長すぎます: %s",
-		"invalid_characters":       "パスに無効な文字が含まれています: %s",
-		"network_path":             "ネットワークパスはサポートされていません: %s",
-		"hidden_file_warning":      "👁️ これは隠しファイルです: %s",
-		"system_file_warning":      "⚙️ これはシステムファイルです: %s",
-		"readonly_file_warning":    "🔒 これは読み取り尰端ファイルです: %s",
-		"large_file_warning":       "📁 これは大きなファイルです（%s）、削除を確認しますか？",
-		"batch_delete_warning":     "⚠️ %d 個のファイルを削除しようとしています、続行してもよろしいですか？",
-		"recursive_delete_warning": "⚠️ ディレクトリ %s を再帰的に削除しようとしています、続行してもよろしいですか？",
-		"empty_trash_confirm":      "🗑️ 本当にゴミ箱を空にしてもよろしいですか？この操作は元に戻せません！",
-		"restore_success":          "✅ 正常に復元されました: %s",
-		"restore_failed":           "❌ 復元に失敗しました: %s",
-		"backup_created":           "💾 バックアップが作成されました: %s",
-		"config_error":             "設定エラー: %s",
-		"memory_warning":           "⚠️ メモリ使用量が高すぎるとパフォーマンスに影響する可能性があります",
-		"timeout_warning":          "⏰ 操作タイムアウト、自動的にキャンセルされました",
-		"invalid_config":           "無効な設定: %s",
-		"config_restored":          "バックアップから設定が復元されました",
-		"config_saved":             "✅ 設定が保存されました",
-		"invalid_language":         "サポートされていない言語設定: %s",
-		"invalid_range":            "パラメータが有効範囲外です: %s",
-		"backup_failed":            "バックアップに失敗しました: %s",
-		"validation_error":         "検証に失敗しました: %s",
-		"security_error":           "セキュリティチェックに失敗しました: %s",
-		"path_validation_error":    "パス検証に失敗しました: %s",
-		"symlink_error":            "シンボリックリンクのチェックに失敗しました: %s",
-		"unc_path_error":           "UNCパスはサポートされていません: %s",
-		"device_path_error":        "デバイスパスはサポートされていません: %s",
-		"reserved_name_error":      "Windows予約デバイス名は許可されていません: %s",
 	},
 }

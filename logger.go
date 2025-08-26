@@ -26,12 +26,6 @@ const (
 )
 
 const (
-	// LogMaxSize 日志文件最大大小(MB)
-	LogMaxSize = 100
-
-	// LogMaxBackups 日志文件最大备份数量
-	LogMaxBackups = 10
-
 	// LogDirPerm 日志目录权限
 	LogDirPerm = 0700
 
@@ -51,11 +45,19 @@ type Logger struct {
 
 // NewLogger 创建新的日志记录器
 func NewLogger(level string) *Logger {
+	// 获取配置实例
+	config, err := LoadConfig()
+	if err != nil {
+		// 如果配置加载失败，使用默认值
+		config = &Config{}
+		config.setDefaults()
+	}
+
 	l := &Logger{
 		level:      parseLogLevel(level),
 		logDir:     getLogDir(),
-		maxSize:    LogMaxSize,    // 100MB
-		maxBackups: LogMaxBackups, // 10个备份
+		maxSize:    config.LogMaxSize,    // 使用配置中的值
+		maxBackups: config.LogMaxBackups, // 使用配置中的值
 	}
 
 	// 确保日志目录存在，使用更安全的权限 LogDirPerm（仅所有者可访问）
@@ -251,17 +253,17 @@ func (l *Logger) buildLogEntry(level LogLevel, operation, filePath string, err e
 func (l LogLevel) String() string {
 	switch l {
 	case LogLevelDebug:
-		return "DEBUG"
+		return "调试"
 	case LogLevelInfo:
-		return "INFO"
+		return "信息"
 	case LogLevelWarn:
-		return "WARN"
+		return "警告"
 	case LogLevelError:
-		return "ERROR"
+		return "错误"
 	case LogLevelFatal:
-		return "FATAL"
+		return "致命"
 	default:
-		return "UNKNOWN"
+		return "未知"
 	}
 }
 

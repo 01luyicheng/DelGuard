@@ -132,14 +132,28 @@ func (sd *SmartDelete) smartResolve(target string) ([]string, error) {
 		return nil, err
 	}
 
-	// 搜索相似文件
-	results, err := sd.search.SearchFiles(target, currentDir)
+	// 创建增强版搜索引擎
+	enhancedSearch := NewEnhancedSmartSearch(sd.search.config)
+
+	// 搜索相似文件（使用缓存）
+	results, err := enhancedSearch.SearchWithCache(target, currentDir)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(results) == 0 {
-		return nil, fmt.Errorf("未找到与 '%s' 匹配的文件", target)
+		// 如果基本搜索没找到，尝试内容搜索
+		if sd.options.SearchContent {
+			sd.ui.ShowInfo("未找到文件名匹配，正在搜索文件内容...")
+			contentResults, contentErr := enhancedSearch.SearchContentWithCache(target, currentDir)
+			if contentErr == nil && len(contentResults) > 0 {
+				results = contentResults
+			} else {
+				return nil, fmt.Errorf("未找到与 '%s' 匹配的文件", target)
+			}
+		} else {
+			return nil, fmt.Errorf("未找到与 '%s' 匹配的文件", target)
+		}
 	}
 
 	// 如果只有一个结果且相似度很高，直接使用

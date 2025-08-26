@@ -83,7 +83,22 @@ DelGuard 是一个现代化的跨平台安全删除工具，支持 Windows、mac
 
 ## 📦 安装
 
-### 一行命令安装（推荐）
+### 本地一键安装（推荐）
+
+#### Windows
+```bash
+# 方法一：批处理安装（最简单）
+install_one_click.bat
+
+# 方法二：PowerShell安装
+powershell -ExecutionPolicy Bypass -File install_one_click.ps1
+
+# 方法三：管理员安装（系统范围）
+# 以管理员身份运行PowerShell
+powershell -ExecutionPolicy Bypass -File install_one_click.ps1 -SystemInstall
+```
+
+#### 一行命令在线安装
 
 #### Windows (PowerShell 7+)
 ```powershell

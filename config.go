@@ -57,6 +57,16 @@ type Config struct {
 	EnableTelemetry     bool   `json:"enable_telemetry"`
 	TelemetryEndpoint   string `json:"telemetry_endpoint"`
 
+	// 输出前缀设置
+	OutputPrefixEnabled bool   `json:"output_prefix_enabled"` // 是否为单行消息自动添加前缀
+	OutputPrefix        string `json:"output_prefix"`         // 自定义前缀，默认 "DelGuard: "
+
+	// 日志轮转设置
+	LogMaxSize     int64 `json:"log_max_size"`     // 日志文件最大大小(MB)
+	LogMaxBackups  int   `json:"log_max_backups"`  // 日志文件最大备份数量
+	LogRotateDaily bool  `json:"log_rotate_daily"` // 是否按日轮转
+	LogCompress    bool  `json:"log_compress"`     // 是否压缩旧日志
+
 	// 平台特定设置
 	Windows WindowsConfig `json:"windows"`
 	Linux   LinuxConfig   `json:"linux"`
@@ -188,6 +198,16 @@ func (c *Config) setDefaults() {
 	c.LogRetentionDays = 7
 	c.EnableTelemetry = false
 	c.TelemetryEndpoint = "https://telemetry.delguard.io/v1/report"
+
+	// 输出前缀默认值
+	c.OutputPrefixEnabled = false
+	c.OutputPrefix = ""
+
+	// 日志轮转默认设置
+	c.LogMaxSize = 100       // 100MB
+	c.LogMaxBackups = 10     // 10个备份文件
+	c.LogRotateDaily = false // 默认不按日轮转
+	c.LogCompress = true     // 默认压缩旧日志
 
 	// 平台特定默认值
 	switch runtime.GOOS {
@@ -356,6 +376,20 @@ func (c *Config) loadFromEnv() {
 				c.EnableMalwareScan = b
 			}
 		}
+	}
+
+	// 输出前缀相关
+	if v := os.Getenv("DELGUARD_OUTPUT_PREFIX_ENABLED"); v != "" {
+		if validateEnvBool(v) {
+			if b, err := strconv.ParseBool(v); err == nil {
+				c.OutputPrefixEnabled = b
+			}
+		}
+	}
+	if v := os.Getenv("DELGUARD_OUTPUT_PREFIX"); v != "" {
+		// 允许空字符串以彻底移除前缀，但通常结合 ENABLED=false 更清晰
+		// 这里直接赋值，长度限制由 T() 内部或调用处控制
+		c.OutputPrefix = v
 	}
 }
 
@@ -726,6 +760,8 @@ func applyKVToConfig(kv map[string]string, c *Config) {
 		"DELGUARD_DARWIN_USE_SYSTEM_TRASH":      &c.Darwin.UseSystemTrash,
 		"DELGUARD_DARWIN_CHECK_FILEVAULT":       &c.Darwin.CheckFileVault,
 		"DELGUARD_DARWIN_CHECK_GATEKEEPER":      &c.Darwin.CheckGatekeeper,
+		// 输出前缀
+		"DELGUARD_OUTPUT_PREFIX_ENABLED": &c.OutputPrefixEnabled,
 	}
 
 	for k, ptr := range boolKeys {
@@ -746,6 +782,8 @@ func applyKVToConfig(kv map[string]string, c *Config) {
 		"DELGUARD_WINDOWS_RECYCLE_BIN_PATH": &c.Windows.RecycleBinPath,
 		"DELGUARD_LINUX_TRASH_DIR":          &c.Linux.TrashDir,
 		"DELGUARD_DARWIN_TRASH_DIR":         &c.Darwin.TrashDir,
+		// 输出前缀
+		"DELGUARD_OUTPUT_PREFIX": &c.OutputPrefix,
 	}
 	for k, ptr := range strSet {
 		if v, ok := kv[k]; ok {

@@ -219,18 +219,19 @@ func (fv *FileValidator) GetValidationSummary(results []*FileValidationResult) s
 
 // PrintValidationResult 打印验证结果
 func PrintValidationResult(result *FileValidationResult) {
-	status := "✅"
-	if !result.IsValid {
-		status = "❌"
-	}
-	fmt.Printf("%s %s\n", status, result.FileName)
+    status := "✅"
+    if !result.IsValid {
+        status = "❌"
+    }
+    fmt.Printf("%s %s\n", status, result.FileName)
 
-	if len(result.Errors) > 0 {
-		logger.Error("文件验证失败", "error", fmt.Errorf("验证错误"), "file")
-		for _, err := range result.Errors {
-			logger.Error("验证详情", "error", fmt.Errorf(err), "detail")
-		}
-	}
+    if len(result.Errors) > 0 {
+        // 汇总错误信息并记录
+        logger.Error("文件验证失败", result.FileName, fmt.Errorf("验证错误"), "验证失败")
+        for _, e := range result.Errors {
+            logger.Error("验证详情", result.FileName, fmt.Errorf(e), "验证错误详情")
+        }
+    }
 
 	if len(result.Warnings) > 0 {
 		fmt.Println("  警告:")

@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
-	"unicode/utf8"
 	"time"
+	"unicode/utf8"
 )
 
 // sanitizeFileName 验证和清理文件名，防止路径遍历攻击
@@ -33,11 +33,25 @@ func sanitizeFileName(filename string) (string, error) {
 		return "", fmt.Errorf("检测到路径遍历攻击")
 	}
 
-	// 检查非法字符（但允许通配符）
+	// 检查非法字符（但允许通配符和驱动器路径）
 	if runtime.GOOS == "windows" {
 		// Windows非法字符（不包括 * 和 ?，它们是合法的通配符）
-		if matched, _ := regexp.MatchString(`[<>:"|]`, filename); matched {
+		// 也不包括驱动器路径中的冒号（如 C:）
+		if matched, _ := regexp.MatchString(`[<>"|]`, filename); matched {
 			return "", fmt.Errorf("包含Windows非法字符")
+		}
+
+		// 检查是否有多个冒号（驱动器路径只能有一个冒号）
+		colonCount := strings.Count(filename, ":")
+		if colonCount > 1 {
+			return "", fmt.Errorf("包含多个冒号")
+		}
+
+		// 如果有冒号，检查是否为有效的驱动器路径格式
+		if colonCount == 1 {
+			if !regexp.MustCompile(`^[a-zA-Z]:`).MatchString(filename) {
+				return "", fmt.Errorf("无效的驱动器路径格式")
+			}
 		}
 
 		// Windows保留名称
@@ -376,12 +390,22 @@ func checkFileSize(path string) error {
 
 // checkFilePermissions 检查文件权限
 func checkFilePermissions(path string, info os.FileInfo) error {
-	// 检查是否具有读取权限（至少需要读取权限才能安全删除）
-	file, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("无读取权限: %v", err)
+	// 对于目录，检查是否可以访问
+	if info.IsDir() {
+		// 检查目录访问权限
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			return fmt.Errorf("无法访问目录: %v", err)
+		}
+		_ = entries // 避免未使用变量警告
+	} else {
+		// 对于文件，检查是否可以打开
+		file, err := os.Open(path)
+		if err != nil {
+			return fmt.Errorf("无法访问文件: %v", err)
+		}
+		file.Close()
 	}
-	file.Close()
 
 	// 检查写入权限
 	if runtime.GOOS != "windows" {
@@ -401,15 +425,35 @@ func checkFilePermissions(path string, info os.FileInfo) error {
 // checkWindowsFilePermissions 检查Windows文件权限
 func checkWindowsFilePermissions(path string) error {
 	// 简化实现，Windows文件权限检查复杂
-	// 这里使用基本的文件访问检查
-	file, err := os.OpenFile(path, os.O_RDWR, 0)
+	// 检查文件/目录是否存在和可访问
+	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsPermission(err) {
 			return fmt.Errorf("Windows文件权限不足: %v", err)
 		}
 		return fmt.Errorf("无法访问文件: %v", err)
 	}
-	file.Close()
+
+	// 对于目录，检查是否可以列出内容
+	if info.IsDir() {
+		_, err := os.ReadDir(path)
+		if err != nil {
+			if os.IsPermission(err) {
+				return fmt.Errorf("Windows目录权限不足: %v", err)
+			}
+			return fmt.Errorf("无法访问目录: %v", err)
+		}
+	} else {
+		// 对于文件，尝试以只读模式打开
+		file, err := os.Open(path)
+		if err != nil {
+			if os.IsPermission(err) {
+				return fmt.Errorf("Windows文件权限不足: %v", err)
+			}
+			return fmt.Errorf("无法访问文件: %v", err)
+		}
+		file.Close()
+	}
 	return nil
 }
 

@@ -19,6 +19,7 @@ type SafeCopyOptions struct {
 	Verbose     bool
 	Recursive   bool // 新增：递归复制目录
 	Preserve    bool // 新增：保留文件属性
+	DryRun      bool // 新增：干跑模式，只输出计划不执行
 }
 
 // SafeCopy 安全复制文件
@@ -38,6 +39,10 @@ func SafeCopy(src, dst string, opts SafeCopyOptions) error {
 			log.Printf("[WARN] 源路径 %s 是目录，未指定递归参数 -r", src)
 			return fmt.Errorf("源路径 %s 是目录，使用 -r 参数进行递归复制", src)
 		}
+		if opts.DryRun {
+			log.Printf("[INFO] 干跑：将递归复制目录: %s -> %s", src, dst)
+			return nil
+		}
 		log.Printf("[INFO] 递归复制目录: %s -> %s", src, dst)
 		return copyDirectory(src, dst, opts)
 	}
@@ -51,6 +56,10 @@ func SafeCopy(src, dst string, opts SafeCopyOptions) error {
 	}
 
 	if dstErr == nil {
+		if opts.DryRun {
+			log.Printf("[INFO] 干跑：目标文件已存在，将执行安全覆盖检查: %s", dst)
+			return nil
+		}
 		log.Printf("[INFO] 目标文件已存在: %s，执行安全覆盖检查", dst)
 		return handleExistingFile(src, dst, opts)
 	}
@@ -59,6 +68,10 @@ func SafeCopy(src, dst string, opts SafeCopyOptions) error {
 		return fmt.Errorf("检查目标文件时出错 %s: %v", dst, dstErr)
 	}
 
+	if opts.DryRun {
+		log.Printf("[INFO] 干跑：将复制文件: %s -> %s", src, dst)
+		return nil
+	}
 	log.Printf("[INFO] 复制文件: %s -> %s", src, dst)
 	return copyFileSafe(src, dst, opts)
 }
@@ -67,6 +80,10 @@ func SafeCopy(src, dst string, opts SafeCopyOptions) error {
 func handleExistingFile(src, dst string, opts SafeCopyOptions) error {
 	if opts.Force {
 		// 强制模式下直接覆盖，但仍将原文件移入回收站
+		if opts.DryRun {
+			log.Printf("[INFO] 干跑：将备份现有文件到回收站并强制覆盖: %s", dst)
+			return nil
+		}
 		if err := backupExistingFile(dst); err != nil {
 			log.Printf("[WARN] 无法备份现有文件 %s: %v", dst, err)
 		}
@@ -96,7 +113,10 @@ func handleExistingFile(src, dst string, opts SafeCopyOptions) error {
 	// 文件内容不同，提示用户
 	log.Printf("[INFO] 目标文件已存在且内容不同: 源文件: %s (SHA256: %s), 目标文件: %s (SHA256: %s)", src, srcHash[:16], dst, dstHash[:16])
 
-	if opts.Interactive {
+	if opts.DryRun {
+		log.Printf("[INFO] 干跑：检测到目标已存在且内容不同，将提示用户是否覆盖")
+		return nil
+	} else if opts.Interactive {
 		log.Printf("[PROMPT] 目标文件已存在且内容不同，是否覆盖？[y/N]")
 		var input string
 		if isStdinInteractive() {
@@ -118,6 +138,10 @@ func handleExistingFile(src, dst string, opts SafeCopyOptions) error {
 	}
 
 	// 用户确认覆盖，先备份现有文件
+	if opts.DryRun {
+		log.Printf("[INFO] 干跑：将备份现有文件并覆盖复制: %s -> %s", src, dst)
+		return nil
+	}
 	if err := backupExistingFile(dst); err != nil {
 		log.Printf("[ERROR] 备份现有文件失败 %s: %v", dst, err)
 		return fmt.Errorf("备份现有文件失败 %s: %v", dst, err)
@@ -181,6 +205,10 @@ func calculateFileHash(filePath string) (string, error) {
 func copyFileSafe(src, dst string, opts SafeCopyOptions) error {
 	// 确保目标目录存在
 	destDir := filepath.Dir(dst)
+	if opts.DryRun {
+		log.Printf("[INFO] 干跑：将创建目标目录（若不存在）并复制: %s -> %s", src, dst)
+		return nil
+	}
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return fmt.Errorf("无法创建目标目录 %s: %v", destDir, err)
 	}

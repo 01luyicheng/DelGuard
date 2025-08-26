@@ -7,37 +7,52 @@ import (
 
 // smartResolveFile 智能解析文件路径
 func smartResolveFile(target string) ([]string, error) {
+	// 先提示用户没有找到指定文件
+	fmt.Printf(T("⚠️  未找到文件 '%s'，正在进行智能搜索...\n"), target)
+
 	// 获取当前目录
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return nil, err
 	}
 
-	// 创建智能搜索配置
+	// 创建增强版智能搜索配置
 	searchConfig := SmartSearchConfig{
 		SimilarityThreshold: similarityThreshold,
-		MaxResults:          maxResults,
+		MaxResults:          10, // 限制为10个结果
 		SearchContent:       searchContent,
 		Recursive:           recursive,
 		SearchParent:        searchParent,
+		CaseSensitive:       false, // 默认不区分大小写
 	}
 
-	// 创建搜索引擎
-	search := NewSmartFileSearch(searchConfig)
+	// 创建增强版搜索引擎
+	search := NewEnhancedSmartSearch(searchConfig)
 
-	// 搜索相似文件
-	results, err := search.SearchFiles(target, currentDir)
+	// 搜索相似文件（使用缓存）
+	results, err := search.SearchWithCache(target, currentDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf(T("智能搜索失败: %v"), err)
 	}
 
 	if len(results) == 0 {
-		return nil, fmt.Errorf("未找到与 '%s' 匹配的文件", target)
+		// 如果基本搜索没找到，尝试内容搜索
+		if searchContent {
+			fmt.Printf(T("🔍 未找到文件名匹配，正在搜索文件内容...\n"))
+			contentResults, contentErr := search.SearchContentWithCache(target, currentDir)
+			if contentErr == nil && len(contentResults) > 0 {
+				results = contentResults
+			} else {
+				return nil, fmt.Errorf(T("未找到与 '%s' 匹配的文件"), target)
+			}
+		} else {
+			return nil, fmt.Errorf(T("未找到与 '%s' 匹配的文件"), target)
+		}
 	}
 
 	// 如果只有一个结果且相似度很高，直接返回
 	if len(results) == 1 && results[0].Similarity >= 90.0 {
-		fmt.Printf("🔍 自动选择高相似度文件: %s (%.1f%%)\n", results[0].Path, results[0].Similarity)
+		fmt.Printf(T("🔍 自动选择高相似度文件: %s (%.1f%%)\n"), results[0].Path, results[0].Similarity)
 		return []string{results[0].Path}, nil
 	}
 

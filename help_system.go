@@ -2,9 +2,6 @@ package main
 
 import (
 	"fmt"
-	"runtime"
-	"strings"
-	"time"
 )
 
 // HelpSystem 增强的帮助系统
@@ -13,7 +10,6 @@ type HelpSystem struct {
 	feedbackMgr *FeedbackManager
 	currentLang string
 	verboseHelp bool
-	// showExamples bool // 移除重复字段
 }
 
 // NewHelpSystem 创建帮助系统
@@ -23,7 +19,6 @@ func NewHelpSystem(mode CommandMode, feedbackMgr *FeedbackManager) *HelpSystem {
 		feedbackMgr: feedbackMgr,
 		currentLang: currentLocale,
 		verboseHelp: false,
-		// showExamples: true, // 使用方法名而不是字段名
 	}
 }
 
@@ -32,8 +27,6 @@ func (hs *HelpSystem) ShowHelp() {
 	hs.showHeader()
 	hs.showUsage()
 	hs.showOptions()
-
-	// 直接调用showExamples方法而不是检查字段
 	hs.showExamples()
 
 	if hs.verboseHelp {
@@ -48,89 +41,69 @@ func (hs *HelpSystem) ShowHelp() {
 // showHeader 显示标题头部
 func (hs *HelpSystem) showHeader() {
 	modeName := hs.getModeDisplayName()
-
-	if hs.feedbackMgr.colorEnabled {
-		fmt.Printf("%s%s%s %sv%s%s - %s%s%s\n\n",
-			Colors.Bold, Colors.Blue, modeName, Colors.Reset,
-			Colors.Cyan, version, Colors.Yellow, T("跨平台安全删除工具"), Colors.Reset)
-	} else {
-		fmt.Printf("%s v%s - %s\n\n", modeName, version, T("跨平台安全删除工具"))
-	}
-
-	// 显示当前模式说明
-	modeDesc := hs.getModeDescription()
-	if modeDesc != "" {
-		fmt.Printf(T("当前模式: %s\n\n"), modeDesc)
-	}
+	fmt.Printf("%s v%s - %s\n\n", modeName, version, T("跨平台安全删除工具"))
 }
 
 // getModeDisplayName 获取模式显示名称
 func (hs *HelpSystem) getModeDisplayName() string {
 	switch hs.mode {
-	case ModeDel:
-		return "DelGuard (del 模式)"
-	case ModeRM:
-		return "DelGuard (rm 模式)"
 	case ModeCP:
-		return "DelGuard (cp 模式)"
+		return "cp"
+	case ModeDel:
+		return "del"
+	case ModeRM:
+		return "rm"
 	default:
 		return "DelGuard"
 	}
 }
 
-// getModeDescription 获取模式描述
-func (hs *HelpSystem) getModeDescription() string {
-	switch hs.mode {
-	case ModeDel:
-		return "Windows风格删除命令，默认启用交互确认和智能搜索"
-	case ModeRM:
-		return "Unix风格删除命令，支持智能搜索和安全删除"
-	case ModeCP:
-		return "安全复制命令，支持文件覆盖保护和完整性验证"
-	default:
-		return "全功能安全删除工具，提供最佳用户体验"
-	}
-}
-
-// showUsage 显示用法
+// showUsage 显示用法信息
 func (hs *HelpSystem) showUsage() {
-	fmt.Printf("%s%s%s\n", Colors.Bold, T("用法:"), Colors.Reset)
-
 	switch hs.mode {
-	case ModeDel:
-		fmt.Printf(T("  del [选项] <文件或目录>\n"))
-		fmt.Printf(T("  del [选项] <通配符模式>\n"))
-	case ModeRM:
-		fmt.Printf(T("  rm [选项] <文件或目录>\n"))
-		fmt.Printf(T("  rm [选项] <通配符模式>\n"))
 	case ModeCP:
-		fmt.Printf(T("  cp [选项] <源文件> <目标文件>\n"))
-		fmt.Printf(T("  cp [选项] <源文件> <目标目录>\n"))
-		fmt.Printf(T("  cp [选项] <多个源文件> <目标目录>\n"))
+		fmt.Printf("%s:\n", T("用法"))
+		fmt.Printf("  cp [%s] <%s> <%s>\n", T("选项"), T("源文件"), T("目标文件"))
+		fmt.Printf("  cp [%s] <%s...> <%s>\n\n", T("选项"), T("源文件"), T("目标目录"))
+	case ModeDel:
+		fmt.Printf("%s:\n", T("用法"))
+		fmt.Printf("  del [%s] <%s...>\n\n", T("选项"), T("文件或目录"))
+	case ModeRM:
+		fmt.Printf("%s:\n", T("用法"))
+		fmt.Printf("  rm [%s] <%s...>\n\n", T("选项"), T("文件或目录"))
 	default:
-		fmt.Printf(T("  delguard [选项] <文件或目录>\n"))
-		fmt.Printf(T("  delguard [选项] <通配符模式>\n"))
-		fmt.Printf(T("  delguard --install    # 安装系统别名\n"))
-		fmt.Printf(T("  delguard --restore    # 从回收站恢复文件\n"))
+		fmt.Printf("%s:\n", T("用法"))
+		fmt.Printf("  delguard [%s] <%s...>\n", T("选项"), T("文件或目录"))
+		fmt.Printf("  delguard restore [%s] [%s]\n\n", T("选项"), T("模式"))
 	}
-	fmt.Println()
 }
 
-// showOptions 显示选项
+// showOptions 显示选项信息
 func (hs *HelpSystem) showOptions() {
-	fmt.Printf("%s%s%s\n", Colors.Bold, T("选项:"), Colors.Reset)
+	fmt.Printf("%s:\n", T("选项"))
 
-	// 基础选项
-	hs.showBasicOptions()
+	// 基本选项（所有模式都支持）
+	basicOptions := [][]string{
+		{"-r, --recursive", T("递归处理目录")},
+		{"-f, --force", T("强制执行，跳过确认")},
+		{"-i, --interactive", T("交互模式，逐个确认")},
+		{"-v, --verbose", T("详细输出")},
+		{"-q, --quiet", T("静默模式")},
+		{"-n, --dry-run", T("预览模式，不实际执行")},
+		{"-h, --help", T("显示帮助信息")},
+		{"--version", T("显示版本信息")},
+	}
 
-	// 模式特定选项
+	for _, opt := range basicOptions {
+		fmt.Printf("  %-20s %s\n", opt[0], opt[1])
+	}
+
+	// 根据模式显示特定选项
 	switch hs.mode {
-	case ModeDel:
-		hs.showDelOptions()
-	case ModeRM:
-		hs.showRmOptions()
 	case ModeCP:
-		hs.showCpOptions()
+		hs.showCopyOptions()
+	case ModeDel, ModeRM:
+		hs.showDeleteOptions()
 	default:
 		hs.showDelGuardOptions()
 	}
@@ -138,406 +111,213 @@ func (hs *HelpSystem) showOptions() {
 	fmt.Println()
 }
 
-// showBasicOptions 显示基础选项
-func (hs *HelpSystem) showBasicOptions() {
-	options := [][]string{
-		{"-h, --help", "显示此帮助信息"},
-		{"-v, --version", "显示版本信息"},
-		{"-q, --quiet", "安静模式：仅输出错误信息"},
-		{"--verbose", "详细模式：输出详细操作信息"},
-		{"-n, --dry-run", "试运行：显示将要执行的操作但不实际执行"},
-		{"-i, --interactive", "交互模式：删除前确认"},
-		{"-f, --force", "强制模式：忽略警告直接执行"},
-		{"-y, --yes", "跳过确认：对所有询问默认回答'是'"},
+// showCopyOptions 显示复制模式特有选项
+func (hs *HelpSystem) showCopyOptions() {
+	fmt.Printf("\n%s:\n", T("复制选项"))
+	copyOptions := [][]string{
+		{"-p, --preserve", T("保留文件属性")},
+		{"-a, --archive", T("归档模式（等同于 -rp）")},
+		{"-u, --update", T("仅复制较新的文件")},
+		{"--no-clobber", T("不覆盖现有文件")},
 	}
 
-	hs.printOptions(options)
-}
-
-// showDelOptions 显示del模式选项
-func (hs *HelpSystem) showDelOptions() {
-	fmt.Printf("\n%s%s%s\n", Colors.Cyan, T("del模式特有选项:"), Colors.Reset)
-	options := [][]string{
-		{"-r, --recursive", "递归删除目录"},
-		{"--smart-search", "启用智能搜索（默认开启）"},
-		{"--search-content", "搜索文件内容"},
+	for _, opt := range copyOptions {
+		fmt.Printf("  %-20s %s\n", opt[0], opt[1])
 	}
-	hs.printOptions(options)
 }
 
-// showRmOptions 显示rm模式选项
-func (hs *HelpSystem) showRmOptions() {
-	fmt.Printf("\n%s%s%s\n", Colors.Cyan, T("rm模式特有选项:"), Colors.Reset)
-	options := [][]string{
-		{"-r, -R, --recursive", "递归删除目录"},
-		{"--smart-search", "启用智能搜索（默认开启）"},
-		{"--preserve-root", "保护根目录（默认开启）"},
+// showDeleteOptions 显示删除模式特有选项
+func (hs *HelpSystem) showDeleteOptions() {
+	fmt.Printf("\n%s:\n", T("删除选项"))
+	deleteOptions := [][]string{
+		{"--smart-search", T("启用智能搜索")},
+		{"--search-content", T("搜索文件内容")},
+		{"--search-parent", T("搜索父目录")},
+		{"--similarity N", T("设置相似度阈值 (0-100)")},
+		{"--max-results N", T("限制搜索结果数量")},
 	}
-	hs.printOptions(options)
-}
 
-// showCpOptions 显示cp模式选项
-func (hs *HelpSystem) showCpOptions() {
-	fmt.Printf("\n%s%s%s\n", Colors.Cyan, T("cp模式特有选项:"), Colors.Reset)
-	options := [][]string{
-		{"-r, --recursive", "递归复制目录"},
-		{"-p, --preserve", "保持文件属性"},
-		{"-u, --update", "仅复制更新的文件"},
-		{"--safe-copy", "安全复制模式（默认开启）"},
-		{"--verify-integrity", "验证文件完整性"},
-		{"--protect", "启用文件覆盖保护"},
+	for _, opt := range deleteOptions {
+		fmt.Printf("  %-20s %s\n", opt[0], opt[1])
 	}
-	hs.printOptions(options)
 }
 
-// showDelGuardOptions 显示DelGuard完整选项
+// showDelGuardOptions 显示DelGuard模式特有选项
 func (hs *HelpSystem) showDelGuardOptions() {
-	fmt.Printf("\n%s%s%s\n", Colors.Cyan, T("DelGuard完整选项:"), Colors.Reset)
-
-	// 智能删除选项
-	smartOptions := [][]string{
-		{"--smart-search", "启用智能搜索（推荐）"},
-		{"--search-content", "搜索文件内容"},
-		{"--search-parent", "搜索父目录"},
-		{"--similarity <值>", "相似度阈值 (0.0-1.0)"},
-		{"--max-results <数量>", "最大搜索结果数"},
+	fmt.Printf("\n%s:\n", T("高级选项"))
+	advancedOptions := [][]string{
+		{"--validate-only", T("仅验证文件，不执行删除")},
+		{"--safe-copy", T("启用安全复制模式")},
+		{"--timeout DURATION", T("设置操作超时时间")},
+		{"--smart-search", T("启用智能搜索")},
+		{"--search-content", T("搜索文件内容")},
+		{"--search-parent", T("搜索父目录")},
+		{"--similarity N", T("设置相似度阈值 (0-100)")},
+		{"--max-results N", T("限制搜索结果数量")},
+		{"--install", T("安装系统别名")},
+		{"--uninstall", T("卸载系统别名")},
+		{"--lang LANG", T("设置语言")},
+		{"--config FILE", T("指定配置文件")},
+		{"--security-scan", T("执行文件安全检查（识别潜在风险文件）")},
+		{"--security-check", T("执行系统安全检查（全面安全评估）")},
 	}
-	fmt.Printf("\n  %s%s%s\n", Colors.Yellow, T("智能搜索:"), Colors.Reset)
-	hs.printOptions(smartOptions)
 
-	// 安全选项
-	securityOptions := [][]string{
-		{"--protect", "启用文件覆盖保护"},
-		{"--secure-delete", "安全删除（多次覆写）"},
-		{"--verify-integrity", "验证文件完整性"},
-		{"--backup-dir <目录>", "指定备份目录"},
-		{"--auto-backup", "自动备份重要文件"},
+	for _, opt := range advancedOptions {
+		fmt.Printf("  %-20s %s\n", opt[0], opt[1])
 	}
-	fmt.Printf("\n  %s%s%s\n", Colors.Yellow, T("安全选项:"), Colors.Reset)
-	hs.printOptions(securityOptions)
 
-	// 性能选项
-	performanceOptions := [][]string{
-		{"--parallel", "启用并行处理"},
-		{"--max-workers <数量>", "最大工作线程数"},
-		{"--batch-size <大小>", "批处理大小"},
-		{"--timeout <时长>", "操作超时时间"},
-		{"--eager-mode", "积极模式（更快处理）"},
+	fmt.Printf("\n%s:\n", T("恢复选项"))
+	restoreOptions := [][]string{
+		{"restore", T("恢复已删除的文件")},
+		{"restore --list", T("列出可恢复的文件")},
+		{"restore --all", T("恢复所有文件")},
+		{"restore PATTERN", T("恢复匹配模式的文件")},
 	}
-	fmt.Printf("\n  %s%s%s\n", Colors.Yellow, T("性能选项:"), Colors.Reset)
-	hs.printOptions(performanceOptions)
 
-	// 界面选项
-	uiOptions := [][]string{
-		{"--color-output", "彩色输出（默认开启）"},
-		{"--show-progress", "显示详细进度"},
-		{"--show-stats", "显示统计信息"},
-		{"--notifications", "桌面通知"},
-		{"--lang <语言>", "设置界面语言"},
-	}
-	fmt.Printf("\n  %s%s%s\n", Colors.Yellow, T("界面选项:"), Colors.Reset)
-	hs.printOptions(uiOptions)
-
-	// 过滤选项
-	filterOptions := [][]string{
-		{"--include-pattern <模式>", "包含文件模式"},
-		{"--exclude-pattern <模式>", "排除文件模式"},
-		{"--file-size-limit <大小>", "文件大小限制"},
-		{"--age-filter <时长>", "文件年龄过滤器"},
-		{"--skip-hidden", "跳过隐藏文件"},
-		{"--follow-symlinks", "跟随符号链接"},
-	}
-	fmt.Printf("\n  %s%s%s\n", Colors.Yellow, T("过滤选项:"), Colors.Reset)
-	hs.printOptions(filterOptions)
-
-	// 配置选项
-	configOptions := [][]string{
-		{"--config <文件>", "指定配置文件路径"},
-		{"--install", "安装系统别名"},
-		{"--uninstall", "卸载系统别名"},
-		{"--restore", "从回收站恢复文件"},
-	}
-	fmt.Printf("\n  %s%s%s\n", Colors.Yellow, T("配置管理:"), Colors.Reset)
-	hs.printOptions(configOptions)
-}
-
-// printOptions 打印选项列表
-func (hs *HelpSystem) printOptions(options [][]string) {
-	for _, option := range options {
-		flag := option[0]
-		desc := option[1]
-
-		if hs.feedbackMgr.colorEnabled {
-			fmt.Printf("  %s%-25s%s %s\n", Colors.Green, flag, Colors.Reset, T(desc))
-		} else {
-			fmt.Printf("  %-25s %s\n", flag, T(desc))
-		}
+	for _, opt := range restoreOptions {
+		fmt.Printf("  %-20s %s\n", opt[0], opt[1])
 	}
 }
 
 // showExamples 显示使用示例
 func (hs *HelpSystem) showExamples() {
-	fmt.Printf("%s%s%s\n", Colors.Bold, T("使用示例:"), Colors.Reset)
+	fmt.Printf("%s:\n", T("使用示例"))
 
 	switch hs.mode {
-	case ModeDel:
-		hs.showDelExamples()
-	case ModeRM:
-		hs.showRmExamples()
 	case ModeCP:
-		hs.showCpExamples()
+		examples := [][]string{
+			{"cp file.txt backup.txt", T("复制文件")},
+			{"cp -r folder/ backup/", T("递归复制目录")},
+			{"cp -i *.txt backup/", T("交互式复制多个文件")},
+			{"cp -p file.txt backup.txt", T("保留文件属性复制")},
+		}
+		for _, ex := range examples {
+			fmt.Printf("  %-30s # %s\n", ex[0], ex[1])
+		}
+	case ModeDel:
+		examples := [][]string{
+			{"del file.txt", T("删除文件")},
+			{"del -r folder", T("递归删除目录")},
+			{"del -i *.tmp", T("交互式删除临时文件")},
+			{"del --smart-search myfile", T("智能搜索并删除")},
+		}
+		for _, ex := range examples {
+			fmt.Printf("  %-30s # %s\n", ex[0], ex[1])
+		}
+	case ModeRM:
+		examples := [][]string{
+			{"rm file.txt", T("删除文件")},
+			{"rm -rf folder", T("强制递归删除目录")},
+			{"rm -i *.log", T("交互式删除日志文件")},
+			{"rm --smart-search oldfile", T("智能搜索并删除")},
+		}
+		for _, ex := range examples {
+			fmt.Printf("  %-30s # %s\n", ex[0], ex[1])
+		}
 	default:
-		hs.showDelGuardExamples()
+		examples := [][]string{
+			{"delguard file.txt", T("安全删除文件")},
+			{"delguard -r folder", T("递归删除目录")},
+			{"delguard --smart-search myfile", T("智能搜索并删除")},
+			{"delguard search pattern", T("独立搜索文件")},
+			{"delguard restore", T("恢复已删除的文件")},
+			{"delguard restore --list", T("列出可恢复的文件")},
+			{"delguard --install", T("安装系统别名")},
+		{"delguard --security-scan file.exe", T("检查文件安全风险（可执行文件等）")},
+		{"delguard --security-scan /path/to/dir", T("检查目录中的潜在风险文件")},
 	}
-
+		for _, ex := range examples {
+			fmt.Printf("  %-30s # %s\n", ex[0], ex[1])
+		}
+	}
 	fmt.Println()
 }
 
-// showDelExamples 显示del模式示例
-func (hs *HelpSystem) showDelExamples() {
-	examples := [][]string{
-		{"del file.txt", "删除单个文件"},
-		{"del -r folder/", "递归删除目录"},
-		{"del *.tmp", "删除所有.tmp文件"},
-		{"del -i important.doc", "交互式删除重要文件"},
-		{"del -n folder/", "试运行：显示将要删除的文件"},
-	}
-	hs.printExamples(examples)
-}
-
-// showRmExamples 显示rm模式示例
-func (hs *HelpSystem) showRmExamples() {
-	examples := [][]string{
-		{"rm file.txt", "删除单个文件"},
-		{"rm -rf folder/", "强制递归删除目录"},
-		{"rm -i *.log", "交互式删除所有日志文件"},
-		{"rm --smart-search myfile", "智能搜索并删除相似文件"},
-	}
-	hs.printExamples(examples)
-}
-
-// showCpExamples 显示cp模式示例
-func (hs *HelpSystem) showCpExamples() {
-	examples := [][]string{
-		{"cp file.txt backup.txt", "复制文件"},
-		{"cp -r folder/ backup/", "递归复制目录"},
-		{"cp -p file.txt dest/", "保持属性复制"},
-		{"cp --verify-integrity data.zip dest/", "验证完整性复制"},
-		{"cp --protect file.txt existing.txt", "保护模式复制"},
-	}
-	hs.printExamples(examples)
-}
-
-// showDelGuardExamples 显示DelGuard示例
-func (hs *HelpSystem) showDelGuardExamples() {
-	examples := [][]string{
-		{"delguard file.txt", "安全删除文件（移动到回收站）"},
-		{"delguard -r --smart-search myfolder", "智能搜索并递归删除目录"},
-		{"delguard --auto-backup important.doc", "自动备份后删除"},
-		{"delguard --parallel *.log", "并行删除所有日志文件"},
-		{"delguard --secure-delete secret.txt", "安全删除（多次覆写）"},
-		{"delguard --include-pattern '*.tmp' --exclude-pattern '*important*' .", "按模式删除文件"},
-		{"delguard --config /path/to/config.json file.txt", "使用自定义配置"},
-		{"delguard --restore", "从回收站恢复文件"},
-		{"delguard --install", "安装系统别名"},
-	}
-	hs.printExamples(examples)
-}
-
-// printExamples 打印示例列表
-func (hs *HelpSystem) printExamples(examples [][]string) {
-	for _, example := range examples {
-		command := example[0]
-		desc := example[1]
-
-		if hs.feedbackMgr.colorEnabled {
-			fmt.Printf("  %s$%s %s%-40s%s # %s\n",
-				Colors.Gray, Colors.Reset, Colors.Cyan, command, Colors.Reset, T(desc))
-		} else {
-			fmt.Printf("  $ %-40s # %s\n", command, T(desc))
-		}
-	}
-}
-
-// showAdvancedOptions 显示高级选项
+// showAdvancedOptions 显示高级选项（详细模式）
 func (hs *HelpSystem) showAdvancedOptions() {
-	fmt.Printf("%s%s%s\n", Colors.Bold, T("高级配置:"), Colors.Reset)
+	fmt.Printf("%s:\n", T("高级配置选项"))
 
-	fmt.Printf("\n  %s%s%s\n", Colors.Yellow, T("环境变量:"), Colors.Reset)
-	envVars := [][]string{
-		{"DELGUARD_CONFIG", "配置文件路径"},
-		{"DELGUARD_LANGUAGE", "界面语言"},
-		{"DELGUARD_INTERACTIVE", "默认交互模式"},
-		{"DELGUARD_USE_RECYCLE_BIN", "是否使用回收站"},
-		{"DELGUARD_LOG_LEVEL", "日志级别"},
-		{"DELGUARD_MAX_WORKERS", "最大工作线程数"},
+	performanceOptions := [][]string{
+		{"--batch-size N", T("批处理大小")},
+		{"--max-workers N", T("最大工作线程数")},
+		{"--parallel", T("启用并行处理")},
+		{"--show-progress", T("显示进度条")},
+		{"--auto-backup", T("自动备份")},
+		{"--backup-dir DIR", T("指定备份目录")},
+		{"--compression-level N", T("压缩级别 (0-9)")},
+		{"--verify-integrity", T("验证文件完整性")},
+		{"--secure-delete", T("安全删除（多次覆写）")},
+		{"--show-stats", T("显示统计信息")},
+		{"--color-output", T("彩色输出")},
+		{"--log-format FORMAT", T("日志格式")},
+		{"--notifications", T("启用通知")},
+		{"--preserve-times", T("保留时间戳")},
+		{"--skip-hidden", T("跳过隐藏文件")},
+		{"--file-size-limit SIZE", T("文件大小限制")},
+		{"--include-pattern PATTERN", T("包含模式")},
+		{"--exclude-pattern PATTERN", T("排除模式")},
+		{"--regex-mode", T("正则表达式模式")},
+		{"--case-sensitive", T("大小写敏感")},
+		{"--follow-symlinks", T("跟随符号链接")},
+		{"--eager-mode", T("积极模式")},
+		{"--smart-cleanup", T("智能清理")},
+		{"--conflict-resolution MODE", T("冲突解决模式")},
+		{"--file-type-filters TYPE", T("文件类型过滤器")},
+		{"--age-filter AGE", T("文件年龄过滤器")},
+		{"--size-filter SIZE", T("文件大小过滤器")},
+		{"--custom-script SCRIPT", T("自定义脚本")},
+		{"--hooks-enabled", T("启用钩子")},
 	}
-	hs.printOptions(envVars)
 
-	fmt.Printf("\n  %s%s%s\n", Colors.Yellow, T("配置文件支持的格式:"), Colors.Reset)
-	formats := [][]string{
-		{"JSON (.json)", "标准JSON格式"},
-		{"JSONC (.jsonc)", "支持注释的JSON"},
-		{"YAML (.yaml, .yml)", "YAML格式"},
-		{"TOML (.toml)", "TOML格式"},
-		{"INI (.ini, .cfg)", "INI配置格式"},
-		{"Properties (.properties)", "Java Properties格式"},
+	for _, opt := range performanceOptions {
+		fmt.Printf("  %-25s %s\n", opt[0], opt[1])
 	}
-	hs.printOptions(formats)
-
-	fmt.Printf("\n  %s%s%s\n", Colors.Yellow, T("支持的语言:"), Colors.Reset)
-	languages := [][]string{
-		{"zh-CN", "简体中文"},
-		{"zh-TW", "繁体中文"},
-		{"en-US", "英语"},
-		{"ja", "日语"},
-		{"ko-KR", "韩语"},
-		{"es-ES", "西班牙语"},
-		{"fr-FR", "法语"},
-		{"de-DE", "德语"},
-		{"ru-RU", "俄语"},
-		{"ar-SA", "阿拉伯语"},
-		{"auto", "自动检测"},
-	}
-	hs.printOptions(languages)
-
 	fmt.Println()
 }
 
 // showConfiguration 显示配置信息
 func (hs *HelpSystem) showConfiguration() {
-	fmt.Printf("%s%s%s\n", Colors.Bold, T("配置文件位置:"), Colors.Reset)
-
-	// 配置文件搜索路径
-	paths := []string{
-		"~/.delguard/config.json",
-		"/etc/delguard/config.json",
-		"./config.json",
-	}
-
-	if runtime.GOOS == "windows" {
-		paths = []string{
-			"%USERPROFILE%\\.delguard\\config.json",
-			"%SystemRoot%\\delguard\\config.json",
-			".\\config.json",
-		}
-	}
-
-	fmt.Printf(T("  DelGuard按以下优先级搜索配置文件:\n"))
-	for i, path := range paths {
-		fmt.Printf("  %d. %s\n", i+1, path)
-	}
-
-	fmt.Printf("\n  %s%s%s\n", Colors.Yellow, T("配置示例:"), Colors.Reset)
-	fmt.Printf(`  {
-    "use_recycle_bin": true,
-    "interactive_mode": "confirm",
-    "language": "auto",
-    "performance": {
-      "parallel": true,
-      "max_workers": 4
-    },
-    "ui": {
-      "color_output": true,
-      "show_progress": true
-    }
-  }
-`)
-
+	fmt.Printf("%s:\n", T("配置文件"))
+	fmt.Printf("  %s: ~/.delguard/config.yaml\n", T("默认配置文件"))
+	fmt.Printf("  %s: DELGUARD_CONFIG\n", T("环境变量"))
+	fmt.Printf("  %s: --config FILE\n", T("命令行指定"))
 	fmt.Println()
 }
 
-// showTroubleshooting 显示故障排除
+// showTroubleshooting 显示故障排除信息
 func (hs *HelpSystem) showTroubleshooting() {
-	fmt.Printf("%s%s%s\n", Colors.Bold, T("故障排除:"), Colors.Reset)
-
-	troubleshooting := [][]string{
-		{"权限不足", "尝试以管理员身份运行程序"},
-		{"文件不存在", "使用 --smart-search 选项进行智能搜索"},
-		{"文件被占用", "关闭使用该文件的程序，或使用 --force 选项"},
-		{"回收站不支持", "检查当前平台是否支持回收站功能"},
-		{"配置文件错误", "使用 --validate-only 选项验证配置文件"},
-		{"语言包缺失", "检查语言包文件是否完整"},
-		{"性能问题", "调整 --max-workers 和 --batch-size 参数"},
-		{"内存不足", "使用 --lazy-load 选项减少内存使用"},
-	}
-
-	for _, item := range troubleshooting {
-		problem := item[0]
-		solution := item[1]
-		fmt.Printf("  %s%s%s %s\n", Colors.Red, T("问题:"), Colors.Reset, T(problem))
-		fmt.Printf("  %s%s%s %s\n\n", Colors.Green, T("解决:"), Colors.Reset, T(solution))
-	}
+	fmt.Printf("%s:\n", T("故障排除"))
+	fmt.Printf("  %s:\n", T("常见问题"))
+	fmt.Printf("    • %s\n", T("权限不足：以管理员身份运行"))
+	fmt.Printf("    • %s\n", T("文件被占用：关闭相关程序"))
+	fmt.Printf("    • %s\n", T("路径不存在：检查路径拼写"))
+	fmt.Printf("    • %s\n", T("回收站已满：清空回收站"))
+	fmt.Printf("  %s:\n", T("获取帮助"))
+	fmt.Printf("    • %s: https://github.com/user/delguard/issues\n", T("问题反馈"))
+	fmt.Printf("    • %s: https://github.com/user/delguard/wiki\n", T("文档"))
+	fmt.Println()
 }
 
 // showFooter 显示页脚信息
 func (hs *HelpSystem) showFooter() {
-	fmt.Printf("%s%s%s\n", Colors.Bold, T("更多信息:"), Colors.Reset)
-	fmt.Printf("  %s https://github.com/delguard/delguard\n", T("项目主页:"))
-	fmt.Printf("  %s https://github.com/delguard/delguard/issues\n", T("问题报告:"))
-	fmt.Printf("  %s https://delguard.readthedocs.io\n", T("文档地址:"))
-
-	fmt.Printf("\n%s%s:%s\n", Colors.Bold, T("版本信息"), Colors.Reset)
-	fmt.Printf("  %s %s\n", T("版本:"), version)
-	fmt.Printf("  %s %s\n", T("构建时间:"), time.Now().Format("2006-01-02"))
-	fmt.Printf("  %s %s\n", T("Go版本:"), runtime.Version())
-	fmt.Printf("  %s %s/%s\n", T("系统:"), runtime.GOOS, runtime.GOARCH)
-
-	fmt.Printf("\n%s%s%s MIT License\n", Colors.Bold, T("许可证:"), Colors.Reset)
-	fmt.Printf("Copyright (c) 2024 DelGuard Team\n")
-
-	if hs.feedbackMgr.colorEnabled {
-		fmt.Printf("\n%s%s%s %s\n",
-			Colors.Bold+Colors.Green, T("感谢使用 DelGuard！"), Colors.Reset, Icons.Success)
-	} else {
-		fmt.Printf("\n%s\n", T("感谢使用 DelGuard！"))
-	}
+	fmt.Printf("%s:\n", T("注意事项"))
+	fmt.Printf("  • %s\n", T("DelGuard 会将文件移动到系统回收站，不会直接删除"))
+	fmt.Printf("  • %s\n", T("cp 命令会安全处理文件覆盖，将原文件移入回收站"))
+	fmt.Printf("  • %s\n", T("使用 --dry-run 可以预览操作而不实际执行"))
+	fmt.Printf("  • %s\n", T("使用 restore 命令可以恢复已删除的文件"))
+	fmt.Println()
 }
 
-// ShowQuickHelp 显示快速帮助
-func (hs *HelpSystem) ShowQuickHelp() {
-	modeName := strings.ToLower(hs.getModeDisplayName())
-
-	fmt.Printf(T("快速帮助 - %s\n\n"), modeName)
-
+// getModeDescription 获取模式描述
+func (hs *HelpSystem) getModeDescription() string {
 	switch hs.mode {
-	case ModeDel:
-		fmt.Printf(T("常用命令:\n"))
-		fmt.Printf("  del file.txt          # %s\n", T("删除文件"))
-		fmt.Printf("  del -r folder/        # %s\n", T("删除目录"))
-		fmt.Printf("  del -i important.*    # %s\n", T("交互式删除"))
-	case ModeRM:
-		fmt.Printf(T("常用命令:\n"))
-		fmt.Printf("  rm file.txt           # %s\n", T("删除文件"))
-		fmt.Printf("  rm -rf folder/        # %s\n", T("强制删除目录"))
-		fmt.Printf("  rm -i *.log          # %s\n", T("交互式删除"))
 	case ModeCP:
-		fmt.Printf(T("常用命令:\n"))
-		fmt.Printf("  cp file.txt dest.txt  # %s\n", T("复制文件"))
-		fmt.Printf("  cp -r src/ dest/      # %s\n", T("复制目录"))
-		fmt.Printf("  cp -p file.txt dest/  # %s\n", T("保持属性"))
+		return T("安全复制模式 - 复制文件时自动备份目标文件")
+	case ModeDel:
+		return T("Windows风格删除模式 - 兼容del命令语法")
+	case ModeRM:
+		return T("Unix风格删除模式 - 兼容rm命令语法")
 	default:
-		fmt.Printf(T("常用命令:\n"))
-		fmt.Printf("  delguard file.txt     # %s\n", T("安全删除"))
-		fmt.Printf("  delguard --install    # %s\n", T("安装别名"))
-		fmt.Printf("  delguard --restore    # %s\n", T("恢复文件"))
+		return T("DelGuard默认模式 - 提供完整的安全删除功能")
 	}
-
-	fmt.Printf(T("\n使用 %s --help 查看完整帮助\n"), modeName)
-}
-
-// ShowVersionInfo 显示版本信息
-func (hs *HelpSystem) ShowVersionInfo() {
-	if hs.feedbackMgr.colorEnabled {
-		fmt.Printf("%sDelGuard%s v%s%s%s\n",
-			Colors.Bold+Colors.Blue, Colors.Reset,
-			Colors.Cyan, version, Colors.Reset)
-	} else {
-		fmt.Printf("DelGuard v%s\n", version)
-	}
-
-	fmt.Printf("%s\n", T("跨平台安全删除工具"))
-	fmt.Printf("%s %s %s\n", T("构建信息:"), runtime.GOOS, runtime.GOARCH)
-	fmt.Printf("%s %s\n", T("Go版本:"), runtime.Version())
-	fmt.Printf("%s MIT\n", T("许可证:"))
 }

@@ -771,3 +771,56 @@ func (ec *ErrorCollector) Clear() {
 	defer ec.mu.Unlock()
 	ec.errors = ec.errors[:0]
 }
+
+// ErrorHandler 错误处理器接口
+type ErrorHandler interface {
+	HandleError(err error, operation string, critical bool) bool
+}
+
+// DefaultErrorHandler 默认错误处理器
+type DefaultErrorHandler struct {
+	exitOnCritical bool
+}
+
+// NewDefaultErrorHandler 创建默认错误处理器
+func NewDefaultErrorHandler(exitOnCritical bool) *DefaultErrorHandler {
+	return &DefaultErrorHandler{
+		exitOnCritical: exitOnCritical,
+	}
+}
+
+// HandleError 处理错误
+func (h *DefaultErrorHandler) HandleError(err error, operation string, critical bool) bool {
+	if err == nil {
+		return true
+	}
+
+	// 记录错误日志
+	LogError(operation, "", err)
+
+	// 如果是关键错误且配置为退出
+	if critical && h.exitOnCritical {
+		fmt.Fprintf(os.Stderr, T("关键错误: %v\n"), err)
+		if ExitHandler != nil {
+			ExitHandler(1)
+		}
+		return false
+	}
+
+	// 非关键错误，只输出警告
+	fmt.Fprintf(os.Stderr, T("警告: %s 操作失败: %v\n"), operation, err)
+	return false
+}
+
+// 全局错误处理器实例
+var globalErrorHandler ErrorHandler = NewDefaultErrorHandler(true)
+
+// SetErrorHandler 设置全局错误处理器
+func SetErrorHandler(handler ErrorHandler) {
+	globalErrorHandler = handler
+}
+
+// HandleError 全局错误处理函数
+func HandleError(err error, operation string, critical bool) bool {
+	return globalErrorHandler.HandleError(err, operation, critical)
+}
