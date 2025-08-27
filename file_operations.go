@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -142,11 +143,15 @@ func BackupFileBeforeOverwrite(filename string) error {
 		return nil // 文件不存在，无需备份
 	}
 
+	// 获取文件名用于提示
+	filenameBase := filepath.Base(filename)
+
 	// 生成备份文件名
 	backupName := filename + ".backup." + time.Now().Format("20060102150405")
 
 	// 复制文件到备份位置
 	if err := copyFile(filename, backupName); err != nil {
+		showOverwriteError(err, filenameBase)
 		return fmt.Errorf("创建备份文件失败: %v", err)
 	}
 
@@ -154,9 +159,12 @@ func BackupFileBeforeOverwrite(filename string) error {
 	if err := moveToTrashPlatform(filename); err != nil {
 		// 如果移动到回收站失败，删除备份文件并返回错误
 		os.Remove(backupName)
+		showOverwriteError(err, filenameBase)
 		return fmt.Errorf("移动原文件到回收站失败: %v", err)
 	}
 
+	// 成功备份后显示提示
+	fmt.Printf("DelGuard: [%s] 原文件已备份到回收站，准备覆盖\n", filenameBase)
 	return nil
 }
 
@@ -324,6 +332,9 @@ func (sfo *SecureFileOperations) Rename(oldpath, newpath string) error {
 	}
 
 	// 检查目标文件是否存在
+	oldFilename := filepath.Base(oldpath)
+	newFilename := filepath.Base(newpath)
+	
 	if _, err := os.Stat(newpath); err == nil {
 		// 文件存在，备份原文件
 		if err := BackupFileBeforeOverwrite(newpath); err != nil {
@@ -331,17 +342,51 @@ func (sfo *SecureFileOperations) Rename(oldpath, newpath string) error {
 		}
 	}
 
-	// 创建覆盖保护器
-	config, err := LoadConfig()
-	if err != nil {
-		return fmt.Errorf("加载配置失败: %w", err)
+	// 执行重命名
+	if err := os.Rename(oldpath, newpath); err != nil {
+		showOverwriteError(err, newFilename)
+		return fmt.Errorf("重命名文件失败: %v", err)
 	}
 
-	protector := NewOverwriteProtector(config)
-	if err := protector.ProtectOverwrite(newpath); err != nil {
-		return fmt.Errorf("覆盖保护失败: %w", err)
-	}
+	// 成功重命名后显示提示
+	fmt.Printf("DelGuard: 文件重命名完成 [%s] -> [%s]\n", oldFilename, newFilename)
+	return nil
+}
 
-	// 重命名文件
-	return os.Rename(oldpath, newpath)
+// showOverwriteError 显示覆盖操作的友好错误信息
+func showOverwriteError(err error, filename string) {
+	// 根据错误类型提供不同的提示
+	errMsg := err.Error()
+	switch {
+	case strings.Contains(errMsg, "permission") || strings.Contains(errMsg, "权限"):
+		fmt.Printf("DelGuard: 无法处理 [%s] - 权限不足\n", filename)
+		fmt.Println("建议：")
+		fmt.Println("  1. 以管理员身份重新运行程序")
+		fmt.Println("  2. 检查文件是否被其他程序占用")
+		fmt.Println("  3. 确认您对该文件有写入权限")
+	case strings.Contains(errMsg, "not found") || strings.Contains(errMsg, "不存在"):
+		fmt.Printf("DelGuard: 无法处理 [%s] - 文件不存在\n", filename)
+		fmt.Println("建议：")
+		fmt.Println("  1. 检查文件路径是否正确")
+		fmt.Println("  2. 使用绝对路径或相对路径")
+		fmt.Println("  3. 确认文件没有被移动或重命名")
+	case strings.Contains(errMsg, "in use") || strings.Contains(errMsg, "被使用"):
+		fmt.Printf("DelGuard: 无法处理 [%s] - 文件正在被使用\n", filename)
+		fmt.Println("建议：")
+		fmt.Println("  1. 关闭正在使用该文件的程序")
+		fmt.Println("  2. 等待文件操作完成后重试")
+		fmt.Println("  3. 重启电脑后再次尝试")
+	case strings.Contains(errMsg, "space") || strings.Contains(errMsg, "空间"):
+		fmt.Printf("DelGuard: 无法处理 [%s] - 磁盘空间不足\n", filename)
+		fmt.Println("建议：")
+		fmt.Println("  1. 清理磁盘空间")
+		fmt.Println("  2. 删除不必要的文件")
+		fmt.Println("  3. 将文件保存到其他磁盘")
+	default:
+		fmt.Printf("DelGuard: 无法处理 [%s] - %s\n", filename, errMsg)
+		fmt.Println("建议：")
+		fmt.Println("  1. 检查磁盘空间是否充足")
+		fmt.Println("  2. 确认文件系统没有错误")
+		fmt.Println("  3. 联系技术支持获取帮助")
+	}
 }

@@ -261,8 +261,19 @@ func (sd *SmartDelete) deleteFile(filePath string) error {
 		return err
 	}
 
+	filename := filepath.Base(filePath)
+	
 	// 使用现有的删除函数
-	return moveToTrashPlatform(filePath)
+	if err := moveToTrashPlatform(filePath); err != nil {
+		// 显示友好的错误信息
+		fmt.Printf("DelGuard: 无法删除 [%s] - %s\n", filename, err.Error())
+		fmt.Println("建议：检查路径权限或确认文件未被占用")
+		return err
+	}
+
+	// 成功删除后显示提示
+	fmt.Printf("DelGuard: [%s] 已被安全移动到回收站\n", filename)
+	return nil
 }
 
 // performSafetyChecks 执行安全检查

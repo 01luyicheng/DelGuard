@@ -290,16 +290,28 @@ func (cd *CoreDeleter) deleteFile(path string) error {
 		fmt.Printf("删除文件: %s\n", path)
 	}
 
+	// 获取文件名用于提示
+	filename := filepath.Base(path)
+
 	// 根据配置选择删除方式
 	if cd.config.UseRecycleBin {
 		// 使用回收站删除
-		return cd.moveToTrash(path)
+		if err := cd.moveToTrash(path); err != nil {
+			// 提供友好的错误提示
+			cd.showFriendlyError(err, path)
+			return err
+		}
+		// 成功删除后显示提示
+		fmt.Printf("DelGuard: [%s] 已被移动到回收站\n", filename)
 	} else {
 		// 永久删除
 		err := os.Remove(path)
 		if err != nil {
+			cd.showFriendlyError(err, path)
 			return fmt.Errorf("删除文件失败: %v", err)
 		}
+		// 永久删除提示
+		fmt.Printf("DelGuard: [%s] 已被永久删除\n", filename)
 	}
 
 	return nil
@@ -311,24 +323,34 @@ func (cd *CoreDeleter) deleteDirectory(path string) error {
 		fmt.Printf("删除目录: %s\n", path)
 	}
 
+	// 获取目录名用于提示
+	dirname := filepath.Base(path)
+
 	// 根据配置选择删除方式
 	if cd.config.UseRecycleBin {
 		// 使用回收站删除
-		return cd.moveToTrash(path)
+		if err := cd.moveToTrash(path); err != nil {
+			cd.showFriendlyError(err, path)
+			return err
+		}
+		fmt.Printf("DelGuard: [%s] 目录已被移动到回收站\n", dirname)
 	} else {
 		// 永久删除
 		if cd.recursive {
 			err := os.RemoveAll(path)
 			if err != nil {
+				cd.showFriendlyError(err, path)
 				return fmt.Errorf("递归删除目录失败: %v", err)
 			}
 		} else {
 			// 非递归删除，只删除空目录
 			err := os.Remove(path)
 			if err != nil {
+				cd.showFriendlyError(err, path)
 				return fmt.Errorf("删除空目录失败: %v", err)
 			}
 		}
+		fmt.Printf("DelGuard: [%s] 目录已被永久删除\n", dirname)
 	}
 
 	return nil
@@ -384,4 +406,44 @@ func formatBytes(bytes int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// showFriendlyError 显示友好的错误信息
+func (cd *CoreDeleter) showFriendlyError(err error, path string) {
+	filename := filepath.Base(path)
+	
+	// 根据错误类型提供不同的提示
+	errMsg := err.Error()
+	switch {
+	case strings.Contains(errMsg, "permission") || strings.Contains(errMsg, "权限"):
+		fmt.Printf("DelGuard: 无法删除 [%s] - 权限不足\n", filename)
+		fmt.Println("建议：")
+		fmt.Println("  1. 以管理员身份重新运行程序")
+		fmt.Println("  2. 检查文件是否被其他程序占用")
+		fmt.Println("  3. 确认您对该文件有删除权限")
+	case strings.Contains(errMsg, "not found") || strings.Contains(errMsg, "不存在"):
+		fmt.Printf("DelGuard: 无法删除 [%s] - 文件不存在\n", filename)
+		fmt.Println("建议：")
+		fmt.Println("  1. 检查文件路径是否正确")
+		fmt.Println("  2. 使用绝对路径或相对路径")
+		fmt.Println("  3. 确认文件没有被移动或重命名")
+	case strings.Contains(errMsg, "in use") || strings.Contains(errMsg, "被使用"):
+		fmt.Printf("DelGuard: 无法删除 [%s] - 文件正在被使用\n", filename)
+		fmt.Println("建议：")
+		fmt.Println("  1. 关闭正在使用该文件的程序")
+		fmt.Println("  2. 等待文件操作完成后重试")
+		fmt.Println("  3. 重启电脑后再次尝试")
+	case strings.Contains(errMsg, "path") || strings.Contains(errMsg, "路径"):
+		fmt.Printf("DelGuard: 无法删除 [%s] - 路径问题\n", filename)
+		fmt.Println("建议：")
+		fmt.Println("  1. 检查路径中是否包含特殊字符")
+		fmt.Println("  2. 确保路径长度不超过260个字符")
+		fmt.Println("  3. 使用引号包围包含空格的路径")
+	default:
+		fmt.Printf("DelGuard: 无法删除 [%s] - %s\n", filename, errMsg)
+		fmt.Println("建议：")
+		fmt.Println("  1. 检查磁盘空间是否充足")
+		fmt.Println("  2. 确认文件系统没有错误")
+		fmt.Println("  3. 联系技术支持获取帮助")
+	}
 }
