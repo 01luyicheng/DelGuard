@@ -12,19 +12,19 @@ func EnableOverwriteProtection() error {
 	if err != nil {
 		return err
 	}
-	
+
 	protectFile := filepath.Join(homeDir, ".delguard", "overwrite_protection_enabled")
-	
+
 	// 确保目录存在
 	if err := os.MkdirAll(filepath.Dir(protectFile), 0755); err != nil {
 		return err
 	}
-	
+
 	// 创建或更新标记文件
 	if err := os.WriteFile(protectFile, []byte("enabled"), 0644); err != nil {
 		return err
 	}
-	
+
 	return nil
 }
 
@@ -35,14 +35,14 @@ func DisableOverwriteProtection() error {
 	if err != nil {
 		return err
 	}
-	
+
 	protectFile := filepath.Join(homeDir, ".delguard", "overwrite_protection_enabled")
-	
+
 	// 删除标记文件
 	if err := os.Remove(protectFile); err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	
+
 	return nil
 }
 
@@ -52,9 +52,9 @@ func IsOverwriteProtectionEnabled() bool {
 	if err != nil {
 		return false
 	}
-	
+
 	protectFile := filepath.Join(homeDir, ".delguard", "overwrite_protection_enabled")
-	
+
 	// 检查标记文件是否存在
 	_, err = os.Stat(protectFile)
 	return err == nil

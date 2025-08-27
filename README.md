@@ -1,126 +1,241 @@
-# DelGuard - 安全删除工具
+# DelGuard - 安全文件删除工具
 
-DelGuard 是一款专业的安全删除工具，提供可靠的文件删除功能，支持回收站删除和永久删除两种模式。
+[![Go Version](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://golang.org)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen.svg)]()
 
-## 功能特性
+DelGuard 是一个功能强大的跨平台安全文件删除工具，提供智能文件管理、安全删除和系统保护功能。
 
-- 🗑️ **智能删除**: 支持回收站删除和永久删除
-- 🛡️ **安全保护**: 内置安全检查，防止误删重要文件
-- 🌍 **多语言支持**: 支持中文、英文等多种语言
-- ⚡ **高性能**: 优化的删除算法，支持大文件处理
-- 📊 **详细日志**: 完整的操作日志记录
-- 🎯 **交互模式**: 支持自动、询问、从不三种交互模式
+## ✨ 主要特性
 
-## 快速安装
+### 🔒 安全删除
+- **智能回收站支持** - 自动将文件移动到系统回收站
+- **系统路径保护** - 防止误删重要系统文件
+- **权限验证** - 删除前进行安全权限检查
+- **批量操作** - 支持批量文件删除
 
-### Windows (PowerShell)
-```powershell
-iwr -useb https://raw.githubusercontent.com/01luyicheng/DelGuard/main/install.ps1 | iex
-```
+### 🔍 智能搜索
+- **模式匹配** - 支持通配符和正则表达式搜索
+- **大小过滤** - 按文件大小范围查找文件
+- **重复文件检测** - 基于MD5哈希的重复文件识别
+- **递归搜索** - 深度目录结构搜索
 
-### Linux/macOS (Bash)
+### ⚡ 性能优化
+- **内存管理** - 智能内存使用和垃圾回收优化
+- **并发处理** - 多线程文件操作提升性能
+- **进度监控** - 实时操作进度和性能指标
+
+### 🌐 跨平台支持
+- **Windows** - 完整的Windows API集成
+- **Linux/Unix** - 原生Unix系统支持
+- **macOS** - macOS系统优化
+
+## 🚀 快速开始
+
+### 安装
+
+#### 从源码构建
 ```bash
-curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/install.sh | bash
+git clone https://github.com/your-username/delguard.git
+cd delguard
+go build -o delguard ./cmd/delguard
 ```
 
-## 使用方法
+#### 使用预编译二进制文件
+从 [Releases](https://github.com/your-username/delguard/releases) 页面下载适合您系统的二进制文件。
 
-### 基本用法
+### 基本使用
+
+#### 安全删除文件
 ```bash
-# 删除单个文件（默认移动到回收站）
-delguard file.txt
+# 删除单个文件
+delguard delete file.txt
 
-# 删除多个文件
-delguard file1.txt file2.txt dir1/
+# 批量删除文件
+delguard delete file1.txt file2.txt file3.txt
 
-# 永久删除文件
-delguard -p file.txt
-
-# 交互式删除
-delguard -i file.txt
+# 安全删除（移动到回收站）
+delguard delete --safe important.doc
 ```
 
-### 命令行选项
+#### 搜索文件
+```bash
+# 按模式搜索
+delguard search --pattern "*.log" /var/log
+
+# 按大小搜索
+delguard search --size ">100MB" /home/user
+
+# 查找重复文件
+delguard search --duplicates /home/user/Documents
 ```
--p, --permanent     永久删除文件（不使用回收站）
--i, --interactive   交互式模式，每个文件都询问
--f, --force         强制删除，跳过安全检查
--v, --verbose       详细输出
--q, --quiet         静默模式
--r, --recursive     递归删除目录
---config            指定配置文件路径
---version           显示版本信息
---help              显示帮助信息
+
+#### 配置管理
+```bash
+# 查看当前配置
+delguard config show
+
+# 设置配置项
+delguard config set language zh-cn
+delguard config set max_file_size 1073741824
+
+# 重置配置
+delguard config reset
+```
+
+## 📖 详细文档
+
+### 命令行参数
+
+#### 全局选项
+- `--config <file>` - 指定配置文件路径
+- `--verbose` - 启用详细输出
+- `--help` - 显示帮助信息
+- `--version` - 显示版本信息
+
+#### delete 命令
+```bash
+delguard delete [选项] <文件路径...>
+
+选项:
+  --safe              移动到回收站而不是永久删除
+  --force             强制删除，跳过确认
+  --recursive         递归删除目录
+  --batch             批量模式，从文件读取路径列表
+```
+
+#### search 命令
+```bash
+delguard search [选项] <搜索路径>
+
+选项:
+  --pattern <模式>    文件名模式匹配
+  --size <大小>       按文件大小过滤
+  --duplicates        查找重复文件
+  --recursive         递归搜索子目录
+  --output <格式>     输出格式 (text|json|csv)
 ```
 
 ### 配置文件
 
-DelGuard 支持通过配置文件自定义行为。配置文件位置：
-- Windows: `%APPDATA%\DelGuard\config.json`
-- Linux/macOS: `~/.config/delguard/config.json`
+DelGuard 使用JSON格式的配置文件，默认位置：
+- Windows: `%USERPROFILE%\.delguard\config.json`
+- Linux/macOS: `~/.delguard/config.json`
 
-示例配置：
+#### 配置示例
 ```json
 {
-  "use_recycle_bin": true,
-  "interactive_mode": "auto",
-  "language": "zh-CN",
+  "language": "zh-cn",
   "max_file_size": 1073741824,
+  "max_backup_files": 10,
+  "enable_recycle_bin": true,
+  "enable_logging": true,
   "log_level": "info",
-  "log_file": "",
-  "safe_mode": true,
-  "backup_before_delete": false
+  "security": {
+    "enable_path_validation": true,
+    "enable_malware_detection": true,
+    "enable_system_protection": true
+  },
+  "performance": {
+    "enable_performance_monitoring": true,
+    "enable_memory_optimization": true,
+    "gc_percent": 100,
+    "memory_limit_mb": 1024
+  }
 }
 ```
 
-## 安全特性
+## 🔧 开发
 
-DelGuard 内置多重安全保护机制：
-
-1. **系统文件保护**: 自动识别并保护系统关键文件
-2. **大文件警告**: 删除大文件时提供额外确认
-3. **路径验证**: 验证文件路径的合法性和安全性
-4. **权限检查**: 确保有足够权限执行删除操作
-5. **回滚机制**: 支持从回收站恢复已删除文件
-
-## 开发
-
-### 构建要求
-- Go 1.19 或更高版本
-- 支持的操作系统：Windows, Linux, macOS
-
-### 从源码构建
-```bash
-git clone https://github.com/01luyicheng/DelGuard.git
-cd DelGuard
-go build -o delguard
+### 项目结构
+```
+delguard/
+├── cmd/delguard/           # 主程序入口
+├── internal/               # 内部包
+│   ├── core/              # 核心业务逻辑
+│   │   ├── delete/        # 删除服务
+│   │   ├── search/        # 搜索服务
+│   │   └── restore/       # 恢复服务
+│   ├── platform/          # 平台相关代码
+│   │   ├── windows/       # Windows实现
+│   │   ├── linux/         # Linux实现
+│   │   └── common/        # 通用实现
+│   ├── config/            # 配置管理
+│   ├── monitor/           # 监控和指标
+│   └── ui/                # 用户界面
+├── pkg/delguard/          # 公共API
+├── configs/               # 配置文件
+├── docs/                  # 文档
+├── scripts/               # 构建和部署脚本
+└── tests/                 # 测试文件
 ```
 
-### 运行测试
+### 构建
+
+#### 开发构建
 ```bash
-go test -v ./...
+go build -o build/delguard ./cmd/delguard
 ```
 
-### 性能测试
+#### 发布构建
 ```bash
-go test -bench=. ./tests/benchmarks/
+# Windows
+powershell -ExecutionPolicy Bypass -File scripts/build_new.ps1 -Release
+
+# Linux/macOS
+./scripts/build.sh --release
 ```
 
-## 许可证
+### 测试
 
-本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
+#### 运行所有测试
+```bash
+# 使用脚本
+powershell -ExecutionPolicy Bypass -File scripts/run_tests.ps1 -TestType all -Coverage
 
-## 贡献
+# 直接使用go test
+go test ./... -v -cover
+```
 
-欢迎提交 Issue 和 Pull Request！
+#### 性能测试
+```bash
+go test -bench=. -benchmem ./tests/benchmarks/
+```
 
-## 支持
+### 质量保证
+```bash
+# 运行质量检查
+powershell -ExecutionPolicy Bypass -File scripts/qa_check.ps1
 
-如果您遇到问题或有建议，请：
-1. 查看 [FAQ](docs/FAQ.md)
-2. 搜索现有的 [Issues](https://github.com/01luyicheng/DelGuard/issues)
-3. 创建新的 Issue
+# 自动修复格式问题
+powershell -ExecutionPolicy Bypass -File scripts/qa_check.ps1 -Fix
+```
+
+## 🤝 贡献
+
+我们欢迎所有形式的贡献！请查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解详细信息。
+
+### 开发流程
+1. Fork 项目
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 创建 Pull Request
+
+## 📄 许可证
+
+本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+
+## 🆘 支持
+
+- 📖 [文档](docs/)
+- 🐛 [问题报告](https://github.com/your-username/delguard/issues)
+- 💬 [讨论区](https://github.com/your-username/delguard/discussions)
+
+## 🙏 致谢
+
+感谢所有为这个项目做出贡献的开发者和用户！
 
 ---
 
-**注意**: DelGuard 是一个安全删除工具，不包含任何恶意软件检测功能。请谨慎使用永久删除功能。
+**DelGuard** - 让文件删除更安全、更智能！

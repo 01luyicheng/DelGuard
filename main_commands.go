@@ -75,11 +75,11 @@ func handleConfigShowCommand(config *Config) error {
 	fmt.Printf("  备份保留天数: %d\n", config.BackupRetentionDays)
 	fmt.Printf("  日志保留天数: %d\n", config.LogRetentionDays)
 	fmt.Printf("  遥测: %t\n", config.EnableTelemetry)
-	
+
 	if config.ConfigPath != "" {
 		fmt.Printf("  配置文件路径: %s\n", config.ConfigPath)
 	}
-	
+
 	return nil
 }
 
@@ -87,10 +87,13 @@ func handleConfigShowCommand(config *Config) error {
 func handleDeleteCommand(ctx context.Context, config *Config, args []string) error {
 	// 创建删除器
 	deleter := NewCoreDeleter(config)
-	
+
+	// 设置删除选项（默认使用回收站，交互式确认）
+	deleter.SetOptions(false, true, false, true, true)
+
 	// 执行删除
 	results := deleter.Delete(args)
-	
+
 	// 显示结果
 	return displayDeleteResults(results, true)
 }
@@ -101,7 +104,7 @@ func handleRestoreCommand(ctx context.Context, config *Config, args []string) er
 	if len(args) > 0 {
 		pattern = args[0]
 	}
-	
+
 	restorer := NewRestorer(config)
 	return restorer.Restore(ctx, pattern, false, false, 0)
 }
@@ -128,7 +131,7 @@ func handleConfigInitCommand(config *Config) error {
 // displayDeleteResults 显示删除结果
 func displayDeleteResults(results []DeleteResult, verbose bool) error {
 	var success, failed, skipped int
-	
+
 	for _, result := range results {
 		if result.Skipped {
 			skipped++
@@ -142,7 +145,7 @@ func displayDeleteResults(results []DeleteResult, verbose bool) error {
 			fmt.Printf("已删除: %s\n", result.Path)
 		}
 	}
-	
+
 	fmt.Printf("\n删除完成: 成功%d个, 失败%d个, 跳过%d个\n", success, failed, skipped)
 	return nil
 }

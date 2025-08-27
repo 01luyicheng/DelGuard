@@ -14,61 +14,47 @@ type TrashOperationMonitor struct {
 	config *Config
 }
 
-// isStdinInteractive 判断是否为交互式终端（避免在无TTY/管道环境中阻塞）
-func isStdinInteractive() bool {
-    LogDebug("stdin_check", "", "checking if stdin is interactive")
-    fi, err := os.Stdin.Stat()
-    if err != nil {
-        LogWarn("stdin_check", "", "os.Stdin.Stat failed; treat as non-interactive")
-        return false
-    }
-    isChar := (fi.Mode() & os.ModeCharDevice) != 0
-    LogDebug("stdin_check", "", fmt.Sprintf("stdin mode=%v, isCharDevice=%v", fi.Mode(), isChar))
-    // 在非交互/管道场景下，Stdin 不是字符设备
-    return isChar
-}
+// readLineWithTimeoutTrash 从标准输入读取一行，带超时；返回(文本, 是否读取成功)
+func readLineWithTimeoutTrash(timeout time.Duration) (string, bool) {
+	start := time.Now()
+	LogDebug("stdin_read", "", fmt.Sprintf("readLineWithTimeout begin, timeout=%s", timeout))
+	if !isStdinInteractive() {
+		LogDebug("stdin_read", "", "stdin is not interactive; skip read")
+		return "", false
+	}
 
-// readLineWithTimeout 从标准输入读取一行，带超时；返回(文本, 是否读取成功)
-func readLineWithTimeout(timeout time.Duration) (string, bool) {
-    start := time.Now()
-    LogDebug("stdin_read", "", fmt.Sprintf("readLineWithTimeout begin, timeout=%s", timeout))
-    if !isStdinInteractive() {
-        LogDebug("stdin_read", "", "stdin is not interactive; skip read")
-        return "", false
-    }
+	chText := make(chan string, 1)
+	chErr := make(chan error, 1)
+	go func() {
+		scanner := bufio.NewScanner(os.Stdin)
+		if scanner.Scan() {
+			txt := scanner.Text()
+			chText <- txt
+			chErr <- scanner.Err()
+			return
+		}
+		// 未读取到内容，检查错误
+		chText <- ""
+		chErr <- scanner.Err()
+	}()
 
-    chText := make(chan string, 1)
-    chErr := make(chan error, 1)
-    go func() {
-        scanner := bufio.NewScanner(os.Stdin)
-        if scanner.Scan() {
-            txt := scanner.Text()
-            chText <- txt
-            chErr <- scanner.Err()
-            return
-        }
-        // 未读取到内容，检查错误
-        chText <- ""
-        chErr <- scanner.Err()
-    }()
-
-    select {
-    case s := <-chText:
-        // 尝试非阻塞获取错误信息
-        var scanErr error
-        select {
-        case scanErr = <-chErr:
-        default:
-        }
-        if scanErr != nil {
-            LogWarn("stdin_read", "", fmt.Sprintf("scanner returned with error: %v", scanErr))
-        }
-        LogDebug("stdin_read", "", fmt.Sprintf("read completed in %s, got=%d bytes", time.Since(start), len(s)))
-        return s, true
-    case <-time.After(timeout):
-        LogWarn("stdin_read", "", fmt.Sprintf("read timeout after %s", time.Since(start)))
-        return "", false
-    }
+	select {
+	case s := <-chText:
+		// 尝试非阻塞获取错误信息
+		var scanErr error
+		select {
+		case scanErr = <-chErr:
+		default:
+		}
+		if scanErr != nil {
+			LogWarn("stdin_read", "", fmt.Sprintf("scanner returned with error: %v", scanErr))
+		}
+		LogDebug("stdin_read", "", fmt.Sprintf("read completed in %s, got=%d bytes", time.Since(start), len(s)))
+		return s, true
+	case <-time.After(timeout):
+		LogWarn("stdin_read", "", fmt.Sprintf("read timeout after %s", time.Since(start)))
+		return "", false
+	}
 }
 
 // NewTrashOperationMonitor 创建回收站操作监控器

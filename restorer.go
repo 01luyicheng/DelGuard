@@ -240,9 +240,9 @@ func (r *Restorer) batchRestore(files []*RecoverableFile) error {
 	}
 
 	fmt.Printf("正在恢复 %d 个文件...\n", len(files))
-	
+
 	var success, failed int
-	
+
 	for _, file := range files {
 		if err := r.restoreSingleFile(file); err != nil {
 			fmt.Printf("❌ 恢复失败: %s - %v\n", file.OriginalPath, err)
@@ -254,11 +254,11 @@ func (r *Restorer) batchRestore(files []*RecoverableFile) error {
 	}
 
 	fmt.Printf("\n恢复完成: 成功 %d 个，失败 %d 个\n", success, failed)
-	
+
 	if failed > 0 {
 		return NewDGError(ErrIOFailure, fmt.Sprintf("部分文件恢复失败，失败数量: %d", failed), nil)
 	}
-	
+
 	return nil
 }
 

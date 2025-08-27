@@ -236,11 +236,11 @@ func (ui *InteractiveUI) ShowProgressBar(current, total int, message string) {
 //	err: 错误对象
 //	suggestion: 建议的解决方案
 func (ui *InteractiveUI) ShowError(err error, suggestion string) {
-    // 记录错误：operation=交互界面错误, filePath留空, err为真实错误, message为建议
-    logger.Error("交互界面错误", "", err, suggestion)
-    if suggestion != "" {
-        fmt.Printf(T(" 建议: %s\n"), suggestion)
-    }
+	// 记录错误：operation=交互界面错误, filePath留空, err为真实错误, message为建议
+	logger.Error("交互界面错误", "", err, suggestion)
+	if suggestion != "" {
+		fmt.Printf(T(" 建议: %s\n"), suggestion)
+	}
 }
 
 // ShowSmartError 显示智能错误信息和建议
@@ -250,35 +250,35 @@ func (ui *InteractiveUI) ShowError(err error, suggestion string) {
 //	err: 错误对象
 //	context: 错误上下文描述
 func (ui *InteractiveUI) ShowSmartError(err error, context string) {
-    fmt.Printf(T(" %s: %v\n"), context, err)
+	fmt.Printf(T(" %s: %v\n"), context, err)
 
 	// 根据错误类型提供智能建议
 	errorMsg := err.Error()
-	    switch {
-    case strings.Contains(errorMsg, "no such file") || strings.Contains(errorMsg, "not exist"):
-        fmt.Printf(T(" 建议：\n"))
-        fmt.Printf(T("   1. 检查文件路径是否正确\n"))
-        fmt.Printf(T("   2. 使用 --smart-search 启用智能搜索\n"))
-        fmt.Printf(T("   3. 使用通配符如 *.txt 或 file*\n"))
-        fmt.Printf(T("   4. 使用 --search-content 搜索文件内容\n"))
-    case strings.Contains(errorMsg, "permission"):
-        fmt.Printf(T(" 建议：\n"))
-        fmt.Printf(T("   1. 以管理员身份运行\n"))
-        fmt.Printf(T("   2. 检查文件权限设置\n"))
-        fmt.Printf(T("   3. 确认文件没有被其他程序占用\n"))
-    case strings.Contains(errorMsg, "invalid"):
-        fmt.Printf(T(" 建议：\n"))
-        fmt.Printf(T("   1. 检查文件名中是否包含非法字符\n"))
-        fmt.Printf(T("   2. 避免使用特殊字符如 < > | \" : * ? \\ /\n"))
-        fmt.Printf(T("   3. 使用引号包围包含空格的文件名\n"))
-    case strings.Contains(errorMsg, "too long"):
-        fmt.Printf(T(" 建议：\n"))
-        fmt.Printf(T("   1. 缩短文件路径或文件名\n"))
-        fmt.Printf(T("   2. 移动到更短的目录路径\n"))
-    default:
-        // 记录一般建议：operation=操作建议, filePath留空, message为提示
-        logger.Info("操作建议", "", T("请检查错误信息并尝试重新操作"))
-    }
+	switch {
+	case strings.Contains(errorMsg, "no such file") || strings.Contains(errorMsg, "not exist"):
+		fmt.Printf(T(" 建议：\n"))
+		fmt.Printf(T("   1. 检查文件路径是否正确\n"))
+		fmt.Printf(T("   2. 使用 --smart-search 启用智能搜索\n"))
+		fmt.Printf(T("   3. 使用通配符如 *.txt 或 file*\n"))
+		fmt.Printf(T("   4. 使用 --search-content 搜索文件内容\n"))
+	case strings.Contains(errorMsg, "permission"):
+		fmt.Printf(T(" 建议：\n"))
+		fmt.Printf(T("   1. 以管理员身份运行\n"))
+		fmt.Printf(T("   2. 检查文件权限设置\n"))
+		fmt.Printf(T("   3. 确认文件没有被其他程序占用\n"))
+	case strings.Contains(errorMsg, "invalid"):
+		fmt.Printf(T(" 建议：\n"))
+		fmt.Printf(T("   1. 检查文件名中是否包含非法字符\n"))
+		fmt.Printf(T("   2. 避免使用特殊字符如 < > | \" : * ? \\ /\n"))
+		fmt.Printf(T("   3. 使用引号包围包含空格的文件名\n"))
+	case strings.Contains(errorMsg, "too long"):
+		fmt.Printf(T(" 建议：\n"))
+		fmt.Printf(T("   1. 缩短文件路径或文件名\n"))
+		fmt.Printf(T("   2. 移动到更短的目录路径\n"))
+	default:
+		// 记录一般建议：operation=操作建议, filePath留空, message为提示
+		logger.Info("操作建议", "", T("请检查错误信息并尝试重新操作"))
+	}
 }
 
 // ShowSuccess 显示成功信息

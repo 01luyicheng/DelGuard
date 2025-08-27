@@ -143,17 +143,17 @@ func RunBasicSecurityChecks() {
 	// 运行简单安全检查
 	log.Println("[INFO] === 文件安全检查 ===")
 	fmt.Println(T("\n=== 文件安全检查 ==="))
-	
+
 	// 扫描当前目录
 	currentDir, _ := os.Getwd()
 	fmt.Printf(T("正在检查当前目录: %s\n"), currentDir)
-	
+
 	result := RunSimpleSecurityCheck(currentDir)
-	
+
 	fmt.Printf(T("检查完成，耗时: %v\n"), result.Duration)
 	fmt.Printf(T("检查文件: %d\n"), result.FilesScanned)
 	fmt.Printf(T("安全提醒: %d\n"), result.Warnings)
-	
+
 	if result.Warnings > 0 {
 		fmt.Println(T("⚠️  发现安全提醒:"))
 		for _, msg := range result.Messages {
@@ -300,7 +300,7 @@ func (s *SimpleSecurityChecker) CheckDirectory(dirPath string) *BasicSecurityRes
 // RunSimpleSecurityCheck 运行简单的安全检查
 func RunSimpleSecurityCheck(targetPath string) *BasicSecurityResult {
 	checker := &SimpleSecurityChecker{Name: "DelGuard安全助手"}
-	
+
 	info, err := os.Stat(targetPath)
 	if err != nil {
 		return &BasicSecurityResult{

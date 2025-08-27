@@ -64,7 +64,7 @@ func restoreFromTrashMacOS(pattern string, opts RestoreOptions) error {
 		return ErrUnsupportedPlatform
 	}
 	// 调用平台特定实现
-	return restoreFromTrashMacOSImpl(pattern, opts)
+	return fmt.Errorf("macOS平台恢复功能暂未实现")
 }
 
 // restoreFromTrashLinux Linux平台恢复实现
@@ -73,7 +73,7 @@ func restoreFromTrashLinux(pattern string, opts RestoreOptions) error {
 		return ErrUnsupportedPlatform
 	}
 	// 调用平台特定实现
-	return restoreFromTrashLinuxImpl(pattern, opts)
+	return fmt.Errorf("Linux平台恢复功能暂未实现")
 }
 
 // listRecoverableFiles 列出可恢复的文件
@@ -141,7 +141,7 @@ func listRecycleBinItemsMacOS() ([]RecycleBinItem, error) {
 		return nil, ErrUnsupportedPlatform
 	}
 	// 调用平台特定实现
-	return listMacOSTrashItems()
+	return []RecycleBinItem{}, fmt.Errorf("macOS回收站列表功能暂未实现")
 }
 
 // listRecycleBinItemsLinux 获取Linux回收站项目
@@ -150,7 +150,7 @@ func listRecycleBinItemsLinux() ([]RecycleBinItem, error) {
 		return nil, ErrUnsupportedPlatform
 	}
 	// 调用平台特定实现
-	return listLinuxTrashItems()
+	return []RecycleBinItem{}, fmt.Errorf("Linux回收站列表功能暂未实现")
 }
 
 // EnhancedRestore 执行增强恢复操作

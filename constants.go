@@ -168,7 +168,7 @@ var SupportedLanguages = []string{
 
 // 危险路径模式 - 基础模式（Unix/Linux）
 var DangerousPathPatterns = []string{
-	"/", 
+	"/",
 	"/bin", "/sbin", "/usr", "/etc", "/var", "/sys", "/proc", "/dev",
 }
 

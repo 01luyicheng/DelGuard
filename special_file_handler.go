@@ -566,22 +566,22 @@ func (h *SpecialFileHandler) calculateChecksum(path string) string {
 
 // checkFileAccess 检查文件访问权限
 func (h *SpecialFileHandler) checkFileAccess(path string) *FileIssue {
-    // 检查读权限
-    f, err := os.Open(path)
-    if err != nil {
-        return &FileIssue{
-            Type:        "access_denied",
-            Description: "无法访问文件",
-            Severity:    "error",
-            Suggestion:  "请检查文件权限或以管理员身份运行",
-            Recoverable: false,
-            Metadata:    map[string]string{"error": err.Error()},
-            Timestamp:   time.Now(),
-        }
-    }
-    // 成功打开后立即关闭，避免持有句柄导致后续操作（移动/删除）失败
-    _ = f.Close()
-    return nil
+	// 检查读权限
+	f, err := os.Open(path)
+	if err != nil {
+		return &FileIssue{
+			Type:        "access_denied",
+			Description: "无法访问文件",
+			Severity:    "error",
+			Suggestion:  "请检查文件权限或以管理员身份运行",
+			Recoverable: false,
+			Metadata:    map[string]string{"error": err.Error()},
+			Timestamp:   time.Now(),
+		}
+	}
+	// 成功打开后立即关闭，避免持有句柄导致后续操作（移动/删除）失败
+	_ = f.Close()
+	return nil
 }
 
 // getSpecialCharacters 获取特殊字符列表

@@ -8,13 +8,6 @@ import (
 	"unsafe"
 )
 
-// DiskUsage 磁盘使用情况
-type DiskUsage struct {
-	Total uint64 // 总空间（字节）
-	Free  uint64 // 可用空间（字节）
-	Used  uint64 // 已用空间（字节）
-}
-
 func getDiskUsageWindows(path string) (*DiskUsage, error) {
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
 	getDiskFreeSpaceEx := kernel32.NewProc("GetDiskFreeSpaceExW")

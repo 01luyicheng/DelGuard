@@ -1,129 +1,186 @@
-# DelGuard 快速部署指南
+# DelGuard 快速开始指南
 
-## 🚀 立即开始使用
+## 安装
 
-### 1. 验证安全功能
-```bash
-go run verify_security.go
+### 方法一：一键安装（推荐）
+
+**Windows (PowerShell)**
+```powershell
+iwr -useb https://raw.githubusercontent.com/01luyicheng/DelGuard/main/install.ps1 | iex
 ```
 
-### 2. 使用安全配置模板
+**Linux/macOS (Bash)**
 ```bash
-# 复制安全配置模板
-copy config\security_template.json config\security.json
-
-# 根据需要修改配置
-# 使用文本编辑器打开 config\security.json 进行自定义
+curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/install.sh | bash
 ```
 
-### 3. 编译项目
+### 方法二：手动安装
+
+1. 下载最新版本的可执行文件
+2. 将文件放置到系统PATH目录
+3. 运行 `delguard --version` 验证安装
+
+## 基本使用
+
+### 删除单个文件
 ```bash
-go build -o delguard.exe
+delguard file.txt
 ```
 
-### 4. 运行安全模式
+### 删除多个文件
 ```bash
-# 使用安全配置文件
-./delguard.exe --config=config/security.json
+delguard file1.txt file2.txt folder/
 ```
 
-### 5. 安全复制功能测试
+### 永久删除（跳过回收站）
 ```bash
-# 创建测试文件
-echo "测试内容" > test1.txt
-echo "测试内容" > test2.txt
-
-# 测试安全复制（文件相同，应跳过）
-./delguard.exe cp -i test1.txt test2.txt
-
-# 修改文件内容
-echo "不同内容" > test1.txt
-
-# 测试安全复制（文件不同，应询问用户）
-./delguard.exe cp -i test1.txt test2.txt
-
-# 测试强制覆盖模式
-./delguard.exe cp -f test1.txt test2.txt
+delguard -p file.txt
 ```
 
-## 🔧 企业级部署
+### 交互式删除
+```bash
+delguard -i file.txt
+```
 
-### 生产环境配置
-1. **启用严格模式**：在配置中设置 `"safeMode": "strict"`
-2. **限制文件大小**：设置合理的 `max_file_size` 值
-3. **配置白名单**：设置 `allowed_extensions` 只允许必要文件类型
-4. **启用审计日志**：设置 `"audit_logging": true`
+### 递归删除目录
+```bash
+delguard -r folder/
+```
 
-### Windows域环境
-- **UAC集成**：自动处理管理员权限请求
-- **组策略兼容**：支持企业组策略配置
-- **审计合规**：满足SOX、GDPR等合规要求
+## 常用选项
 
-### 安全配置示例
+| 选项 | 说明 |
+|------|------|
+| `-p, --permanent` | 永久删除，不使用回收站 |
+| `-i, --interactive` | 交互式模式，每个文件都询问 |
+| `-f, --force` | 强制删除，跳过安全检查 |
+| `-r, --recursive` | 递归删除目录 |
+| `-v, --verbose` | 详细输出 |
+| `-q, --quiet` | 静默模式 |
+| `--config` | 指定配置文件路径 |
+
+## 配置文件
+
+DelGuard 会在以下位置查找配置文件：
+- Windows: `%APPDATA%\DelGuard\config.json`
+- Linux/macOS: `~/.config/delguard/config.json`
+
+### 示例配置
 ```json
 {
-  "maxBackupFiles": 50,
-  "trashMaxSize": 5000,
-  "language": "zh",
-  "safeMode": "strict",
-  "logLevel": "info"
+  "use_recycle_bin": true,
+  "interactive_mode": "auto",
+  "language": "zh-CN",
+  "safe_mode": true,
+  "log_level": "info"
 }
 ```
 
-## 📋 安全检查清单
+## 安全特性
 
-### 部署前检查
-- [ ] 运行 `go run verify_security.go` 验证所有安全功能
-- [ ] 检查配置文件格式
-- [ ] 验证用户权限
-- [ ] 测试文件恢复功能
+### 自动保护
+- ✅ 系统文件自动保护
+- ✅ 重要目录检查
+- ✅ 大文件删除确认
+- ✅ 权限验证
 
-### 运行中监控
-- [ ] 定期检查安全日志
-- [ ] 监控异常文件操作
-- [ ] 验证备份完整性
-- [ ] 更新安全模板
+### 手动确认
+使用 `-i` 选项可以对每个文件进行确认：
+```bash
+delguard -i *.tmp
+```
 
-## 🛡️ 安全最佳实践
+## 恢复文件
 
-### 用户权限
-- 使用标准用户权限运行日常操作
-- 仅在需要时提升管理员权限
-- 定期审查用户权限配置
+### 从回收站恢复
+```bash
+delguard --restore file.txt
+```
 
-### 文件操作
-- 始终启用文件完整性检查
-- 使用原子操作避免数据损坏
-- 定期验证备份文件
+### 查看回收站内容
+```bash
+delguard --list-trash
+```
 
-### 监控与审计
-- 启用详细日志记录
-- 定期分析安全事件
-- 建立异常检测机制
+## 高级功能
 
-## 📞 技术支持
+### 搜索并删除
+```bash
+delguard --search "*.tmp" --delete
+```
 
-### 获取帮助
-- **文档**：查看 SECURITY.md 获取详细安全指南
-- **配置**：参考 config/security_template.json 模板
-- **问题**：运行验证工具检查配置问题
+### 按大小过滤
+```bash
+delguard --size ">100MB" folder/
+```
 
-### 更新与维护
-- 定期更新安全模板
-- 关注安全公告
-- 参与社区讨论
+### 按时间过滤
+```bash
+delguard --older-than "30d" logs/
+```
 
-## ✅ 验证完成
+## 故障排除
 
-你的DelGuard项目现在已经具备了企业级安全功能：
+### 权限问题
+如果遇到权限错误，尝试以管理员身份运行：
 
-- ✅ 路径遍历攻击防护
-- ✅ 恶意软件检测
-- ✅ UAC权限管理
-- ✅ 文件完整性验证
-- ✅ 国际化错误处理
-- ✅ 审计日志记录
-- ✅ 安全配置模板
-- ✅ 合规性支持
+**Windows**
+```powershell
+# 以管理员身份运行PowerShell
+delguard file.txt
+```
 
-项目已准备好投入生产环境使用！
+**Linux/macOS**
+```bash
+sudo delguard file.txt
+```
+
+### 配置问题
+重置配置到默认值：
+```bash
+delguard --reset-config
+```
+
+### 查看日志
+```bash
+delguard --show-logs
+```
+
+## 获取帮助
+
+### 命令行帮助
+```bash
+delguard --help
+```
+
+### 查看版本
+```bash
+delguard --version
+```
+
+### 在线文档
+- [完整文档](docs/README.md)
+- [安全指南](docs/SECURITY.md)
+- [开发文档](docs/DEVELOPMENT.md)
+
+## 常见问题
+
+**Q: 如何确保文件被安全删除？**
+A: 使用 `-p` 选项进行永久删除，DelGuard 会进行多次覆写。
+
+**Q: 可以恢复永久删除的文件吗？**
+A: 永久删除的文件无法通过 DelGuard 恢复，请谨慎使用。
+
+**Q: 如何批量删除特定类型的文件？**
+A: 使用通配符：`delguard *.tmp` 或搜索功能。
+
+**Q: 程序运行很慢怎么办？**
+A: 检查是否在处理大量文件，可以使用 `-v` 查看进度。
+
+## 支持
+
+如果遇到问题：
+1. 查看 [FAQ](docs/FAQ.md)
+2. 搜索 [Issues](https://github.com/01luyicheng/DelGuard/issues)
+3. 创建新的 Issue
+4. 发送邮件到支持团队

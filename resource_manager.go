@@ -378,7 +378,7 @@ func (rm *ResourceManager) cleanupRoutine() {
 		case <-rm.ctx.Done():
 			return
 		case <-rm.cleanupTicker.C:
-		rm.runCleanup()
+			rm.runCleanup()
 		}
 	}
 }

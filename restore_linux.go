@@ -84,7 +84,7 @@ func restoreFromTrashLinuxImpl(pattern string, opts RestoreOptions) error {
 			fmt.Printf(T("恢复路径验证失败 %s: %v\n"), item.Name, err)
 			continue
 		}
-		
+
 		if err := restoreSingleFileLinux(item); err != nil {
 			fmt.Printf(T("恢复文件失败 %s: %v\n"), item.Name, err)
 		} else {

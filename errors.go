@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -14,46 +15,46 @@ import (
 type ErrKind int
 
 const (
-	KindNone              ErrKind = iota
-	KindCancelled                 // 2
-	KindInvalidArgs               // 3
-	KindPermission                // 5
-	KindIO                        // 10
-	KindNotFound                  // 11
-	KindProtected                 // 12
-	KindSecurity                  // 13 - 安全相关错误
-	KindMalware                   // 14 - 恶意软件检测
-	KindPathTraversal             // 15 - 路径遍历攻击
-	KindHiddenFile                // 16 - 隐藏文件
-	KindSystemFile                // 17 - 系统文件
-	KindSpecialFile               // 18 - 特殊文件类型
-	KindIntegrity                 // 19 - 完整性检查失败
-	KindQuota                     // 20 - 配额限制
-	KindConfig                    // 21 - 配置错误
-	KindNetwork                   // 22 - 网络错误（但实际上我们好像用不到网络，这是一款离线的工具）
-	KindValidation                // 23 - 验证失败
-	KindResourceExhausted         // 24 - 资源耗尽
-	KindTimeout                   // 25 - 操作超时
-	KindConflict                  // 26 - 文件冲突
-	KindTrashOperation            // 27 - 回收站操作
-	KindDelGuardProject           // 28 - DelGuard项目文件
-	KindLongFileName              // 29 - 文件名过长
-	KindSpecialCharacters         // 30 - 特殊字符
-	KindUnicodeIssue              // 31 - Unicode问题
-	KindSpaceIssue                // 32 - 空格问题
-	KindReadOnlyFile              // 33 - 只读文件
-	KindRecoverable               // 34 - 可恢复错误
-	KindTransient                 // 35 - 临时错误
-	KindRetryable                 // 36 - 可重试错误
-	KindCorrupted                 // 37 - 文件损坏
-	KindDiskFull                  // 38 - 磁盘空间不足
-	KindConcurrency               // 39 - 并发冲突
-	KindDeadlock                  // 40 - 死锁
-	KindCircularRef               // 41 - 循环引用
-	KindInvalidCharacter          // 42 - 无效字符
-	KindPathTooLong               // 43 - 路径过长
-	KindInvalidState              // 44 - 无效状态
-	KindUnsupportedOperation      // 45 - 不支持的操作
+	KindNone                 ErrKind = iota
+	KindCancelled                    // 2
+	KindInvalidArgs                  // 3
+	KindPermission                   // 5
+	KindIO                           // 10
+	KindNotFound                     // 11
+	KindProtected                    // 12
+	KindSecurity                     // 13 - 安全相关错误
+	KindMalware                      // 14 - 恶意软件检测
+	KindPathTraversal                // 15 - 路径遍历攻击
+	KindHiddenFile                   // 16 - 隐藏文件
+	KindSystemFile                   // 17 - 系统文件
+	KindSpecialFile                  // 18 - 特殊文件类型
+	KindIntegrity                    // 19 - 完整性检查失败
+	KindQuota                        // 20 - 配额限制
+	KindConfig                       // 21 - 配置错误
+	KindNetwork                      // 22 - 网络错误（但实际上我们好像用不到网络，这是一款离线的工具）
+	KindValidation                   // 23 - 验证失败
+	KindResourceExhausted            // 24 - 资源耗尽
+	KindTimeout                      // 25 - 操作超时
+	KindConflict                     // 26 - 文件冲突
+	KindTrashOperation               // 27 - 回收站操作
+	KindDelGuardProject              // 28 - DelGuard项目文件
+	KindLongFileName                 // 29 - 文件名过长
+	KindSpecialCharacters            // 30 - 特殊字符
+	KindUnicodeIssue                 // 31 - Unicode问题
+	KindSpaceIssue                   // 32 - 空格问题
+	KindReadOnlyFile                 // 33 - 只读文件
+	KindRecoverable                  // 34 - 可恢复错误
+	KindTransient                    // 35 - 临时错误
+	KindRetryable                    // 36 - 可重试错误
+	KindCorrupted                    // 37 - 文件损坏
+	KindDiskFull                     // 38 - 磁盘空间不足
+	KindConcurrency                  // 39 - 并发冲突
+	KindDeadlock                     // 40 - 死锁
+	KindCircularRef                  // 41 - 循环引用
+	KindInvalidCharacter             // 42 - 无效字符
+	KindPathTooLong                  // 43 - 路径过长
+	KindInvalidState                 // 44 - 无效状态
+	KindUnsupportedOperation         // 45 - 不支持的操作
 )
 
 // 预定义错误
@@ -824,10 +825,10 @@ func sanitizeErrorForDisplay(err error) error {
 	if err == nil {
 		return nil
 	}
-	
+
 	// 获取错误字符串
 	errStr := err.Error()
-	
+
 	// 定义敏感信息模式
 	sensitivePatterns := []struct {
 		pattern *regexp.Regexp
@@ -836,40 +837,40 @@ func sanitizeErrorForDisplay(err error) error {
 		// Windows用户路径
 		{regexp.MustCompile(`(?i)C:\\Users\\[^\\]+`), "C:\\Users\\[REDACTED]"},
 		{regexp.MustCompile(`(?i)%USERPROFILE%\\[^\\]+`), "%USERPROFILE%\\[REDACTED]"},
-		
+
 		// Unix用户路径
 		{regexp.MustCompile(`(?i)/home/[^/]+`), "/home/[REDACTED]"},
 		{regexp.MustCompile(`(?i)/Users/[^/]+`), "/Users/[REDACTED]"},
-		
+
 		// 邮箱地址
 		{regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`), "[EMAIL]"},
-		
+
 		// IP地址
 		{regexp.MustCompile(`\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b`), "[IP]"},
-		
+
 		// MAC地址
 		{regexp.MustCompile(`([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})`), "[MAC]"},
-		
+
 		// UUID/GUID
 		{regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`), "[UUID]"},
-		
+
 		// 主机名
 		{regexp.MustCompile(`(?i)hostname:\s*\S+`), "hostname: [REDACTED]"},
-		
+
 		// 用户名
 		{regexp.MustCompile(`(?i)username:\s*\S+`), "username: [REDACTED]"},
-		
+
 		// 数据库连接字符串
 		{regexp.MustCompile(`(?i)(password|pwd)=\S+`), "$1=[REDACTED]"},
 		{regexp.MustCompile(`(?i)(token|key)=\S+`), "$1=[REDACTED]"},
 	}
-	
+
 	// 应用过滤
 	filtered := errStr
 	for _, pattern := range sensitivePatterns {
 		filtered = pattern.pattern.ReplaceAllString(filtered, pattern.replace)
 	}
-	
+
 	// 如果是DGError类型，创建新的过滤实例
 	if dgErr, ok := err.(*DGError); ok {
 		newErr := *dgErr
@@ -877,7 +878,7 @@ func sanitizeErrorForDisplay(err error) error {
 		newErr.Cause = sanitizeErrorForDisplay(dgErr.Cause)
 		return &newErr
 	}
-	
+
 	// 创建新的错误实例
 	return fmt.Errorf(filtered)
 }
@@ -887,7 +888,7 @@ func sanitizePath(path string) string {
 	if path == "" {
 		return ""
 	}
-	
+
 	// 定义路径敏感模式
 	pathPatterns := []struct {
 		pattern *regexp.Regexp
@@ -896,26 +897,26 @@ func sanitizePath(path string) string {
 		// Windows用户目录
 		{regexp.MustCompile(`(?i)C:\\Users\\[^\\]+`), "C:\\Users\\[USER]"},
 		{regexp.MustCompile(`(?i)C:\\Users\\[^\\]+\\`), "C:\\Users\\[USER]\\"},
-		
+
 		// Unix用户目录
 		{regexp.MustCompile(`(?i)/home/[^/]+`), "/home/[USER]"},
 		{regexp.MustCompile(`(?i)/home/[^/]+/`), "/home/[USER]/"},
-		
+
 		// macOS用户目录
 		{regexp.MustCompile(`(?i)/Users/[^/]+`), "/Users/[USER]"},
 		{regexp.MustCompile(`(?i)/Users/[^/]+/`), "/Users/[USER]/"},
-		
+
 		// 应用程序数据目录
 		{regexp.MustCompile(`(?i)\\AppData\\[^\\]+`), "\\AppData\\[PROFILE]"},
 		{regexp.MustCompile(`(?i)\\Application\s+Data\\[^\\]+`), "\\Application Data\\[DATA]"},
 	}
-	
+
 	// 应用过滤
 	sanitized := path
 	for _, pattern := range pathPatterns {
 		sanitized = pattern.pattern.ReplaceAllString(sanitized, pattern.replace)
 	}
-	
+
 	return sanitized
 }
 
@@ -924,14 +925,14 @@ func LogErrorSecure(operation, path string, err error) {
 	if err == nil {
 		return
 	}
-	
+
 	// 创建安全的错误日志
 	safePath := sanitizePath(path)
 	safeErr := sanitizeErrorForDisplay(err)
-	
+
 	// 记录到内部日志系统
 	LogError(operation, safePath, safeErr)
-	
+
 	// 额外的安全日志记录
 	secureLog := struct {
 		Timestamp time.Time
@@ -946,7 +947,7 @@ func LogErrorSecure(operation, path string, err error) {
 		Error:     safeErr.Error(),
 		Level:     "ERROR",
 	}
-	
+
 	// 可以在这里添加发送到安全日志服务的代码
 	_ = secureLog
 }
@@ -995,15 +996,15 @@ func NewDGError(errType DGErrorType, message string, cause error) *DGError {
 	default:
 		kind = KindNone
 	}
-	
+
 	return &DGError{
-		Kind:    kind,
-		Op:      "",
-		Path:    "",
-		Cause:   cause,
-		Advice:  message,
-		Code:    "",
+		Kind:      kind,
+		Op:        "",
+		Path:      "",
+		Cause:     cause,
+		Advice:    message,
+		Code:      "",
 		Timestamp: getCurrentTime(),
-		Stack:   captureStackTrace(2),
+		Stack:     captureStackTrace(2),
 	}
 }

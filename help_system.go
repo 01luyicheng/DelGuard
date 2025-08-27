@@ -223,9 +223,9 @@ func (hs *HelpSystem) showExamples() {
 			{"delguard restore", T("恢复已删除的文件")},
 			{"delguard restore --list", T("列出可恢复的文件")},
 			{"delguard --install", T("安装系统别名")},
-		{"delguard --security-scan file.exe", T("检查文件安全风险（可执行文件等）")},
-		{"delguard --security-scan /path/to/dir", T("检查目录中的潜在风险文件")},
-	}
+			{"delguard --security-scan file.exe", T("检查文件安全风险（可执行文件等）")},
+			{"delguard --security-scan /path/to/dir", T("检查目录中的潜在风险文件")},
+		}
 		for _, ex := range examples {
 			fmt.Printf("  %-30s # %s\n", ex[0], ex[1])
 		}

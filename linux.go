@@ -154,7 +154,7 @@ func CheckFilePermissions(filePath string) (bool, error) {
 		if err != nil {
 			return false, fmt.Errorf("无法获取SELinux上下文: %v", err)
 		}
-		
+
 		// 检查SELinux上下文是否允许访问
 		if !isSELinuxAllowed(context) {
 			return false, fmt.Errorf("SELinux策略禁止访问")
@@ -167,7 +167,7 @@ func CheckFilePermissions(filePath string) (bool, error) {
 		if err != nil {
 			return false, fmt.Errorf("无法获取ACL权限: %v", err)
 		}
-		
+
 		// 检查ACL是否允许访问
 		if !isACLAllowed(aclPerms) {
 			return false, fmt.Errorf("ACL权限不足")
@@ -191,7 +191,7 @@ func getSELinuxContext(filePath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("无法检查SELinux状态: %v", err)
 	}
-	
+
 	// 如果SELinux是Enforcing状态，获取文件上下文
 	if strings.TrimSpace(string(output)) == "Enforcing" {
 		cmd := exec.Command("ls", "-Z", filePath)
@@ -199,14 +199,14 @@ func getSELinuxContext(filePath string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("无法获取SELinux上下文: %v", err)
 		}
-		
+
 		// 解析SELinux上下文
 		parts := strings.Fields(string(output))
 		if len(parts) >= 4 {
 			return parts[3], nil
 		}
 	}
-	
+
 	return "", nil
 }
 
@@ -217,20 +217,20 @@ func isSELinuxAllowed(context string) bool {
 	if context == "" {
 		return true // 没有SELinux上下文，允许访问
 	}
-	
+
 	// 检查常见的受限上下文
 	restrictedContexts := []string{
 		"unconfined_u:object_r:admin_home_t:s0",
 		"system_u:object_r:shadow_t:s0",
 		"system_u:object_r:etc_t:s0",
 	}
-	
+
 	for _, restricted := range restrictedContexts {
 		if context == restricted {
 			return false
 		}
 	}
-	
+
 	return true
 }
 
@@ -247,7 +247,7 @@ func getACLPermissions(filePath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("无法获取ACL权限: %v", err)
 	}
-	
+
 	return string(output), nil
 }
 
@@ -257,7 +257,7 @@ func isACLAllowed(aclPerms string) bool {
 	if aclPerms == "" {
 		return true // 没有ACL权限，使用标准权限
 	}
-	
+
 	// 检查ACL中是否有拒绝访问的条目
 	lines := strings.Split(aclPerms, "\n")
 	for _, line := range lines {
@@ -272,6 +272,6 @@ func isACLAllowed(aclPerms string) bool {
 			return false // 其他人没有权限
 		}
 	}
-	
+
 	return true
 }

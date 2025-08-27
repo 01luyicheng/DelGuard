@@ -1,0 +1,32 @@
+{
+  "protected_paths": [
+    "C:\\Windows",
+    "C:\\Program Files",
+    "C:\\Program Files (x86)",
+    "/bin",
+    "/sbin",
+    "/usr/bin",
+    "/usr/sbin",
+    "/System",
+    "/Applications"
+  ],
+  "dangerous_extensions": [
+    ".exe",
+    ".bat",
+    ".cmd",
+    ".com",
+    ".scr",
+    ".pif",
+    ".dll",
+    ".sys"
+  ],
+  "malware_patterns": [
+    "*.virus",
+    "*.trojan",
+    "*.malware",
+    "suspicious*"
+  ],
+  "max_file_size_mb": 1024,
+  "enable_integrity_check": true,
+  "enable_backup_before_delete": true
+}

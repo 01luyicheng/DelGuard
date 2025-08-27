@@ -8,10 +8,10 @@ import (
 type CommandMode int
 
 const (
-	ModeDel CommandMode = iota // del命令模式
-	ModeRM                      // rm命令模式
-	ModeCP                      // cp命令模式
-	ModeDefault                 // 默认delguard模式
+	ModeDel     CommandMode = iota // del命令模式
+	ModeRM                         // rm命令模式
+	ModeCP                         // cp命令模式
+	ModeDefault                    // 默认delguard模式
 )
 
 // SearchResult 搜索结果结构体
@@ -40,6 +40,13 @@ type SmartFileSearch struct {
 
 // InteractiveUI 交互式用户界面
 type InteractiveUI struct {
+}
+
+// DiskUsage 磁盘使用情况（跨平台定义）
+type DiskUsage struct {
+	Total uint64 // 总空间（字节）
+	Free  uint64 // 可用空间（字节）
+	Used  uint64 // 已用空间（字节）
 }
 
 // NewSmartFileSearch 创建智能文件搜索引擎

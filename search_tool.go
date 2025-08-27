@@ -10,12 +10,12 @@ import (
 
 // SearchTool 搜索工具结构体
 type SearchTool struct {
-	config      SearchToolConfig
-	search      *EnhancedSmartSearch
-	ui          *InteractiveUI
-	searchDir   string
-	outputMode  string
-	verbose     bool
+	config     SearchToolConfig
+	search     *EnhancedSmartSearch
+	ui         *InteractiveUI
+	searchDir  string
+	outputMode string
+	verbose    bool
 }
 
 // NewSearchTool 创建新的搜索工具
@@ -69,7 +69,7 @@ func (st *SearchTool) Run(args []string) error {
 // parseArgs 解析命令行参数
 func (st *SearchTool) parseArgs(args []string) error {
 	fs := flag.NewFlagSet("search", flag.ExitOnError)
-	
+
 	// 搜索配置
 	fs.Float64Var(&st.config.SimilarityThreshold, "threshold", DefaultSimilarityThreshold, "相似度阈值 (0-100)")
 	fs.IntVar(&st.config.MaxResults, "max-results", DefaultMaxResults, "最大结果数量")
@@ -77,23 +77,23 @@ func (st *SearchTool) parseArgs(args []string) error {
 	fs.BoolVar(&st.config.Recursive, "recursive", false, "递归搜索子目录")
 	fs.BoolVar(&st.config.SearchParent, "parent", false, "搜索父目录")
 	fs.BoolVar(&st.config.CaseSensitive, "case-sensitive", false, "区分大小写")
-	
+
 	// 工具配置
 	fs.StringVar(&st.searchDir, "dir", "", "搜索目录 (默认为当前目录)")
 	fs.StringVar(&st.outputMode, "output", "table", "输出模式: table, json, csv, list")
 	fs.BoolVar(&st.verbose, "verbose", false, "显示详细信息")
-	
+
 	// 过滤选项
 	var extensions string
 	var minSize, maxSize int64
 	var afterDate, beforeDate string
-	
+
 	fs.StringVar(&extensions, "ext", "", "文件扩展名过滤 (逗号分隔)")
 	fs.Int64Var(&minSize, "min-size", 0, "最小文件大小 (字节)")
 	fs.Int64Var(&maxSize, "max-size", 0, "最大文件大小 (字节)")
 	fs.StringVar(&afterDate, "after", "", "修改日期之后 (格式: 2006-01-02)")
 	fs.StringVar(&beforeDate, "before", "", "修改日期之前 (格式: 2006-01-02)")
-	
+
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -151,7 +151,7 @@ func (st *SearchTool) printSearchInfo() {
 	fmt.Printf("  递归搜索: %t\n", st.config.Recursive)
 	fmt.Printf("  搜索父目录: %t\n", st.config.SearchParent)
 	fmt.Printf("  区分大小写: %t\n", st.config.CaseSensitive)
-	
+
 	if st.config.extensions != nil {
 		fmt.Printf("  文件扩展名: %s\n", strings.Join(st.config.extensions, ", "))
 	}
@@ -173,29 +173,29 @@ func (st *SearchTool) printSearchInfo() {
 // performSearch 执行搜索
 func (st *SearchTool) performSearch() error {
 	target := flag.Arg(0)
-	
+
 	// 检查是否为正则表达式
 	var results []SearchResult
 	var err error
-	
+
 	if isRegexPattern(target) {
 		fmt.Printf("使用正则表达式搜索: %s\n", target)
 		results, err = st.search.SearchRegexWithCache(target, st.searchDir)
 	} else {
 		fmt.Printf("搜索目标: %s\n", target)
 		results, err = st.search.SearchWithCache(target, st.searchDir)
-		
+
 		// 如果基本搜索没找到且启用了内容搜索，尝试内容搜索
 		if err == nil && len(results) == 0 && st.config.SearchContent {
 			fmt.Printf("未找到文件名匹配，正在搜索文件内容...\n")
 			results, err = st.search.SearchContentWithCache(target, st.searchDir)
 		}
 	}
-	
+
 	if err != nil {
 		return fmt.Errorf("搜索失败: %v", err)
 	}
-	
+
 	// 应用过滤条件
 	if len(st.config.extensions) > 0 {
 		results = st.search.FilterByExtension(results, st.config.extensions)
@@ -207,7 +207,7 @@ func (st *SearchTool) performSearch() error {
 	if !st.config.afterDate.IsZero() || !st.config.beforeDate.IsZero() {
 		results = st.search.FilterByDate(results, st.config.afterDate, st.config.beforeDate)
 	}
-	
+
 	// 显示结果
 	return st.displayResults(results, target)
 }
@@ -218,7 +218,7 @@ func (st *SearchTool) displayResults(results []SearchResult, target string) erro
 		fmt.Printf("未找到与 '%s' 匹配的文件\n", target)
 		return nil
 	}
-	
+
 	// 显示统计信息
 	stats := st.search.GetSearchStats(results)
 	fmt.Printf("找到 %d 个结果:\n", stats["total_results"])
@@ -226,7 +226,7 @@ func (st *SearchTool) displayResults(results []SearchResult, target string) erro
 		fmt.Printf("  文件: %d\n", stats["files"])
 		fmt.Printf("  目录: %d\n", stats["directories"])
 		fmt.Printf("  平均相似度: %.1f%%\n", stats["avg_similarity"])
-		
+
 		if fileTypes, ok := stats["file_types"].(map[string]int); ok && len(fileTypes) > 0 {
 			fmt.Printf("  文件类型分布:\n")
 			for ext, count := range fileTypes {
@@ -235,7 +235,7 @@ func (st *SearchTool) displayResults(results []SearchResult, target string) erro
 		}
 		fmt.Println()
 	}
-	
+
 	// 根据输出模式显示结果
 	switch st.outputMode {
 	case "json":
@@ -253,26 +253,26 @@ func (st *SearchTool) displayResults(results []SearchResult, target string) erro
 func (st *SearchTool) displayTable(results []SearchResult) error {
 	fmt.Printf("%-60s %-20s %-10s %-15s %s\n", "路径", "名称", "相似度", "匹配类型", "上下文")
 	fmt.Printf("%-60s %-20s %-10s %-15s %s\n", strings.Repeat("-", 60), strings.Repeat("-", 20), strings.Repeat("-", 10), strings.Repeat("-", 15), strings.Repeat("-", 30))
-	
+
 	for _, result := range results {
 		path := result.Path
 		if len(path) > 57 {
 			path = "..." + path[len(path)-54:]
 		}
-		
+
 		name := result.Name
 		if len(name) > 17 {
 			name = name[:17] + "..."
 		}
-		
+
 		context := result.Context
 		if len(context) > 30 {
 			context = context[:27] + "..."
 		}
-		
+
 		fmt.Printf("%-60s %-20s %-10.1f %-15s %s\n", path, name, result.Similarity, result.MatchType, context)
 	}
-	
+
 	return nil
 }
 
@@ -321,11 +321,11 @@ func (st *SearchTool) displayJSON(results []SearchResult) error {
 func (st *SearchTool) displayCSV(results []SearchResult) error {
 	fmt.Printf("路径,名称,相似度,匹配类型,上下文\n")
 	for _, result := range results {
-		fmt.Printf("\"%s\",\"%s\",%.1f,\"%s\",\"%s\"\n", 
-			escapeCSV(result.Path), 
-			escapeCSV(result.Name), 
-			result.Similarity, 
-			result.MatchType, 
+		fmt.Printf("\"%s\",\"%s\",%.1f,\"%s\",\"%s\"\n",
+			escapeCSV(result.Path),
+			escapeCSV(result.Name),
+			result.Similarity,
+			result.MatchType,
 			escapeCSV(result.Context))
 	}
 	return nil
@@ -390,13 +390,13 @@ func (st *SearchTool) printUsage() {
 
 // SearchToolConfig 扩展配置
 type SearchToolConfig struct {
-	SimilarityThreshold float64
-	MaxResults          int
-	SearchContent       bool
-	Recursive           bool
-	SearchParent        bool
-	CaseSensitive       bool
-	extensions          []string
-	minSize, maxSize    int64
+	SimilarityThreshold   float64
+	MaxResults            int
+	SearchContent         bool
+	Recursive             bool
+	SearchParent          bool
+	CaseSensitive         bool
+	extensions            []string
+	minSize, maxSize      int64
 	afterDate, beforeDate time.Time
 }

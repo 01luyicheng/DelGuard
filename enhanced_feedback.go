@@ -293,27 +293,27 @@ func (fm *FeedbackManager) showProgressSpinner(current, total int, percentage fl
 
 // showProgressDots 显示点状进度
 func (fm *FeedbackManager) showProgressDots(current, total int, percentage float64, message string) {
-    dots := int(percentage / 10)
-    progress := strings.Repeat("●", dots) + strings.Repeat("○", 10-dots)
+	dots := int(percentage / 10)
+	progress := strings.Repeat("●", dots) + strings.Repeat("○", 10-dots)
 
-    fmt.Printf("\r[%s] %.1f%% %s", progress, percentage, message)
+	fmt.Printf("\r[%s] %.1f%% %s", progress, percentage, message)
 
-    if current == total {
-        fmt.Printf(" %s\n", Icons.Completed)
-    }
+	if current == total {
+		fmt.Printf(" %s\n", Icons.Completed)
+	}
 }
 
 func (fm *FeedbackManager) showProgressDetailed(current, total int, percentage float64, message string, details map[string]interface{}) {
-    speed := ""
-    eta := ""
+	speed := ""
+	eta := ""
 
-    if details != nil {
-        if s, ok := details["speed"]; ok {
-            speed = fmt.Sprintf(T(" | 速度: %v"), s)
-        }
-        if e, ok := details["eta"]; ok {
-            eta = fmt.Sprintf(T(" | ETA: %v"), e)
-        }
+	if details != nil {
+		if s, ok := details["speed"]; ok {
+			speed = fmt.Sprintf(T(" | 速度: %v"), s)
+		}
+		if e, ok := details["eta"]; ok {
+			eta = fmt.Sprintf(T(" | ETA: %v"), e)
+		}
 	}
 
 	fmt.Printf("\r%s %.1f%% (%d/%d)%s%s | %s",

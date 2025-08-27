@@ -63,10 +63,10 @@ type Config struct {
 
 	// 日志轮转设置
 	// 日志配置
-	EnableLogging bool  `json:"enable_logging"`
-	LogMaxAge     int   `json:"log_max_age"`
-	LogMaxSize    int64 `json:"log_max_size"`
-	LogMaxBackups int   `json:"log_max_backups"`
+	EnableLogging  bool  `json:"enable_logging"`
+	LogMaxAge      int   `json:"log_max_age"`
+	LogMaxSize     int64 `json:"log_max_size"`
+	LogMaxBackups  int   `json:"log_max_backups"`
 	LogRotateDaily bool  `json:"log_rotate_daily"` // 是否按日轮转
 	LogCompress    bool  `json:"log_compress"`     // 是否压缩旧日志
 
@@ -1068,13 +1068,13 @@ func (c *Config) Save(path string) error {
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return fmt.Errorf("无法创建配置目录: %w", err)
 	}
-	
+
 	// 使用直接写入方式，避免重命名问题
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return fmt.Errorf("配置文件编码失败: %w", err)
 	}
-	
+
 	// 尝试直接写入，如果文件存在则先删除
 	if _, err := os.Stat(path); err == nil {
 		// 文件存在，先尝试删除
@@ -1082,12 +1082,12 @@ func (c *Config) Save(path string) error {
 			return fmt.Errorf("无法删除旧配置文件: %w", err)
 		}
 	}
-	
+
 	// 直接写入新文件
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		return fmt.Errorf("无法保存配置文件: %w", err)
 	}
-	
+
 	return nil
 }
 

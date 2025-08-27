@@ -174,27 +174,27 @@ func (cd *CoreDeleter) basicSafetyCheck(path string) error {
 
 	// 1. 检查是否为根目录
 	if cd.isRootPath(cleanPath) {
-		return NewDGError(ErrInvalidPath, "不允许删除根目录", nil)
+		return fmt.Errorf("不允许删除根目录")
 	}
 
 	// 2. 检查是否为当前程序
 	if cd.isSelfExecutable(cleanPath) {
-		return NewDGError(ErrInvalidPath, "不允许删除程序自身", nil)
+		return fmt.Errorf("不允许删除程序自身")
 	}
 
 	// 3. 检查是否为重要系统目录
 	if cd.isCriticalSystemPath(cleanPath) && !cd.force {
-		return NewDGError(ErrCriticalPath, "检测到关键系统路径", fmt.Errorf("路径: %s", cleanPath))
+		return fmt.Errorf("检测到关键系统路径: %s", cleanPath)
 	}
 
 	// 4. 检查路径长度限制
 	if len(cleanPath) > 4096 {
-		return NewDGError(ErrInvalidPath, "路径过长", nil)
+		return fmt.Errorf("路径过长")
 	}
 
-	// 5. 检查路径中的非法字符
-	if strings.ContainsAny(cleanPath, "<>:\\\"|?*") {
-		return NewDGError(ErrInvalidPath, "路径包含非法字符", nil)
+	// 5. 检查路径中的非法字符（Windows文件名非法字符，但路径中的冒号是合法的）
+	if strings.ContainsAny(cleanPath, "<>\"|?*") {
+		return fmt.Errorf("路径包含非法字符")
 	}
 
 	return nil
@@ -290,9 +290,16 @@ func (cd *CoreDeleter) deleteFile(path string) error {
 		fmt.Printf("删除文件: %s\n", path)
 	}
 
-	err := os.Remove(path)
-	if err != nil {
-		return fmt.Errorf("删除文件失败: %v", err)
+	// 根据配置选择删除方式
+	if cd.config.UseRecycleBin {
+		// 使用回收站删除
+		return cd.moveToTrash(path)
+	} else {
+		// 永久删除
+		err := os.Remove(path)
+		if err != nil {
+			return fmt.Errorf("删除文件失败: %v", err)
+		}
 	}
 
 	return nil
@@ -304,20 +311,42 @@ func (cd *CoreDeleter) deleteDirectory(path string) error {
 		fmt.Printf("删除目录: %s\n", path)
 	}
 
-	if cd.recursive {
-		err := os.RemoveAll(path)
-		if err != nil {
-			return fmt.Errorf("递归删除目录失败: %v", err)
-		}
+	// 根据配置选择删除方式
+	if cd.config.UseRecycleBin {
+		// 使用回收站删除
+		return cd.moveToTrash(path)
 	} else {
-		// 非递归删除，只删除空目录
-		err := os.Remove(path)
-		if err != nil {
-			return fmt.Errorf("删除空目录失败: %v", err)
+		// 永久删除
+		if cd.recursive {
+			err := os.RemoveAll(path)
+			if err != nil {
+				return fmt.Errorf("递归删除目录失败: %v", err)
+			}
+		} else {
+			// 非递归删除，只删除空目录
+			err := os.Remove(path)
+			if err != nil {
+				return fmt.Errorf("删除空目录失败: %v", err)
+			}
 		}
 	}
 
 	return nil
+}
+
+// moveToTrash 跨平台回收站删除
+func (cd *CoreDeleter) moveToTrash(path string) error {
+	switch runtime.GOOS {
+	case "windows":
+		return cd.moveToTrashWindows(path)
+	case "darwin":
+		return cd.moveToTrashMacOS(path)
+	case "linux":
+		return cd.moveToTrashLinux(path)
+	default:
+		// 不支持的平台，使用永久删除
+		return os.Remove(path)
+	}
 }
 
 // GetStats 获取删除统计信息

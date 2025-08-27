@@ -7,10 +7,10 @@ import (
 
 // StandardError 标准错误结构
 type StandardError struct {
-	Code    string      // 错误代码
-	Message string      // 错误消息
-	Details string      // 详细信息
-	Cause   error       // 原始错误
+	Code    string       // 错误代码
+	Message string       // 错误消息
+	Details string       // 详细信息
+	Cause   error        // 原始错误
 	Context ErrorContext // 错误上下文
 }
 

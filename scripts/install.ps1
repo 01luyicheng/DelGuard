@@ -167,24 +167,26 @@ if (Test-Path `$delguardPath) {
     } catch { }
     
     # Define robust alias functions for all 5 commands
+    # Define robust alias functions for all 5 commands
+    # Define robust alias functions for all 5 commands
     function global:del {
         param([Parameter(ValueFromRemainingArguments=`$true)][string[]]`$Arguments)
-        & `$delguardPath -i @Arguments
+        & `$delguardPath delete @Arguments
     }
     
     function global:rm {
         param([Parameter(ValueFromRemainingArguments=`$true)][string[]]`$Arguments)
-        & `$delguardPath -i @Arguments
+        & `$delguardPath delete @Arguments
     }
     
     function global:cp {
         param([Parameter(ValueFromRemainingArguments=`$true)][string[]]`$Arguments)
-        & `$delguardPath --cp @Arguments
+        Write-Host "Copy functionality not yet implemented" -ForegroundColor Yellow
     }
     
     function global:copy {
         param([Parameter(ValueFromRemainingArguments=`$true)][string[]]`$Arguments)
-        & `$delguardPath --cp @Arguments
+        Write-Host "Copy functionality not yet implemented" -ForegroundColor Yellow
     }
     
     function global:delguard {

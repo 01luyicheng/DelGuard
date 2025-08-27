@@ -6,6 +6,7 @@ import "unicode/utf8"
 // 参数:
 //   - s: 原始字符串
 //   - maxLen: 最大保留的字符数（按rune）
+//
 // 返回:
 //   - string: 截断后的字符串
 func truncateString(s string, maxLen int) string {

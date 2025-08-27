@@ -338,15 +338,15 @@ func (s *SmartFileSearch) searchBySimilarityWithContext(ctx context.Context, tar
 // searchByContentWithContext 内容搜索方法（带上下文）
 func (s *SmartFileSearch) searchByContentWithContext(ctx context.Context, target string, searchDir string) ([]SearchResult, error) {
 	var results []SearchResult
-	
+
 	// 检查目标是否为空
 	if strings.TrimSpace(target) == "" {
 		return results, nil
 	}
-	
+
 	// 限制搜索的文件大小，避免大文件影响性能
 	maxFileSize := int64(10 * 1024 * 1024) // 10MB
-	
+
 	err := filepath.Walk(searchDir, func(path string, info os.FileInfo, err error) error {
 		// 检查上下文是否被取消
 		select {
@@ -354,11 +354,11 @@ func (s *SmartFileSearch) searchByContentWithContext(ctx context.Context, target
 			return ctx.Err()
 		default:
 		}
-		
+
 		if err != nil {
 			return nil // 忽略错误，继续搜索
 		}
-		
+
 		// 跳过目录
 		if info.IsDir() {
 			// 如果是目录且不启用递归，跳过该目录
@@ -367,12 +367,12 @@ func (s *SmartFileSearch) searchByContentWithContext(ctx context.Context, target
 			}
 			return nil
 		}
-		
+
 		// 跳过过大的文件
 		if info.Size() > maxFileSize {
 			return nil
 		}
-		
+
 		// 检查文件扩展名，只搜索文本文件
 		ext := strings.ToLower(filepath.Ext(path))
 		isTextFile := false
@@ -382,23 +382,23 @@ func (s *SmartFileSearch) searchByContentWithContext(ctx context.Context, target
 				break
 			}
 		}
-		
+
 		if !isTextFile {
 			return nil
 		}
-		
+
 		// 读取文件内容并搜索
 		content, err := os.ReadFile(path)
 		if err != nil {
 			return nil // 忽略无法读取的文件
 		}
-		
+
 		contentStr := string(content)
 		if !s.config.CaseSensitive {
 			contentStr = strings.ToLower(contentStr)
 			target = strings.ToLower(target)
 		}
-		
+
 		// 搜索内容
 		if strings.Contains(contentStr, target) {
 			// 计算相似度（基于匹配次数和位置）
@@ -407,10 +407,10 @@ func (s *SmartFileSearch) searchByContentWithContext(ctx context.Context, target
 			if similarity > 95.0 {
 				similarity = 95.0
 			}
-			
+
 			// 获取匹配上下文
 			context := s.extractContext(contentStr, target)
-			
+
 			results = append(results, SearchResult{
 				Path:       path,
 				Name:       info.Name(),
@@ -418,16 +418,16 @@ func (s *SmartFileSearch) searchByContentWithContext(ctx context.Context, target
 				MatchType:  "content",
 				Context:    context,
 			})
-			
+
 			// 限制结果数量
 			if len(results) >= s.config.MaxResults*2 {
 				return filepath.SkipAll
 			}
 		}
-		
+
 		return nil
 	})
-	
+
 	return results, err
 }
 
@@ -438,42 +438,42 @@ func (s *SmartFileSearch) extractContext(content, target string) string {
 	if index == -1 {
 		return ""
 	}
-	
+
 	// 计算上下文范围
 	start := index - 30
 	if start < 0 {
 		start = 0
 	}
-	
+
 	end := index + len(target) + 30
 	if end > len(content) {
 		end = len(content)
 	}
-	
+
 	context := content[start:end]
-	
+
 	// 清理上下文，移除多余的空白字符
 	context = strings.TrimSpace(context)
 	context = strings.ReplaceAll(context, "\n", " ")
 	context = strings.ReplaceAll(context, "\r", " ")
 	context = strings.ReplaceAll(context, "\t", " ")
-	
+
 	// 如果上下文太长，进行截断
 	if len(context) > TruncateContextLength {
 		context = context[:TruncateContextLength] + "..."
 	}
-	
+
 	return context
 }
 
 // searchInSubdirectoriesWithContext 子目录搜索方法（带上下文）
 func (s *SmartFileSearch) searchInSubdirectoriesWithContext(ctx context.Context, target string, searchDir string) ([]SearchResult, error) {
 	var results []SearchResult
-	
+
 	// 限制搜索深度
 	maxDepth := MaxSearchDepth
 	currentDepth := 0
-	
+
 	err := filepath.Walk(searchDir, func(path string, info os.FileInfo, err error) error {
 		// 检查上下文是否被取消
 		select {
@@ -481,25 +481,25 @@ func (s *SmartFileSearch) searchInSubdirectoriesWithContext(ctx context.Context,
 			return ctx.Err()
 		default:
 		}
-		
+
 		if err != nil {
 			return nil // 忽略错误，继续搜索
 		}
-		
+
 		// 计算当前深度
 		relPath, _ := filepath.Rel(searchDir, path)
 		currentDepth = strings.Count(relPath, string(os.PathSeparator))
-		
+
 		// 如果超过最大深度，跳过该目录
 		if info.IsDir() && currentDepth >= maxDepth {
 			return filepath.SkipDir
 		}
-		
+
 		// 跳过根目录本身
 		if path == searchDir {
 			return nil
 		}
-		
+
 		// 只搜索当前目录下的直接子目录
 		if currentDepth > 1 {
 			if info.IsDir() {
@@ -507,19 +507,19 @@ func (s *SmartFileSearch) searchInSubdirectoriesWithContext(ctx context.Context,
 			}
 			return nil
 		}
-		
+
 		filename := info.Name()
 		similarity := s.calculateSimilarity(target, filename)
-		
+
 		// 降低子目录匹配的阈值要求
 		subdirThreshold := s.config.SimilarityThreshold * SubdirMatchSimilarity
 		if subdirThreshold < 30.0 {
 			subdirThreshold = 30.0
 		}
-		
+
 		if similarity >= subdirThreshold {
 			matchType := s.getMatchType(target, filename)
-			
+
 			// 为子目录结果添加特殊标识
 			context := ""
 			if info.IsDir() {
@@ -528,7 +528,7 @@ func (s *SmartFileSearch) searchInSubdirectoriesWithContext(ctx context.Context,
 			} else {
 				context = s.getFileTypeContext(info)
 			}
-			
+
 			results = append(results, SearchResult{
 				Path:       path,
 				Name:       filename,
@@ -536,21 +536,21 @@ func (s *SmartFileSearch) searchInSubdirectoriesWithContext(ctx context.Context,
 				MatchType:  matchType,
 				Context:    context,
 			})
-			
+
 			// 限制结果数量
 			if len(results) >= s.config.MaxResults {
 				return filepath.SkipAll
 			}
 		}
-		
+
 		// 如果是目录且不启用递归，跳过该目录
 		if info.IsDir() && !s.config.Recursive {
 			return filepath.SkipDir
 		}
-		
+
 		return nil
 	})
-	
+
 	return results, err
 }
 
@@ -624,16 +624,16 @@ func (s *SmartFileSearch) SearchByRegex(pattern string, searchDir string) ([]Sea
 // searchByRegexWithContext 使用正则表达式搜索文件（带上下文）
 func (s *SmartFileSearch) searchByRegexWithContext(ctx context.Context, pattern string, searchDir string) ([]SearchResult, error) {
 	var results []SearchResult
-	
+
 	// 编译正则表达式
 	regex, err := regexp.Compile(pattern)
 	if err != nil {
 		return nil, fmt.Errorf(T("正则表达式编译失败: %v"), err)
 	}
-	
+
 	// 限制搜索的文件大小
 	maxFileSize := int64(10 * 1024 * 1024) // 10MB
-	
+
 	err = filepath.Walk(searchDir, func(path string, info os.FileInfo, err error) error {
 		// 检查上下文是否被取消
 		select {
@@ -641,30 +641,30 @@ func (s *SmartFileSearch) searchByRegexWithContext(ctx context.Context, pattern 
 			return ctx.Err()
 		default:
 		}
-		
+
 		if err != nil {
 			return nil // 忽略错误，继续搜索
 		}
-		
+
 		// 跳过根目录本身
 		if path == searchDir {
 			return nil
 		}
-		
+
 		filename := info.Name()
-		
+
 		// 在文件名中搜索
 		if regex.MatchString(filename) {
 			matchType := "regex_filename"
 			context := ""
-			
+
 			if info.IsDir() {
 				matchType = "dir_" + matchType
 				context = T("目录")
 			} else {
 				context = s.getFileTypeContext(info)
 			}
-			
+
 			results = append(results, SearchResult{
 				Path:       path,
 				Name:       filename,
@@ -673,7 +673,7 @@ func (s *SmartFileSearch) searchByRegexWithContext(ctx context.Context, pattern 
 				Context:    context,
 			})
 		}
-		
+
 		// 如果是文件且在文本文件列表中，搜索文件内容
 		if !info.IsDir() && info.Size() <= maxFileSize {
 			ext := strings.ToLower(filepath.Ext(path))
@@ -684,13 +684,13 @@ func (s *SmartFileSearch) searchByRegexWithContext(ctx context.Context, pattern 
 					break
 				}
 			}
-			
+
 			if isTextFile {
 				content, readErr := os.ReadFile(path)
 				if readErr == nil {
 					contentStr := string(content)
 					matches := regex.FindAllStringIndex(contentStr, -1)
-					
+
 					if len(matches) > 0 {
 						// 获取第一个匹配的上下文
 						match := matches[0]
@@ -698,21 +698,21 @@ func (s *SmartFileSearch) searchByRegexWithContext(ctx context.Context, pattern 
 						if start < 0 {
 							start = 0
 						}
-						
+
 						end := match[1] + 30
 						if end > len(contentStr) {
 							end = len(contentStr)
 						}
-						
+
 						context := strings.TrimSpace(contentStr[start:end])
 						context = strings.ReplaceAll(context, "\n", " ")
 						context = strings.ReplaceAll(context, "\r", " ")
 						context = strings.ReplaceAll(context, "\t", " ")
-						
+
 						if len(context) > TruncateContextLength {
 							context = context[:TruncateContextLength] + "..."
 						}
-						
+
 						results = append(results, SearchResult{
 							Path:       path,
 							Name:       info.Name(),
@@ -724,20 +724,20 @@ func (s *SmartFileSearch) searchByRegexWithContext(ctx context.Context, pattern 
 				}
 			}
 		}
-		
+
 		// 限制结果数量
 		if len(results) >= s.config.MaxResults*3 {
 			return filepath.SkipAll
 		}
-		
+
 		// 如果是目录且不启用递归，跳过该目录
 		if info.IsDir() && !s.config.Recursive {
 			return filepath.SkipDir
 		}
-		
+
 		return nil
 	})
-	
+
 	return results, err
 }
 
@@ -746,22 +746,22 @@ func (s *SmartFileSearch) FilterByExtension(results []SearchResult, extensions [
 	if len(extensions) == 0 {
 		return results
 	}
-	
+
 	var filtered []SearchResult
 	extMap := make(map[string]bool)
-	
+
 	// 将扩展名转换为小写并存储在map中
 	for _, ext := range extensions {
 		extMap[strings.ToLower(ext)] = true
 	}
-	
+
 	for _, result := range results {
 		fileExt := strings.ToLower(filepath.Ext(result.Path))
 		if extMap[fileExt] {
 			filtered = append(filtered, result)
 		}
 	}
-	
+
 	return filtered
 }
 
@@ -770,25 +770,25 @@ func (s *SmartFileSearch) FilterBySize(results []SearchResult, minSize, maxSize 
 	if minSize <= 0 && maxSize <= 0 {
 		return results
 	}
-	
+
 	var filtered []SearchResult
-	
+
 	for _, result := range results {
 		info, err := os.Stat(result.Path)
 		if err != nil {
 			continue
 		}
-		
+
 		if info.IsDir() {
 			continue
 		}
-		
+
 		size := info.Size()
 		if (minSize <= 0 || size >= minSize) && (maxSize <= 0 || size <= maxSize) {
 			filtered = append(filtered, result)
 		}
 	}
-	
+
 	return filtered
 }
 
@@ -797,64 +797,64 @@ func (s *SmartFileSearch) FilterByDate(results []SearchResult, after, before tim
 	if after.IsZero() && before.IsZero() {
 		return results
 	}
-	
+
 	var filtered []SearchResult
-	
+
 	for _, result := range results {
 		info, err := os.Stat(result.Path)
 		if err != nil {
 			continue
 		}
-		
+
 		modTime := info.ModTime()
 		if (after.IsZero() || modTime.After(after)) && (before.IsZero() || modTime.Before(before)) {
 			filtered = append(filtered, result)
 		}
 	}
-	
+
 	return filtered
 }
 
 // GroupResultsByDirectory 按目录分组结果
 func (s *SmartFileSearch) GroupResultsByDirectory(results []SearchResult) map[string][]SearchResult {
 	groups := make(map[string][]SearchResult)
-	
+
 	for _, result := range results {
 		dir := filepath.Dir(result.Path)
 		groups[dir] = append(groups[dir], result)
 	}
-	
+
 	return groups
 }
 
 // GetSearchStats 获取搜索统计信息
 func (s *SmartFileSearch) GetSearchStats(results []SearchResult) map[string]interface{} {
 	stats := make(map[string]interface{})
-	
+
 	if len(results) == 0 {
 		stats["total_files"] = 0
 		stats["directories"] = 0
 		stats["avg_similarity"] = 0.0
 		return stats
 	}
-	
+
 	// 统计信息
 	fileCount := 0
 	dirCount := 0
 	totalSimilarity := 0.0
 	fileTypes := make(map[string]int)
-	
+
 	for _, result := range results {
 		info, err := os.Stat(result.Path)
 		if err != nil {
 			continue
 		}
-		
+
 		if info.IsDir() {
 			dirCount++
 		} else {
 			fileCount++
-			
+
 			// 统计文件类型
 			ext := strings.ToLower(filepath.Ext(result.Path))
 			if ext == "" {
@@ -862,17 +862,17 @@ func (s *SmartFileSearch) GetSearchStats(results []SearchResult) map[string]inte
 			}
 			fileTypes[ext]++
 		}
-		
+
 		totalSimilarity += result.Similarity
 	}
-	
+
 	avgSimilarity := totalSimilarity / float64(len(results))
-	
+
 	stats["total_results"] = len(results)
 	stats["files"] = fileCount
 	stats["directories"] = dirCount
 	stats["avg_similarity"] = avgSimilarity
 	stats["file_types"] = fileTypes
-	
+
 	return stats
 }

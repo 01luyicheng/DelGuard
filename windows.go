@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -91,11 +90,10 @@ func moveToTrashWindows(filePath string) error {
 
 	// 检查是否为目录，如果是目录则需要递归删除标志
 	info, err := os.Stat(absPath)
-	var flags uint16 = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT
+	var flags uint16 = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI
 	if err == nil && info.IsDir() {
-		// 对于目录，不需要额外标志，SHFileOperationW 会自动递归删除
-		// 但我们可以添加 FOF_NOERRORUI 来避免错误对话框
-		flags |= FOF_NOERRORUI
+		// 对于目录，确保使用正确的标志
+		flags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI
 	}
 
 	// 初始化SHFILEOPSTRUCT结构体
@@ -214,55 +212,6 @@ func getWindowsUsername() (string, error) {
 	}
 
 	return username, nil
-}
-
-// CheckFilePermissions 检查文件权限（Windows实现）
-func CheckFilePermissions(filePath string) (bool, error) {
-	// Windows平台的文件权限检查
-	info, err := os.Stat(filePath)
-	if err != nil {
-		return false, err
-	}
-
-	// 检查文件属性
-	attrs, err := syscall.GetFileAttributes(syscall.StringToUTF16Ptr(filePath))
-	if err != nil {
-		return false, fmt.Errorf("无法获取文件属性: %v", err)
-	}
-
-	// 检查系统文件属性
-	if attrs&syscall.FILE_ATTRIBUTE_SYSTEM != 0 {
-		return false, fmt.Errorf("文件是系统文件，不允许删除")
-	}
-
-	// 检查隐藏文件属性
-	if attrs&syscall.FILE_ATTRIBUTE_HIDDEN != 0 {
-		// 隐藏文件需要额外确认
-		return false, fmt.Errorf("文件是隐藏文件，需要确认删除")
-	}
-
-	// 检查只读文件属性
-	if attrs&syscall.FILE_ATTRIBUTE_READONLY != 0 {
-		// 只读文件需要额外确认
-		return false, fmt.Errorf("文件是只读文件，需要确认删除")
-	}
-
-	// 检查特殊路径
-	if isProtectedPath(filePath) {
-		return false, fmt.Errorf("文件位于受保护路径")
-	}
-
-	// 检查文件权限
-	file, err := os.OpenFile(filePath, os.O_RDWR, 0)
-	if err != nil {
-		if os.IsPermission(err) {
-			return false, fmt.Errorf("没有文件写入权限")
-		}
-		return false, fmt.Errorf("无法打开文件: %v", err)
-	}
-	defer file.Close()
-
-	return true, nil
 }
 
 // isProtectedPath 检查文件是否位于受保护路径

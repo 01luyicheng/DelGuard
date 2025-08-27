@@ -12,8 +12,8 @@ import (
 
 // SearchCache 搜索缓存结构体
 type SearchCache struct {
-	cache map[string]*CacheEntry
-	mutex sync.RWMutex
+	cache  map[string]*CacheEntry
+	mutex  sync.RWMutex
 	maxAge time.Duration
 }
 
@@ -49,23 +49,23 @@ func (sc *SearchCache) Get(target, searchDir, searchType string) ([]SearchResult
 
 	cacheKey := sc.GenerateCacheKey(target, searchDir, searchType)
 	entry, exists := sc.cache[cacheKey]
-	
+
 	if !exists {
 		return nil, false
 	}
-	
+
 	// 检查缓存是否过期
 	if time.Since(entry.Timestamp) > sc.maxAge {
 		delete(sc.cache, cacheKey)
 		return nil, false
 	}
-	
+
 	// 检查搜索目录是否仍然存在
 	if _, err := os.Stat(searchDir); err != nil {
 		delete(sc.cache, cacheKey)
 		return nil, false
 	}
-	
+
 	return entry.Results, true
 }
 
@@ -75,11 +75,11 @@ func (sc *SearchCache) Set(target, searchDir, searchType string, results []Searc
 	defer sc.mutex.Unlock()
 
 	cacheKey := sc.GenerateCacheKey(target, searchDir, searchType)
-	
+
 	// 创建缓存条目的副本以避免外部修改
 	resultsCopy := make([]SearchResult, len(results))
 	copy(resultsCopy, results)
-	
+
 	sc.cache[cacheKey] = &CacheEntry{
 		Results:    resultsCopy,
 		Timestamp:  time.Now(),
@@ -93,7 +93,7 @@ func (sc *SearchCache) Set(target, searchDir, searchType string, results []Searc
 func (sc *SearchCache) Clear() {
 	sc.mutex.Lock()
 	defer sc.mutex.Unlock()
-	
+
 	sc.cache = make(map[string]*CacheEntry)
 }
 
@@ -101,7 +101,7 @@ func (sc *SearchCache) Clear() {
 func (sc *SearchCache) Cleanup() {
 	sc.mutex.Lock()
 	defer sc.mutex.Unlock()
-	
+
 	now := time.Now()
 	for key, entry := range sc.cache {
 		if now.Sub(entry.Timestamp) > sc.maxAge {
@@ -114,17 +114,17 @@ func (sc *SearchCache) Cleanup() {
 func (sc *SearchCache) GetStats() map[string]interface{} {
 	sc.mutex.RLock()
 	defer sc.mutex.RUnlock()
-	
+
 	stats := make(map[string]interface{})
 	stats["total_entries"] = len(sc.cache)
-	
+
 	// 计算缓存总大小（估算）
 	totalSize := 0
 	for _, entry := range sc.cache {
 		totalSize += len(entry.Results) * 200 // 估算每个结果约200字节
 	}
 	stats["estimated_size_bytes"] = totalSize
-	
+
 	// 计算平均缓存年龄
 	if len(sc.cache) > 0 {
 		totalAge := time.Duration(0)
@@ -135,7 +135,7 @@ func (sc *SearchCache) GetStats() map[string]interface{} {
 	} else {
 		stats["avg_age_minutes"] = 0.0
 	}
-	
+
 	return stats
 }
 
@@ -148,11 +148,11 @@ type SearchHistory struct {
 
 // HistoryEntry 历史记录条目
 type HistoryEntry struct {
-	Target     string
-	SearchDir  string
-	Timestamp  time.Time
+	Target      string
+	SearchDir   string
+	Timestamp   time.Time
 	ResultCount int
-	SearchType string
+	SearchType  string
 }
 
 // NewSearchHistory 创建新的搜索历史
@@ -170,7 +170,7 @@ func NewSearchHistory(maxSize int) *SearchHistory {
 func (sh *SearchHistory) Add(target, searchDir, searchType string, resultCount int) {
 	sh.mutex.Lock()
 	defer sh.mutex.Unlock()
-	
+
 	entry := HistoryEntry{
 		Target:      target,
 		SearchDir:   searchDir,
@@ -178,10 +178,10 @@ func (sh *SearchHistory) Add(target, searchDir, searchType string, resultCount i
 		ResultCount: resultCount,
 		SearchType:  searchType,
 	}
-	
+
 	// 添加到开头
 	sh.entries = append([]HistoryEntry{entry}, sh.entries...)
-	
+
 	// 限制历史记录大小
 	if len(sh.entries) > sh.maxSize {
 		sh.entries = sh.entries[:sh.maxSize]
@@ -192,11 +192,11 @@ func (sh *SearchHistory) Add(target, searchDir, searchType string, resultCount i
 func (sh *SearchHistory) GetRecent(limit int) []HistoryEntry {
 	sh.mutex.RLock()
 	defer sh.mutex.RUnlock()
-	
+
 	if limit <= 0 || limit > len(sh.entries) {
 		limit = len(sh.entries)
 	}
-	
+
 	// 返回副本以避免外部修改
 	result := make([]HistoryEntry, limit)
 	copy(result, sh.entries[:limit])
@@ -207,7 +207,7 @@ func (sh *SearchHistory) GetRecent(limit int) []HistoryEntry {
 func (sh *SearchHistory) GetByTarget(target string) []HistoryEntry {
 	sh.mutex.RLock()
 	defer sh.mutex.RUnlock()
-	
+
 	var results []HistoryEntry
 	for _, entry := range sh.entries {
 		if entry.Target == target {
@@ -221,7 +221,7 @@ func (sh *SearchHistory) GetByTarget(target string) []HistoryEntry {
 func (sh *SearchHistory) Clear() {
 	sh.mutex.Lock()
 	defer sh.mutex.Unlock()
-	
+
 	sh.entries = sh.entries[:0]
 }
 
@@ -229,28 +229,28 @@ func (sh *SearchHistory) Clear() {
 func (sh *SearchHistory) GetStats() map[string]interface{} {
 	sh.mutex.RLock()
 	defer sh.mutex.RUnlock()
-	
+
 	stats := make(map[string]interface{})
 	stats["total_entries"] = len(sh.entries)
 	stats["max_size"] = sh.maxSize
-	
+
 	// 统计最常用的搜索目标
 	targetCount := make(map[string]int)
 	for _, entry := range sh.entries {
 		targetCount[entry.Target]++
 	}
-	
+
 	// 找出前5个最常用的目标
 	type targetFreq struct {
 		Target string
 		Count  int
 	}
-	
+
 	var frequencies []targetFreq
 	for target, count := range targetCount {
 		frequencies = append(frequencies, targetFreq{target, count})
 	}
-	
+
 	// 按使用频率排序
 	for i := 0; i < len(frequencies)-1; i++ {
 		for j := i + 1; j < len(frequencies); j++ {
@@ -259,14 +259,14 @@ func (sh *SearchHistory) GetStats() map[string]interface{} {
 			}
 		}
 	}
-	
+
 	// 只返回前5个
 	if len(frequencies) > 5 {
 		frequencies = frequencies[:5]
 	}
-	
+
 	stats["top_targets"] = frequencies
-	
+
 	return stats
 }
 
@@ -282,7 +282,7 @@ func NewEnhancedSmartSearch(config SmartSearchConfig) *EnhancedSmartSearch {
 	return &EnhancedSmartSearch{
 		SmartFileSearch: NewSmartFileSearch(config),
 		cache:           NewSearchCache(30 * time.Minute), // 30分钟缓存
-		history:         NewSearchHistory(100),              // 100条历史记录
+		history:         NewSearchHistory(100),            // 100条历史记录
 	}
 }
 
@@ -292,19 +292,19 @@ func (ess *EnhancedSmartSearch) SearchWithCache(target, searchDir string) ([]Sea
 	if results, found := ess.cache.Get(target, searchDir, "similarity"); found {
 		return results, nil
 	}
-	
+
 	// 执行搜索
 	results, err := ess.SmartFileSearch.SearchFiles(target, searchDir)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// 存入缓存
 	ess.cache.Set(target, searchDir, "similarity", results)
-	
+
 	// 添加到历史记录
 	ess.history.Add(target, searchDir, "similarity", len(results))
-	
+
 	return results, nil
 }
 
@@ -314,21 +314,21 @@ func (ess *EnhancedSmartSearch) SearchContentWithCache(target, searchDir string)
 	if results, found := ess.cache.Get(target, searchDir, "content"); found {
 		return results, nil
 	}
-	
+
 	// 临时启用内容搜索
 	oldConfig := ess.SmartFileSearch.config
 	ess.SmartFileSearch.config.SearchContent = true
-	
+
 	// 执行搜索
 	results, err := ess.SmartFileSearch.SearchFiles(target, searchDir)
-	
+
 	// 恢复配置
 	ess.SmartFileSearch.config = oldConfig
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// 过滤出内容匹配的结果
 	var contentResults []SearchResult
 	for _, result := range results {
@@ -336,13 +336,13 @@ func (ess *EnhancedSmartSearch) SearchContentWithCache(target, searchDir string)
 			contentResults = append(contentResults, result)
 		}
 	}
-	
+
 	// 存入缓存
 	ess.cache.Set(target, searchDir, "content", contentResults)
-	
+
 	// 添加到历史记录
 	ess.history.Add(target, searchDir, "content", len(contentResults))
-	
+
 	return contentResults, nil
 }
 
@@ -352,19 +352,19 @@ func (ess *EnhancedSmartSearch) SearchRegexWithCache(pattern, searchDir string) 
 	if results, found := ess.cache.Get(pattern, searchDir, "regex"); found {
 		return results, nil
 	}
-	
+
 	// 执行正则搜索
 	results, err := ess.SmartFileSearch.SearchByRegex(pattern, searchDir)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// 存入缓存
 	ess.cache.Set(pattern, searchDir, "regex", results)
-	
+
 	// 添加到历史记录
 	ess.history.Add(pattern, searchDir, "regex", len(results))
-	
+
 	return results, nil
 }
 
@@ -398,17 +398,17 @@ func (ess *EnhancedSmartSearch) GetSearchSuggestions(prefix string) []string {
 	recent := ess.history.GetRecent(20)
 	var suggestions []string
 	seen := make(map[string]bool)
-	
+
 	for _, entry := range recent {
 		if strings.HasPrefix(strings.ToLower(entry.Target), strings.ToLower(prefix)) && !seen[entry.Target] {
 			suggestions = append(suggestions, entry.Target)
 			seen[entry.Target] = true
-			
+
 			if len(suggestions) >= 5 { // 最多返回5个建议
 				break
 			}
 		}
 	}
-	
+
 	return suggestions
 }
