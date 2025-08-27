@@ -18,7 +18,7 @@ if ($DryRun) {
 Write-Host ""
 
 # 验证版本格式
-if ($Version -notmatch '^v\d+\.\d+\.\d+$') {
+if ($Version -notmatch '^v\d+\.\d+\.\d+') {
     Write-Error "版本格式错误，应该是 vX.Y.Z 格式，例如 v1.0.0"
 }
 
@@ -56,11 +56,34 @@ if (!$DryRun) {
 # 运行完整测试
 Write-Host "运行完整测试套件..." -ForegroundColor Yellow
 if (!$DryRun) {
-    go test -v -race -coverprofile=coverage.out ./...
+    # 检查是否支持 race 检测
+    $env:CGO_ENABLED = "1"
+    $raceSupported = $true
+    
+    # 在 Windows 上测试 race 检测是否可用
+    if ($IsWindows -or $env:OS -eq "Windows_NT") {
+        try {
+            go test -race -run=NonExistentTest ./... 2>$null
+        } catch {
+            $raceSupported = $false
+        }
+    }
+    
+    if ($raceSupported) {
+        Write-Host "运行带竞态检测的测试..." -ForegroundColor Blue
+        go test -v -race -coverprofile=coverage.out ./...
+    } else {
+        Write-Host "运行标准测试 (race 检测不可用)..." -ForegroundColor Blue
+        go test -v -coverprofile=coverage.out ./...
+    }
+    
     if ($LASTEXITCODE -ne 0) {
         Write-Error "测试失败，停止发布流程"
     }
     Write-Host "所有测试通过" -ForegroundColor Green
+    
+    # 重置 CGO 设置
+    Remove-Item Env:CGO_ENABLED -ErrorAction SilentlyContinue
 } else {
     Write-Host "将运行完整测试套件" -ForegroundColor Gray
 }

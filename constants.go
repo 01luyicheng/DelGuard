@@ -1,6 +1,8 @@
 package main
 
-import "time"
+import (
+	"time"
+)
 
 // 版本信息
 const (
@@ -164,12 +166,20 @@ var SupportedLanguages = []string{
 	"nl-NL", "sv-SE", "no-NO", "fi-FI",
 }
 
-// 危险路径模式
+// 危险路径模式 - 基础模式（Unix/Linux）
 var DangerousPathPatterns = []string{
-	"/", "C:\\", "D:\\", "E:\\", "F:\\",
+	"/", 
 	"/bin", "/sbin", "/usr", "/etc", "/var", "/sys", "/proc", "/dev",
-	"C:\\Windows", "C:\\Program Files", "C:\\Program Files (x86)",
-	"C:\\Users\\Public", "C:\\ProgramData",
+}
+
+// 获取平台特定的危险路径模式
+func getPlatformSpecificDangerousPatterns() []string {
+	paths := PathUtils.GetSystemPaths()
+	var result []string
+	for _, path := range paths {
+		result = append(result, path)
+	}
+	return result
 }
 
 // 系统文件扩展名

@@ -241,9 +241,9 @@ func (cd *CoreDeleter) isCriticalSystemPath(path string) bool {
 			systemDrive = "c:"
 		}
 		criticalPaths = []string{
-			systemDrive + "\\windows\\system32",
-			systemDrive + "\\windows\\syswow64",
-			systemDrive + "\\windows\\boot",
+			filepath.Join(systemDrive, "windows", "system32"),
+			filepath.Join(systemDrive, "windows", "syswow64"),
+			filepath.Join(systemDrive, "windows", "boot"),
 		}
 	case "linux", "darwin":
 		criticalPaths = []string{

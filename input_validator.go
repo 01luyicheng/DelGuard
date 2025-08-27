@@ -60,14 +60,15 @@ func NewInputValidator(config *Config) *InputValidator {
 // getDefaultTrustedPatterns 获取默认受信任的路径模式
 func getDefaultTrustedPatterns() []string {
 	patterns := []string{
-		"^[a-zA-Z]:\\\\[^<>:\"|?*]*$", // Windows路径
+		"^[a-zA-Z]:" + regexp.QuoteMeta(string(filepath.Separator)) + "[^<>:\"|?*]*$", // Windows路径
 		"^/[^\\x00]*$",                // Unix路径
 		"^\\./[^\\x00]*$",             // 相对路径
 	}
 
 	if runtime.GOOS == "windows" {
+		sep := regexp.QuoteMeta(string(filepath.Separator))
 		patterns = append(patterns,
-			"^[a-zA-Z]:\\\\(?:[^<>:\"|?*\\\\]+\\\\)*[^<>:\"|?*]*$",
+			"^[a-zA-Z]:" + sep + "(?:[^<>:\"|?*" + sep + "]+" + sep + ")*[^<>:\"|?*]*$",
 		)
 	}
 
@@ -76,9 +77,10 @@ func getDefaultTrustedPatterns() []string {
 
 // getDefaultBlockedPatterns 获取默认阻止的路径模式
 func getDefaultBlockedPatterns() []string {
+	sep := regexp.QuoteMeta(string(filepath.Separator))
 	return []string{
 		"\\.\\./",        // 路径遍历
-		"\\\\\\.\\.\\\\", // Windows路径遍历
+		sep + sep + "\\.\\." + sep, // Windows路径遍历
 		"\\x00",          // 空字节注入
 		"[\\x01-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]", // 控制字符
 		"<script",                  // 潜在的脚本注入
@@ -285,9 +287,102 @@ func (v *InputValidator) hasPathTraversal(path string) bool {
 		}
 	}
 
+	// 检查..模式
+	patterns := []string{
+		"../",
+		"..\\",
+		"%2e%2e%2f", // URL编码的../
+		"%2e%2e%5c", // URL编码的..\\
+		"\\.\\.\\",  // Windows模式
+		"..",
+		"...",
+		"....",
+		"%2e%2e",   // URL编码的..
+		"%252e%252e", // 双重URL编码的..
+		"%c0%ae%c0%ae", // UTF-8编码的..
+		"%c1%9e%c1%9e", // UTF-8编码的..
+		"%252e%252e%252f", // 三重URL编码的../
+		"%252e%252e%255c", // 三重URL编码的..\\
+	}
+
+	for _, pattern := range patterns {
+		if strings.Contains(strings.ToLower(path), pattern) {
+			return true
+		}
+	}
+
 	// 检查路径是否向上遍历
 	if strings.Contains(cleaned, "..") {
 		return true
+	}
+
+	// 检查规范化攻击
+	if cleaned != path {
+		// 如果规范化后的路径与原始路径不同，可能存在攻击
+		return true
+	}
+
+	// 检查符号链接攻击
+	if v.hasSymlinkAttack(path) {
+		return true
+	}
+
+	// 检查空字节注入
+	if strings.Contains(path, "\x00") {
+		return true
+	}
+
+	// 检查Unicode方向字符攻击
+	unicodePatterns := []string{
+		"\u202a", // Left-to-right embedding
+		"\u202b", // Right-to-left embedding
+		"\u202c", // Pop directional formatting
+		"\u202d", // Left-to-right override
+		"\u202e", // Right-to-left override
+		"\u200e", // Left-to-right mark
+		"\u200f", // Right-to-left mark
+	}
+
+	for _, pattern := range unicodePatterns {
+		if strings.Contains(path, pattern) {
+			return true
+		}
+	}
+
+	// 检查零宽字符攻击
+	zeroWidthPatterns := []string{
+		"\u200b", // Zero-width space
+		"\u200c", // Zero-width non-joiner
+		"\u200d", // Zero-width joiner
+		"\ufeff", // Zero-width no-break space
+	}
+
+	for _, pattern := range zeroWidthPatterns {
+		if strings.Contains(path, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// hasSymlinkAttack 检查符号链接攻击
+func (v *InputValidator) hasSymlinkAttack(path string) bool {
+	// 检查路径中是否包含符号链接的特殊字符
+	if strings.Contains(path, "->") {
+		return true
+	}
+
+	// 检查路径中是否包含转义序列
+	if strings.Contains(path, "\x1b") {
+		return true
+	}
+
+	// 检查路径中是否包含控制字符
+	for _, char := range path {
+		if unicode.IsControl(char) && char != '\t' && char != '\n' && char != '\r' {
+			return true
+		}
 	}
 
 	return false

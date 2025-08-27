@@ -38,7 +38,18 @@ jobs:
       run: go mod download
 
     - name: Run tests
-      run: go test -v -race -coverprofile=coverage.out ./...
+      run: |
+        # Enable CGO for race detection
+        export CGO_ENABLED=1
+        
+        # Test if race detection is supported
+        if go test -race -run=NonExistentTest ./... 2>/dev/null; then
+          echo "Running tests with race detection..."
+          go test -v -race -coverprofile=coverage.out ./...
+        else
+          echo "Running tests without race detection (not supported on this platform)..."
+          go test -v -coverprofile=coverage.out ./...
+        fi
 
     - name: Run benchmarks
       run: go test -bench=. -benchmem ./...

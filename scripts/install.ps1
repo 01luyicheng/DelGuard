@@ -32,9 +32,15 @@ function Write-Error { param([string]$Message) Write-ColorOutput $Message "Red" 
 function Write-Info { param([string]$Message) Write-ColorOutput $Message "Cyan" }
 
 # Platform detection
-$IsWindowsOS = $PSVersionTable.PSVersion.Major -ge 6 ? $IsWindows : ($env:OS -eq "Windows_NT")
-$IsMacOS = $PSVersionTable.PSVersion.Major -ge 6 ? $IsMacOS : $false
-$IsLinuxOS = $PSVersionTable.PSVersion.Major -ge 6 ? $IsLinux : $false
+if ($PSVersionTable.PSVersion.Major -ge 6) {
+    $IsWindowsOS = $IsWindows
+    $IsMacOS = $IsMacOS
+    $IsLinuxOS = $IsLinux
+} else {
+    $IsWindowsOS = ($env:OS -eq "Windows_NT")
+    $IsMacOS = $false
+    $IsLinuxOS = $false
+}
 
 Write-Info "=== DelGuard Universal Installer ==="
 Write-Info "Platform: $(if($IsWindowsOS){'Windows'}elseif($IsMacOS){'macOS'}elseif($IsLinuxOS){'Linux'}else{'Unknown'})"
@@ -97,7 +103,7 @@ if (-not (Test-Path $FinalInstallPath)) {
 }
 
 # Copy executable
-$SourceExe = Join-Path $PSScriptRoot ".." $ExeName
+$SourceExe = Join-Path $PSScriptRoot "..\$ExeName"
 if (-not (Test-Path $SourceExe)) {
     # Try to find in current directory
     $SourceExe = Join-Path (Get-Location) $ExeName
@@ -137,8 +143,8 @@ if (-not $CurrentPath.Contains($FinalInstallPath)) {
         }
     } else {
         Write-Info "Please add $FinalInstallPath to your PATH manually:"
-        Write-Info "echo 'export PATH=\"$FinalInstallPath:\$PATH\"' >> ~/.bashrc"
-        Write-Info "echo 'export PATH=\"$FinalInstallPath:\$PATH\"' >> ~/.zshrc"
+        Write-Info "echo 'export PATH=`"${FinalInstallPath}:`$PATH`"' >> ~/.bashrc"
+        Write-Info "echo 'export PATH=`"${FinalInstallPath}:`$PATH`"' >> ~/.zshrc"
     }
 }
 

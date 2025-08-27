@@ -177,7 +177,7 @@ func (sc *SecurityChecker) checkPathValidation() {
 	// 测试路径遍历攻击防护
 	maliciousPaths := []string{
 		"../../../etc/passwd",
-		"..\\..\\windows\\system32",
+		filepath.Join("..", "..", "windows", "system32"),
 		"/etc/passwd",
 		filepath.Join(os.Getenv("SYSTEMDRIVE"), "Windows", "System32"),
 	}
@@ -351,7 +351,7 @@ func (sc *SecurityChecker) formatReport() string {
 
 	builder.WriteString("DelGuard 安全检查报告\n")
 	builder.WriteString(strings.Repeat("=", 50) + "\n")
-	builder.WriteString(fmt.Sprintf("检查时间: %s\n", time.Now().Format(TimeFormatStandard)))
+	builder.WriteString(fmt.Sprintf("检查时间: %s\n", time.Now().Format("2006-01-02 15:04:05")))
 	builder.WriteString(fmt.Sprintf("操作系统: %s/%s\n", runtime.GOOS, runtime.GOARCH))
 	builder.WriteString("\n")
 

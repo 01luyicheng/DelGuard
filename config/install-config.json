@@ -4,12 +4,12 @@
   "description": "Safe Delete Tool with Cross-Platform Support",
   "default_settings": {
     "install_path": {
-      "windows": "%USERPROFILE%\\bin",
+      "windows": "%USERPROFILE%/bin",
       "linux": "$HOME/.local/bin",
       "macos": "$HOME/.local/bin"
     },
     "system_wide_path": {
-      "windows": "%ProgramFiles%\\DelGuard",
+      "windows": "%ProgramFiles%/DelGuard",
       "linux": "/usr/local/bin",
       "macos": "/usr/local/bin"
     },
@@ -52,17 +52,17 @@
   },
   "paths": {
     "config_dir": {
-      "windows": "%APPDATA%\\DelGuard",
+      "windows": "%APPDATA%/DelGuard",
       "linux": "$HOME/.config/delguard",
       "macos": "$HOME/.config/delguard"
     },
     "log_dir": {
-      "windows": "%LOCALAPPDATA%\\DelGuard\\logs",
+      "windows": "%LOCALAPPDATA%/DelGuard/logs",
       "linux": "$HOME/.local/share/delguard/logs",
       "macos": "$HOME/.local/share/delguard/logs"
     },
     "cache_dir": {
-      "windows": "%LOCALAPPDATA%\\DelGuard\\cache",
+      "windows": "%LOCALAPPDATA%/DelGuard/cache",
       "linux": "$HOME/.cache/delguard",
       "macos": "$HOME/.cache/delguard"
     }
@@ -72,8 +72,8 @@
       "profile_paths": [
         "$PROFILE.CurrentUserCurrentHost",
         "$PROFILE.CurrentUserAllHosts",
-        "$env:USERPROFILE\\Documents\\WindowsPowerShell\\Microsoft.PowerShell_profile.ps1",
-        "$env:USERPROFILE\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1"
+        "$env:USERPROFILE/Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1",
+        "$env:USERPROFILE/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
       ],
       "alias_syntax": "Set-Alias -Name {name} -Value {command} -Force"
     },

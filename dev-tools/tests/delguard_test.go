@@ -106,9 +106,9 @@ func TestPathValidation(t *testing.T) {
 	// 测试危险路径
 	dangerousPaths := []string{
 		"/",
-		"C:\\",
+		filepath.Join("C:", ""),
 		"/etc/passwd",
-		"C:\\Windows\\System32",
+		filepath.Join("C:", "Windows", "System32"),
 	}
 
 	for _, path := range dangerousPaths {

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -180,7 +181,7 @@ func getWindowsUsername() (string, error) {
 		}
 		computername := os.Getenv("COMPUTERNAME")
 		if computername != "" && username != "" {
-			return computername + "\\" + username, nil
+			return computername + string(filepath.Separator) + username, nil
 		}
 		return "", fmt.Errorf("无法获取用户名")
 	}
@@ -213,6 +214,79 @@ func getWindowsUsername() (string, error) {
 	}
 
 	return username, nil
+}
+
+// CheckFilePermissions 检查文件权限（Windows实现）
+func CheckFilePermissions(filePath string) (bool, error) {
+	// Windows平台的文件权限检查
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return false, err
+	}
+
+	// 检查文件属性
+	attrs, err := syscall.GetFileAttributes(syscall.StringToUTF16Ptr(filePath))
+	if err != nil {
+		return false, fmt.Errorf("无法获取文件属性: %v", err)
+	}
+
+	// 检查系统文件属性
+	if attrs&syscall.FILE_ATTRIBUTE_SYSTEM != 0 {
+		return false, fmt.Errorf("文件是系统文件，不允许删除")
+	}
+
+	// 检查隐藏文件属性
+	if attrs&syscall.FILE_ATTRIBUTE_HIDDEN != 0 {
+		// 隐藏文件需要额外确认
+		return false, fmt.Errorf("文件是隐藏文件，需要确认删除")
+	}
+
+	// 检查只读文件属性
+	if attrs&syscall.FILE_ATTRIBUTE_READONLY != 0 {
+		// 只读文件需要额外确认
+		return false, fmt.Errorf("文件是只读文件，需要确认删除")
+	}
+
+	// 检查特殊路径
+	if isProtectedPath(filePath) {
+		return false, fmt.Errorf("文件位于受保护路径")
+	}
+
+	// 检查文件权限
+	file, err := os.OpenFile(filePath, os.O_RDWR, 0)
+	if err != nil {
+		if os.IsPermission(err) {
+			return false, fmt.Errorf("没有文件写入权限")
+		}
+		return false, fmt.Errorf("无法打开文件: %v", err)
+	}
+	defer file.Close()
+
+	return true, nil
+}
+
+// isProtectedPath 检查文件是否位于受保护路径
+func isProtectedPath(filePath string) bool {
+	protectedPaths := []string{
+		"C:\\Windows",
+		"C:\\Program Files",
+		"C:\\Program Files (x86)",
+		"C:\\ProgramData",
+		"C:\\System Volume Information",
+		"C:\\Recovery",
+		"C:\\Boot",
+	}
+
+	// 标准化路径
+	normalizedPath := strings.ToLower(filepath.Clean(filePath))
+
+	for _, protected := range protectedPaths {
+		if strings.HasPrefix(normalizedPath, strings.ToLower(protected)) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // DecodeTrashInfoPath 解码.trashinfo中的Path字段，供其他平台使用

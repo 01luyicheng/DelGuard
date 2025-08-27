@@ -799,12 +799,14 @@ func (h *DefaultErrorHandler) HandleError(err error, operation string, critical 
 		return true
 	}
 
-	// 记录错误日志
-	LogError(operation, "", err)
+	// 记录错误日志（使用安全日志记录）
+	LogErrorSecure(operation, "", err)
 
 	// 如果是关键错误且配置为退出
 	if critical && h.exitOnCritical {
-		fmt.Fprintf(os.Stderr, T("关键错误: %v\n"), err)
+		// 显示给用户时使用过滤后的错误信息
+		filteredErr := sanitizeErrorForDisplay(err)
+		fmt.Fprintf(os.Stderr, T("关键错误: %v\n"), filteredErr)
 		if ExitHandler != nil {
 			ExitHandler(1)
 		}
@@ -812,8 +814,141 @@ func (h *DefaultErrorHandler) HandleError(err error, operation string, critical 
 	}
 
 	// 非关键错误，只输出警告
-	fmt.Fprintf(os.Stderr, T("警告: %s 操作失败: %v\n"), operation, err)
+	filteredErr := sanitizeErrorForDisplay(err)
+	fmt.Fprintf(os.Stderr, T("警告: %s 操作失败: %v\n"), operation, filteredErr)
 	return false
+}
+
+// sanitizeErrorForDisplay 过滤错误信息中的敏感数据
+func sanitizeErrorForDisplay(err error) error {
+	if err == nil {
+		return nil
+	}
+	
+	// 获取错误字符串
+	errStr := err.Error()
+	
+	// 定义敏感信息模式
+	sensitivePatterns := []struct {
+		pattern *regexp.Regexp
+		replace string
+	}{
+		// Windows用户路径
+		{regexp.MustCompile(`(?i)C:\\Users\\[^\\]+`), "C:\\Users\\[REDACTED]"},
+		{regexp.MustCompile(`(?i)%USERPROFILE%\\[^\\]+`), "%USERPROFILE%\\[REDACTED]"},
+		
+		// Unix用户路径
+		{regexp.MustCompile(`(?i)/home/[^/]+`), "/home/[REDACTED]"},
+		{regexp.MustCompile(`(?i)/Users/[^/]+`), "/Users/[REDACTED]"},
+		
+		// 邮箱地址
+		{regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`), "[EMAIL]"},
+		
+		// IP地址
+		{regexp.MustCompile(`\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b`), "[IP]"},
+		
+		// MAC地址
+		{regexp.MustCompile(`([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})`), "[MAC]"},
+		
+		// UUID/GUID
+		{regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`), "[UUID]"},
+		
+		// 主机名
+		{regexp.MustCompile(`(?i)hostname:\s*\S+`), "hostname: [REDACTED]"},
+		
+		// 用户名
+		{regexp.MustCompile(`(?i)username:\s*\S+`), "username: [REDACTED]"},
+		
+		// 数据库连接字符串
+		{regexp.MustCompile(`(?i)(password|pwd)=\S+`), "$1=[REDACTED]"},
+		{regexp.MustCompile(`(?i)(token|key)=\S+`), "$1=[REDACTED]"},
+	}
+	
+	// 应用过滤
+	filtered := errStr
+	for _, pattern := range sensitivePatterns {
+		filtered = pattern.pattern.ReplaceAllString(filtered, pattern.replace)
+	}
+	
+	// 如果是DGError类型，创建新的过滤实例
+	if dgErr, ok := err.(*DGError); ok {
+		newErr := *dgErr
+		newErr.Path = sanitizePath(dgErr.Path)
+		newErr.Cause = sanitizeErrorForDisplay(dgErr.Cause)
+		return &newErr
+	}
+	
+	// 创建新的错误实例
+	return fmt.Errorf(filtered)
+}
+
+// sanitizePath 过滤路径中的敏感信息
+func sanitizePath(path string) string {
+	if path == "" {
+		return ""
+	}
+	
+	// 定义路径敏感模式
+	pathPatterns := []struct {
+		pattern *regexp.Regexp
+		replace string
+	}{
+		// Windows用户目录
+		{regexp.MustCompile(`(?i)C:\\Users\\[^\\]+`), "C:\\Users\\[USER]"},
+		{regexp.MustCompile(`(?i)C:\\Users\\[^\\]+\\`), "C:\\Users\\[USER]\\"},
+		
+		// Unix用户目录
+		{regexp.MustCompile(`(?i)/home/[^/]+`), "/home/[USER]"},
+		{regexp.MustCompile(`(?i)/home/[^/]+/`), "/home/[USER]/"},
+		
+		// macOS用户目录
+		{regexp.MustCompile(`(?i)/Users/[^/]+`), "/Users/[USER]"},
+		{regexp.MustCompile(`(?i)/Users/[^/]+/`), "/Users/[USER]/"},
+		
+		// 应用程序数据目录
+		{regexp.MustCompile(`(?i)\\AppData\\[^\\]+`), "\\AppData\\[PROFILE]"},
+		{regexp.MustCompile(`(?i)\\Application\s+Data\\[^\\]+`), "\\Application Data\\[DATA]"},
+	}
+	
+	// 应用过滤
+	sanitized := path
+	for _, pattern := range pathPatterns {
+		sanitized = pattern.pattern.ReplaceAllString(sanitized, pattern.replace)
+	}
+	
+	return sanitized
+}
+
+// LogErrorSecure 安全地记录错误日志
+func LogErrorSecure(operation, path string, err error) {
+	if err == nil {
+		return
+	}
+	
+	// 创建安全的错误日志
+	safePath := sanitizePath(path)
+	safeErr := sanitizeErrorForDisplay(err)
+	
+	// 记录到内部日志系统
+	LogError(operation, safePath, safeErr)
+	
+	// 额外的安全日志记录
+	secureLog := struct {
+		Timestamp time.Time
+		Operation string
+		Path      string
+		Error     string
+		Level     string
+	}{
+		Timestamp: time.Now(),
+		Operation: operation,
+		Path:      safePath,
+		Error:     safeErr.Error(),
+		Level:     "ERROR",
+	}
+	
+	// 可以在这里添加发送到安全日志服务的代码
+	_ = secureLog
 }
 
 // 全局错误处理器实例

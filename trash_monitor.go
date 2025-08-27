@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 )
@@ -113,48 +112,7 @@ func (m *TrashOperationMonitor) DetectTrashOperation(path string) (*TrashOperati
 
 // getSystemTrashPaths 获取系统回收站路径
 func (m *TrashOperationMonitor) getSystemTrashPaths() ([]string, error) {
-	var trashPaths []string
-
-	switch runtime.GOOS {
-	case "windows":
-		// Windows回收站路径
-		drives := []string{"C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}
-		for _, drive := range drives {
-			recycleBin := fmt.Sprintf("%s:\\$Recycle.Bin", drive)
-			if _, err := os.Stat(recycleBin); err == nil {
-				trashPaths = append(trashPaths, recycleBin)
-			}
-
-			// 老版本Windows回收站
-			recycler := fmt.Sprintf("%s:\\RECYCLER", drive)
-			if _, err := os.Stat(recycler); err == nil {
-				trashPaths = append(trashPaths, recycler)
-			}
-		}
-
-	case "darwin":
-		// macOS回收站路径
-		homeDir, err := os.UserHomeDir()
-		if err == nil {
-			trashPaths = append(trashPaths, filepath.Join(homeDir, ".Trash"))
-		}
-
-		// 系统级回收站
-		trashPaths = append(trashPaths, "/.Trashes")
-
-	case "linux":
-		// Linux回收站路径
-		homeDir, err := os.UserHomeDir()
-		if err == nil {
-			trashPaths = append(trashPaths, filepath.Join(homeDir, ".local/share/Trash"))
-			trashPaths = append(trashPaths, filepath.Join(homeDir, ".Trash"))
-		}
-
-		// 系统级回收站
-		trashPaths = append(trashPaths, "/tmp/.Trash-1000")
-	}
-
-	return trashPaths, nil
+	return PathUtils.GetTrashPaths(), nil
 }
 
 // isPathInTrash 检查路径是否在回收站内

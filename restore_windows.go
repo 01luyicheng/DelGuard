@@ -105,9 +105,11 @@ func restoreFromTrashWindows(pattern string, opts RestoreOptions) error {
 func listRecycleBinItemsWindows() ([]RecycleBinItem, error) {
 	var items []RecycleBinItem
 
-	// 遍历可能的盘符 A: - Z:
-	for d := 'A'; d <= 'Z'; d++ {
-		driveRoot := fmt.Sprintf("%c:\\", d)
+	// 获取所有可用的Windows驱动器
+	drives := getWindowsDrives()
+	for _, d := range drives {
+		// 构建驱动器根目录路径
+		driveRoot := filepath.Join(string(d)+":", "")
 		if _, err := os.Stat(driveRoot); err != nil {
 			continue
 		}
@@ -312,4 +314,17 @@ func getFileTypeByPath(filename string) string {
 	default:
 		return T("其他文件")
 	}
+}
+
+// getWindowsDrives 获取Windows系统所有驱动器
+func getWindowsDrives() []string {
+	var drives []string
+	for d := 'A'; d <= 'Z'; d++ {
+		// 使用filepath.Join构建跨平台路径
+		driveRoot := filepath.Join(string(d)+":", "")
+		if _, err := os.Stat(driveRoot); err == nil {
+			drives = append(drives, string(d))
+		}
+	}
+	return drives
 }
