@@ -1,703 +1,449 @@
-#!/usr/bin/env pwsh
-# DelGuard Enhanced Universal Installer for Windows (Fixed Version)
-# Compatible with PowerShell 5.1+ and PowerShell 7+
-# Version: 2.1.1 (Fixed)
+#Requires -Version 5.1
+<#
+.SYNOPSIS
+    DelGuard 安装脚本 - Windows版本
+
+.DESCRIPTION
+    自动下载并安装 DelGuard 安全删除工具到系统中。
+    支持 PowerShell 5.1+ 和 PowerShell 7+。
+
+.PARAMETER Force
+    强制重新安装，即使已经安装
+
+.PARAMETER SystemWide
+    系统级安装（需要管理员权限）
+
+.PARAMETER Uninstall
+    卸载 DelGuard
+
+.PARAMETER Status
+    检查安装状态
+
+.EXAMPLE
+    .\install.ps1
+    标准安装
+
+.EXAMPLE
+    .\install.ps1 -Force
+    强制重新安装
+
+.EXAMPLE
+    .\install.ps1 -SystemWide
+    系统级安装
+
+.EXAMPLE
+    .\install.ps1 -Uninstall
+    卸载 DelGuard
+#>
 
 [CmdletBinding()]
 param(
-    [string]$InstallPath = "",
     [switch]$Force,
-    [switch]$Quiet,
-    [switch]$Uninstall,
-    [switch]$Help,
     [switch]$SystemWide,
-    [switch]$SkipAliases,
-    [switch]$CheckOnly,
-    [string]$Version = "latest"
+    [switch]$Uninstall,
+    [switch]$Status
 )
 
-# Set strict error handling
-$ErrorActionPreference = "Stop"
-$ProgressPreference = "SilentlyContinue"
+# 设置错误处理
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 
-# Global variables
-$Script:InstallationLog = @()
+# 常量定义
+$REPO_URL = "https://github.com/01luyicheng/DelGuard"
+$RELEASE_API = "https://api.github.com/repos/01luyicheng/DelGuard/releases/latest"
+$APP_NAME = "DelGuard"
+$EXECUTABLE_NAME = "delguard.exe"
 
-# Enhanced color output functions with fallback
-function Write-ColorOutput {
-    param(
-        [string]$Message, 
-        [string]$Color = "White",
-        [switch]$NoNewline
-    )
+# 路径配置
+if ($SystemWide) {
+    $INSTALL_DIR = "$env:ProgramFiles\$APP_NAME"
+    $CONFIG_DIR = "$env:ProgramData\$APP_NAME"
+} else {
+    $INSTALL_DIR = "$env:LOCALAPPDATA\$APP_NAME"
+    $CONFIG_DIR = "$env:APPDATA\$APP_NAME"
+}
+
+$EXECUTABLE_PATH = Join-Path $INSTALL_DIR $EXECUTABLE_NAME
+$LOG_FILE = Join-Path $CONFIG_DIR "install.log"
+
+# 日志函数
+function Write-Log {
+    param([string]$Message, [string]$Level = "INFO")
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logMessage = "[$timestamp] [$Level] $Message"
+    Write-Host $logMessage
     
-    if (-not $Quiet) {
-        try {
-            $params = @{
-                Object = $Message
-                ForegroundColor = $Color
-            }
-            if ($NoNewline) { $params.NoNewline = $true }
-            Write-Host @params
-        } catch {
-            # Fallback for systems without color support
-            Write-Host $Message
-        }
+    if (!(Test-Path (Split-Path $LOG_FILE))) {
+        New-Item -ItemType Directory -Path (Split-Path $LOG_FILE) -Force | Out-Null
     }
-    
-    # Add to log
-    $Script:InstallationLog += "$(Get-Date -Format 'HH:mm:ss') [$Color] $Message"
+    Add-Content -Path $LOG_FILE -Value $logMessage -Encoding UTF8
 }
 
-function Write-Success { 
-    param([string]$Message) 
-    Write-ColorOutput "✓ $Message" "Green" 
-}
-
-function Write-Warning { 
-    param([string]$Message) 
-    Write-ColorOutput "⚠ $Message" "Yellow" 
-}
-
-function Write-Error { 
-    param([string]$Message) 
-    Write-ColorOutput "✗ $Message" "Red" 
-}
-
-function Write-Info { 
-    param([string]$Message) 
-    Write-ColorOutput "ℹ $Message" "Cyan" 
-}
-
-function Write-Header { 
-    param([string]$Message) 
-    Write-ColorOutput $Message "Magenta" 
-}
-
-function Show-Help {
-    Write-Host @"
-DelGuard Enhanced Universal Installer for Windows (Fixed)
-
-USAGE:
-    .\install.ps1 [OPTIONS]
-
-OPTIONS:
-    -InstallPath <path>    Install to specific directory (default: `$env:USERPROFILE\bin)
-    -Force                 Force overwrite existing installation
-    -Quiet                 Suppress output messages
-    -Uninstall            Remove DelGuard installation
-    -SystemWide           Install system-wide (requires admin rights)
-    -SkipAliases          Skip PowerShell alias configuration
-    -CheckOnly            Only check installation status
-    -Version <version>    Install specific version (default: latest)
-    -Help                 Show this help message
-
-EXAMPLES:
-    .\install.ps1                                    # Install to default location
-    .\install.ps1 -InstallPath "C:\tools"           # Install to custom location
-    .\install.ps1 -Force                            # Force reinstall
-    .\install.ps1 -SystemWide                       # Install system-wide
-    .\install.ps1 -SkipAliases                      # Install without aliases
-    .\install.ps1 -CheckOnly                        # Check installation status
-    .\install.ps1 -Uninstall                        # Remove DelGuard
-
-AFTER INSTALLATION:
-    Restart PowerShell and use these commands:
-    - del <file>     # Safe delete (replaces Windows del)
-    - rm <file>      # Safe delete (Unix style)
-    - cp <src> <dst> # Safe copy
-    - delguard --help # Full help
-
-"@
-}
-
+# 检查管理员权限
 function Test-Administrator {
+    $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($currentUser)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+# 获取系统架构
+function Get-SystemArchitecture {
+    $arch = $env:PROCESSOR_ARCHITECTURE
+    switch ($arch) {
+        "AMD64" { return "amd64" }
+        "ARM64" { return "arm64" }
+        "x86" { return "386" }
+        default { return "amd64" }
+    }
+}
+
+# 检查网络连接
+function Test-NetworkConnection {
     try {
-        $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
-        $principal = New-Object Security.Principal.WindowsPrincipal($currentUser)
-        return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        $response = Invoke-WebRequest -Uri "https://api.github.com" -Method Head -TimeoutSec 10
+        return $response.StatusCode -eq 200
     } catch {
-        Write-Warning "Could not determine administrator status: $($_.Exception.Message)"
         return $false
     }
 }
 
-function Test-ExecutionPolicy {
+# 获取最新版本信息
+function Get-LatestRelease {
     try {
-        $policy = Get-ExecutionPolicy -Scope CurrentUser
-        if ($policy -eq "Restricted") {
-            Write-Warning "PowerShell execution policy is Restricted"
-            Write-Info "You may need to run: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser"
-            return $false
-        }
-        return $true
+        Write-Log "获取最新版本信息..."
+        $response = Invoke-RestMethod -Uri $RELEASE_API -TimeoutSec 30
+        return $response
     } catch {
-        Write-Warning "Could not check execution policy: $($_.Exception.Message)"
-        return $true  # Assume it's OK if we can't check
+        Write-Log "获取版本信息失败: $($_.Exception.Message)" "ERROR"
+        throw "无法获取最新版本信息，请检查网络连接"
     }
 }
 
-function Get-PowerShellProfiles {
-    $profiles = @()
-    
-    # PowerShell 7+ profiles
-    if ($PSVersionTable.PSVersion.Major -ge 7) {
-        $profiles += @(
-            "$env:USERPROFILE\Documents\PowerShell\Microsoft.PowerShell_profile.ps1",
-            "$env:USERPROFILE\Documents\PowerShell\Profile.ps1"
-        )
-    }
-    
-    # Windows PowerShell 5.1 profiles
-    if ($PSVersionTable.PSVersion.Major -eq 5) {
-        $profiles += @(
-            "$env:USERPROFILE\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1",
-            "$env:USERPROFILE\Documents\WindowsPowerShell\Profile.ps1"
-        )
-    }
-    
-    # Built-in profile variables (more reliable)
-    try {
-        if ($PROFILE.CurrentUserCurrentHost) { $profiles += $PROFILE.CurrentUserCurrentHost }
-        if ($PROFILE.CurrentUserAllHosts) { $profiles += $PROFILE.CurrentUserAllHosts }
-    } catch {
-        Write-Warning "Could not access `$PROFILE variables"
-    }
-    
-    return ($profiles | Sort-Object -Unique | Where-Object { $_ })
-}
-
-function Test-InstallationStatus {
-    Write-Info "Checking DelGuard installation status..."
-    
-    # Check common installation paths
-    $CommonPaths = @(
-        "$env:USERPROFILE\bin\delguard.exe",
-        "$env:ProgramFiles\DelGuard\delguard.exe",
-        "$env:LOCALAPPDATA\DelGuard\delguard.exe"
-    )
-    
-    $FoundInstallations = @()
-    foreach ($Path in $CommonPaths) {
-        if (Test-Path $Path -ErrorAction SilentlyContinue) {
-            $FoundInstallations += $Path
-        }
-    }
-    
-    if ($FoundInstallations.Count -eq 0) {
-        Write-Warning "DelGuard is not installed"
-        return $false
-    }
-    
-    Write-Success "Found DelGuard installations:"
-    foreach ($Installation in $FoundInstallations) {
-        try {
-            $VersionOutput = & $Installation --version 2>$null
-            if ($LASTEXITCODE -eq 0) {
-                Write-Info "  $Installation - $VersionOutput"
-            } else {
-                Write-Info "  $Installation - Version check failed"
-            }
-        } catch {
-            Write-Info "  $Installation - Version unknown"
-        }
-    }
-    
-    # Check PATH
-    try {
-        $DelGuardCommand = Get-Command delguard -ErrorAction SilentlyContinue
-        if ($DelGuardCommand) {
-            Write-Success "DelGuard found in PATH: $($DelGuardCommand.Source)"
-        } else {
-            Write-Warning "DelGuard not found in PATH"
-        }
-    } catch {
-        Write-Warning "Could not check PATH for DelGuard"
-    }
-    
-    # Check PowerShell aliases
-    $ProfilePaths = Get-PowerShellProfiles
-    $AliasConfigured = $false
-    foreach ($ProfilePath in $ProfilePaths) {
-        if (Test-Path $ProfilePath -ErrorAction SilentlyContinue) {
-            try {
-                $Content = Get-Content $ProfilePath -Raw -ErrorAction SilentlyContinue
-                if ($Content -and $Content.Contains("DelGuard")) {
-                    Write-Success "DelGuard aliases configured in: $ProfilePath"
-                    $AliasConfigured = $true
-                    break
-                }
-            } catch {
-                Write-Warning "Could not read profile: $ProfilePath"
-            }
-        }
-    }
-    
-    if (-not $AliasConfigured) {
-        Write-Warning "DelGuard aliases not configured"
-    }
-    
-    return $true
-}
-
-function Build-DelGuard {
-    Write-Info "Building DelGuard executable..."
-    
-    if (-not (Test-Path "go.mod" -ErrorAction SilentlyContinue)) {
-        Write-Error "go.mod not found. Please run this script from DelGuard project root."
-        return $false
-    }
-    
-    # Check if executable already exists
-    if (Test-Path "delguard.exe" -ErrorAction SilentlyContinue) {
-        Write-Success "DelGuard executable already exists"
-        return $true
-    }
-    
-    # Check if Go is installed
-    try {
-        $null = Get-Command go -ErrorAction Stop
-    } catch {
-        Write-Error "Go is not installed. Please install Go first."
-        Write-Info "Visit: https://golang.org/dl/"
-        return $false
-    }
+# 下载文件
+function Download-File {
+    param([string]$Url, [string]$OutputPath)
     
     try {
-        # Set build environment
-        $env:CGO_ENABLED = "0"
-        $env:GOOS = "windows"
-        $env:GOARCH = "amd64"
-        
-        Write-Info "Building DelGuard executable..."
-        
-        # Try to build with main.go first
-        if (Test-Path "main.go" -ErrorAction SilentlyContinue) {
-            Write-Info "Building with main.go..."
-            $buildOutput = & go build -ldflags "-s -w" -o "delguard.exe" "main.go" 2>&1
-        } else {
-            Write-Info "Building entire project..."
-            $buildOutput = & go build -ldflags "-s -w" -o "delguard.exe" 2>&1
-        }
-        
-        if ($LASTEXITCODE -ne 0) {
-            Write-Error "Build failed: $buildOutput"
-            return $false
-        }
-        
-        if (-not (Test-Path "delguard.exe" -ErrorAction SilentlyContinue)) {
-            Write-Error "Build completed but executable not found."
-            return $false
-        }
-        
-        Write-Success "DelGuard executable built successfully"
-        return $true
+        Write-Log "下载文件: $Url"
+        $webClient = New-Object System.Net.WebClient
+        $webClient.DownloadFile($Url, $OutputPath)
+        Write-Log "下载完成: $OutputPath"
     } catch {
-        Write-Error "Build error: $($_.Exception.Message)"
-        return $false
+        Write-Log "下载失败: $($_.Exception.Message)" "ERROR"
+        throw "下载失败: $($_.Exception.Message)"
     }
 }
 
+# 安装 DelGuard
 function Install-DelGuard {
-    # Determine install path
-    if ($SystemWide) {
-        if (-not (Test-Administrator)) {
-            Write-Error "System-wide installation requires administrator privileges."
-            Write-Info "Please run PowerShell as Administrator or use user installation."
-            return $false
-        }
-        $FinalInstallPath = if ($InstallPath) { $InstallPath } else { "$env:ProgramFiles\DelGuard" }
-    } else {
-        $FinalInstallPath = if ($InstallPath) { $InstallPath } else { "$env:USERPROFILE\bin" }
+    Write-Log "开始安装 $APP_NAME..."
+    
+    # 检查管理员权限（系统级安装时）
+    if ($SystemWide -and !(Test-Administrator)) {
+        Write-Log "系统级安装需要管理员权限" "ERROR"
+        throw "请以管理员身份运行 PowerShell"
     }
     
-    $ExecutablePath = Join-Path $FinalInstallPath "delguard.exe"
-    
-    Write-Info "Installing DelGuard to: $FinalInstallPath"
-    
-    # Create install directory
-    if (-not (Test-Path $FinalInstallPath -ErrorAction SilentlyContinue)) {
-        try {
-            $null = New-Item -ItemType Directory -Path $FinalInstallPath -Force -ErrorAction Stop
-            Write-Success "Created install directory: $FinalInstallPath"
-        } catch {
-            Write-Error "Failed to create install directory: $($_.Exception.Message)"
-            return $false
-        }
+    # 检查网络连接
+    if (!(Test-NetworkConnection)) {
+        Write-Log "网络连接检查失败" "ERROR"
+        throw "无法连接到 GitHub，请检查网络连接"
     }
     
-    # Check if already installed
-    if ((Test-Path $ExecutablePath -ErrorAction SilentlyContinue) -and -not $Force) {
-        Write-Warning "DelGuard is already installed at: $ExecutablePath"
-        Write-Warning "Use -Force to overwrite existing installation"
-        return $false
+    # 检查现有安装
+    if ((Test-Path $EXECUTABLE_PATH) -and !$Force) {
+        Write-Log "$APP_NAME 已经安装在 $EXECUTABLE_PATH"
+        Write-Log "使用 -Force 参数强制重新安装"
+        return
     }
     
-    # Copy executable
     try {
-        Copy-Item "delguard.exe" $ExecutablePath -Force -ErrorAction Stop
-        Write-Success "Installed executable to: $ExecutablePath"
+        # 获取最新版本
+        $release = Get-LatestRelease
+        $version = $release.tag_name
+        Write-Log "最新版本: $version"
+        
+        # 确定下载URL
+        $arch = Get-SystemArchitecture
+        $assetName = "$APP_NAME-windows-$arch.zip"
+        $asset = $release.assets | Where-Object { $_.name -eq $assetName }
+        
+        if (!$asset) {
+            Write-Log "未找到适合的安装包: $assetName" "ERROR"
+            throw "未找到适合当前系统的安装包"
+        }
+        
+        $downloadUrl = $asset.browser_download_url
+        Write-Log "下载URL: $downloadUrl"
+        
+        # 创建临时目录
+        $tempDir = Join-Path $env:TEMP "delguard-install"
+        if (Test-Path $tempDir) {
+            Remove-Item $tempDir -Recurse -Force
+        }
+        New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+        
+        # 下载文件
+        $zipPath = Join-Path $tempDir "$assetName"
+        Download-File -Url $downloadUrl -OutputPath $zipPath
+        
+        # 解压文件
+        Write-Log "解压安装包..."
+        Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
+        
+        # 创建安装目录
+        if (!(Test-Path $INSTALL_DIR)) {
+            New-Item -ItemType Directory -Path $INSTALL_DIR -Force | Out-Null
+        }
+        
+        # 复制文件
+        $extractedExe = Get-ChildItem -Path $tempDir -Name $EXECUTABLE_NAME -Recurse | Select-Object -First 1
+        if ($extractedExe) {
+            $sourcePath = Join-Path $tempDir $extractedExe.FullName
+            Copy-Item -Path $sourcePath -Destination $EXECUTABLE_PATH -Force
+            Write-Log "已安装到: $EXECUTABLE_PATH"
+        } else {
+            throw "在安装包中未找到可执行文件"
+        }
+        
+        # 添加到 PATH
+        Add-ToPath -Path $INSTALL_DIR
+        
+        # 安装 PowerShell 别名
+        Install-PowerShellAliases
+        
+        # 创建配置目录
+        if (!(Test-Path $CONFIG_DIR)) {
+            New-Item -ItemType Directory -Path $CONFIG_DIR -Force | Out-Null
+        }
+        
+        # 清理临时文件
+        Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+        
+        Write-Log "$APP_NAME $version 安装成功！"
+        Write-Log "可执行文件位置: $EXECUTABLE_PATH"
+        Write-Log "配置目录: $CONFIG_DIR"
+        Write-Log ""
+        Write-Log "使用方法:"
+        Write-Log "  delguard file.txt          # 删除文件到回收站"
+        Write-Log "  delguard -p file.txt       # 永久删除文件"
+        Write-Log "  delguard --help            # 查看帮助"
+        Write-Log ""
+        Write-Log "请重新启动 PowerShell 以使用 delguard 命令"
+        
     } catch {
-        Write-Error "Failed to copy executable: $($_.Exception.Message)"
-        return $false
+        Write-Log "安装失败: $($_.Exception.Message)" "ERROR"
+        throw
     }
+}
+
+# 添加到 PATH
+function Add-ToPath {
+    param([string]$Path)
     
-    # Add to PATH
     try {
         if ($SystemWide) {
-            $SystemPath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
-            if (-not $SystemPath.Contains($FinalInstallPath)) {
-                $NewPath = if ($SystemPath) { "$SystemPath;$FinalInstallPath" } else { $FinalInstallPath }
-                [Environment]::SetEnvironmentVariable("PATH", $NewPath, "Machine")
-                Write-Success "Added to system PATH: $FinalInstallPath"
-            } else {
-                Write-Info "Already in system PATH: $FinalInstallPath"
-            }
+            $envPath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
+            $target = "Machine"
         } else {
-            $UserPath = [Environment]::GetEnvironmentVariable("PATH", "User")
-            if (-not $UserPath -or -not $UserPath.Contains($FinalInstallPath)) {
-                $NewPath = if ($UserPath) { "$UserPath;$FinalInstallPath" } else { $FinalInstallPath }
-                [Environment]::SetEnvironmentVariable("PATH", $NewPath, "User")
-                Write-Success "Added to user PATH: $FinalInstallPath"
-            } else {
-                Write-Info "Already in user PATH: $FinalInstallPath"
-            }
+            $envPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+            $target = "User"
         }
         
-        # Update current session PATH
-        $env:PATH = "$env:PATH;$FinalInstallPath"
+        if ($envPath -notlike "*$Path*") {
+            $newPath = "$envPath;$Path"
+            [Environment]::SetEnvironmentVariable("PATH", $newPath, $target)
+            Write-Log "已添加到 PATH: $Path"
+            
+            # 更新当前会话的 PATH
+            $env:PATH = "$env:PATH;$Path"
+        } else {
+            Write-Log "PATH 中已存在: $Path"
+        }
     } catch {
-        Write-Warning "Failed to add to PATH: $($_.Exception.Message)"
-        Write-Info "Please add manually: $FinalInstallPath"
+        Write-Log "添加到 PATH 失败: $($_.Exception.Message)" "WARNING"
     }
-    
-    return $true
 }
 
+# 安装 PowerShell 别名
 function Install-PowerShellAliases {
-    if ($SkipAliases) {
-        Write-Info "Skipping PowerShell alias configuration"
-        return $true
-    }
-    
-    Write-Info "Configuring PowerShell aliases..."
-    
-    # Get profile paths
-    $ProfilePaths = Get-PowerShellProfiles
-    
-    if ($ProfilePaths.Count -eq 0) {
-        Write-Warning "No PowerShell profile paths found"
-        return $false
-    }
-    
-    $ConfigBlock = @"
-
-# DelGuard Safe Delete Tool Configuration
-# Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-# Version: DelGuard 2.1.1 Enhanced (Fixed)
-
-if (-not `$global:DelGuardConfigured) {
     try {
-        `$delguardPath = (Get-Command delguard -ErrorAction SilentlyContinue).Source
+        $profilePath = $PROFILE.CurrentUserAllHosts
         
-        if (`$delguardPath) {
-            # Remove existing conflicting aliases safely
-            @('del', 'rm', 'cp', 'copy') | ForEach-Object {
-                try {
-                    if (Get-Alias `$_ -ErrorAction SilentlyContinue) {
-                        Remove-Item "Alias:`$_" -Force -ErrorAction SilentlyContinue
-                    }
-                } catch { }
-            }
-            
-            # Create safe wrapper functions with enhanced parameter handling
-            function global:del {
-                param([Parameter(ValueFromRemainingArguments=`$true)][string[]]`$Arguments)
-                if (`$Arguments -contains '--install' -or `$Arguments -contains '--uninstall') {
-                    Write-Warning "Use 'delguard `$(`$Arguments -join ' ')' for installation commands"
-                    return
-                }
-                try {
-                    & delguard @Arguments
-                } catch {
-                    Write-Error "DelGuard error: `$(`$_.Exception.Message)"
-                }
-            }
-            
-            function global:rm {
-                param([Parameter(ValueFromRemainingArguments=`$true)][string[]]`$Arguments)
-                try {
-                    & delguard @Arguments
-                } catch {
-                    Write-Error "DelGuard error: `$(`$_.Exception.Message)"
-                }
-            }
-            
-            function global:cp {
-                param([Parameter(ValueFromRemainingArguments=`$true)][string[]]`$Arguments)
-                try {
-                    & delguard --copy @Arguments
-                } catch {
-                    Write-Error "DelGuard error: `$(`$_.Exception.Message)"
-                }
-            }
-            
-            function global:copy {
-                param([Parameter(ValueFromRemainingArguments=`$true)][string[]]`$Arguments)
-                try {
-                    & delguard --copy @Arguments
-                } catch {
-                    Write-Error "DelGuard error: `$(`$_.Exception.Message)"
-                }
-            }
-            
-            # Set global flag to prevent duplicate loading
-            `$global:DelGuardConfigured = `$true
-            
-            Write-Host "DelGuard Safe Delete Tool Loaded (Enhanced Fixed)" -ForegroundColor Green
-            Write-Host "Commands: del, rm, cp, copy, delguard" -ForegroundColor Cyan
-            Write-Host "Use 'delguard --help' for detailed help" -ForegroundColor Gray
-        } else {
-            Write-Warning "DelGuard executable not found in PATH"
+        if (!(Test-Path $profilePath)) {
+            New-Item -ItemType File -Path $profilePath -Force | Out-Null
         }
-    } catch {
-        Write-Warning "Failed to configure DelGuard aliases: `$(`$_.Exception.Message)"
-    }
-}
-# End DelGuard Configuration
+        
+        $aliasContent = @"
 
+# DelGuard 别名配置
+if (Test-Path "$EXECUTABLE_PATH") {
+    Set-Alias -Name delguard -Value "$EXECUTABLE_PATH" -Scope Global
+    Set-Alias -Name dg -Value "$EXECUTABLE_PATH" -Scope Global
+}
 "@
-    
-    $Success = $false
-    foreach ($ProfilePath in $ProfilePaths) {
-        try {
-            $ProfileDir = Split-Path $ProfilePath -Parent
-            if (-not (Test-Path $ProfileDir -ErrorAction SilentlyContinue)) {
-                $null = New-Item -ItemType Directory -Path $ProfileDir -Force -ErrorAction Stop
-                Write-Success "Created profile directory: $ProfileDir"
-            }
-            
-            # Check existing content
-            $ExistingContent = ""
-            if (Test-Path $ProfilePath -ErrorAction SilentlyContinue) {
-                try {
-                    $ExistingContent = Get-Content $ProfilePath -Raw -ErrorAction Stop
-                } catch {
-                    Write-Warning "Could not read existing profile: $ProfilePath"
-                    continue
-                }
-            }
-            
-            # Remove old DelGuard configuration
-            if ($ExistingContent -and $ExistingContent.Contains("# DelGuard")) {
-                if (-not $Force) {
-                    Write-Warning "DelGuard configuration already exists in: $ProfilePath"
-                    Write-Warning "Use -Force to overwrite"
-                    continue
-                }
-                # Remove existing DelGuard configuration
-                $ExistingContent = $ExistingContent -replace '(?s)# DelGuard.*?# End DelGuard Configuration\r?\n?', ''
-            }
-            
-            # Add new configuration
-            $NewContent = $ExistingContent + $ConfigBlock
-            Set-Content $ProfilePath $NewContent -Encoding UTF8 -ErrorAction Stop
-            Write-Success "Updated PowerShell profile: $ProfilePath"
-            $Success = $true
-            break
-        } catch {
-            Write-Warning "Failed to update profile: $ProfilePath - $($_.Exception.Message)"
-        }
-    }
-    
-    if (-not $Success) {
-        Write-Warning "Failed to update any PowerShell profile"
-        Write-Info "You can manually add DelGuard to your PATH and create aliases"
-    }
-    
-    return $Success
-}
-
-function Uninstall-DelGuard {
-    Write-Info "Uninstalling DelGuard..."
-    
-    # Find and remove executable
-    $ExecutablePaths = @(
-        "$env:USERPROFILE\bin\delguard.exe",
-        "$env:ProgramFiles\DelGuard\delguard.exe",
-        "$env:LOCALAPPDATA\DelGuard\delguard.exe"
-    )
-    
-    if ($InstallPath) {
-        $ExecutablePaths += "$InstallPath\delguard.exe"
-    }
-    
-    foreach ($ExePath in $ExecutablePaths) {
-        if (Test-Path $ExePath -ErrorAction SilentlyContinue) {
-            try {
-                Remove-Item $ExePath -Force -ErrorAction Stop
-                Write-Success "Removed executable: $ExePath"
-                
-                # Remove from PATH
-                $InstallDir = Split-Path $ExePath -Parent
-                
-                # Remove from user PATH
-                try {
-                    $UserPath = [Environment]::GetEnvironmentVariable("PATH", "User")
-                    if ($UserPath -and $UserPath.Contains($InstallDir)) {
-                        $NewPath = ($UserPath -split ';' | Where-Object { $_ -ne $InstallDir }) -join ';'
-                        [Environment]::SetEnvironmentVariable("PATH", $NewPath, "User")
-                        Write-Success "Removed from user PATH: $InstallDir"
-                    }
-                } catch {
-                    Write-Warning "Failed to remove from user PATH: $($_.Exception.Message)"
-                }
-                
-                # Remove from system PATH if admin
-                if (Test-Administrator) {
-                    try {
-                        $SystemPath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
-                        if ($SystemPath -and $SystemPath.Contains($InstallDir)) {
-                            $NewPath = ($SystemPath -split ';' | Where-Object { $_ -ne $InstallDir }) -join ';'
-                            [Environment]::SetEnvironmentVariable("PATH", $NewPath, "Machine")
-                            Write-Success "Removed from system PATH: $InstallDir"
-                        }
-                    } catch {
-                        Write-Warning "Failed to remove from system PATH: $($_.Exception.Message)"
-                    }
-                }
-                
-                # Remove empty directory
-                try {
-                    if ((Get-ChildItem $InstallDir -ErrorAction SilentlyContinue).Count -eq 0) {
-                        Remove-Item $InstallDir -Force -ErrorAction SilentlyContinue
-                        Write-Success "Removed empty directory: $InstallDir"
-                    }
-                } catch {
-                    # Ignore errors when removing directory
-                }
-            } catch {
-                Write-Warning "Failed to remove: $ExePath - $($_.Exception.Message)"
-            }
-        }
-    }
-    
-    # Remove from PowerShell profiles
-    $ProfilePaths = Get-PowerShellProfiles
-    foreach ($ProfilePath in $ProfilePaths) {
-        if (Test-Path $ProfilePath -ErrorAction SilentlyContinue) {
-            try {
-                $Content = Get-Content $ProfilePath -Raw -ErrorAction SilentlyContinue
-                if ($Content -and $Content.Contains("# DelGuard")) {
-                    $NewContent = $Content -replace '(?s)# DelGuard.*?# End DelGuard Configuration\r?\n?', ''
-                    Set-Content $ProfilePath $NewContent -Encoding UTF8 -ErrorAction Stop
-                    Write-Success "Removed DelGuard configuration from: $ProfilePath"
-                }
-            } catch {
-                Write-Warning "Failed to clean profile: $ProfilePath - $($_.Exception.Message)"
-            }
-        }
-    }
-    
-    Write-Success "DelGuard uninstalled successfully!"
-    Write-Info "Please restart PowerShell to complete the removal."
-}
-
-function Save-InstallationLog {
-    if ($Script:InstallationLog.Count -gt 0) {
-        try {
-            $LogPath = Join-Path $env:TEMP "delguard-install-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
-            $Script:InstallationLog | Out-File -FilePath $LogPath -Encoding UTF8
-            Write-Info "Installation log saved to: $LogPath"
-        } catch {
-            Write-Warning "Could not save installation log: $($_.Exception.Message)"
-        }
-    }
-}
-
-# Main execution
-try {
-    if ($Help) {
-        Show-Help
-        exit 0
-    }
-    
-    # Check execution policy
-    if (-not (Test-ExecutionPolicy)) {
-        Write-Warning "PowerShell execution policy may prevent script execution"
-    }
-    
-    Write-Header "=== DelGuard Enhanced Universal Installer for Windows (Fixed) ==="
-    Write-Info "PowerShell Version: $($PSVersionTable.PSVersion)"
-    Write-Info "Operating System: $([System.Environment]::OSVersion.VersionString)"
-    Write-Info "Administrator: $(if (Test-Administrator) { 'Yes' } else { 'No' })"
-    
-    if ($CheckOnly) {
-        $result = Test-InstallationStatus
-        Save-InstallationLog
-        exit $(if ($result) { 0 } else { 1 })
-    }
-    
-    if ($Uninstall) {
-        Uninstall-DelGuard
-        Save-InstallationLog
-        exit 0
-    }
-    
-    # Installation process
-    Write-Info "Starting DelGuard installation..."
-    
-    if (-not (Build-DelGuard)) {
-        Write-Error "Build failed. Installation aborted."
-        Save-InstallationLog
-        exit 1
-    }
-    
-    if (-not (Install-DelGuard)) {
-        Write-Error "Installation failed."
-        Save-InstallationLog
-        exit 1
-    }
-    
-    $aliasResult = Install-PowerShellAliases
-    if (-not $aliasResult) {
-        Write-Warning "PowerShell alias configuration failed, but DelGuard was installed successfully."
-        Write-Info "You can still use 'delguard' command directly."
-    }
-    
-    Write-Success "=== Installation Complete ==="
-    Write-Info "DelGuard has been installed successfully!"
-    Write-Info ""
-    Write-Info "NEXT STEPS:"
-    Write-Info "1. Restart PowerShell or run: . `$PROFILE"
-    Write-Info "2. Test with: delguard --version"
-    Write-Info "3. Check status with: .\install.ps1 -CheckOnly"
-    Write-Info "4. Use these safe commands:"
-    Write-Info "   • del <file>     - Safe delete (replaces Windows del)"
-    Write-Info "   • rm <file>      - Safe delete (Unix style)"
-    Write-Info "   • cp <src> <dst> - Safe copy"
-    Write-Info "   • delguard --help - Full help and options"
-    Write-Info ""
-    Write-Success "Happy safe deleting!"
-    
-    # Test installation
-    Write-Info "Testing installation..."
-    try {
-        $TestResult = & "delguard.exe" --version 2>$null
-        if ($LASTEXITCODE -eq 0) {
-            Write-Success "✓ DelGuard is working correctly"
+        
+        $currentContent = Get-Content $profilePath -Raw -ErrorAction SilentlyContinue
+        if ($currentContent -notlike "*DelGuard 别名配置*") {
+            Add-Content -Path $profilePath -Value $aliasContent -Encoding UTF8
+            Write-Log "已添加 PowerShell 别名配置"
         } else {
-            Write-Warning "⚠ DelGuard may not be working properly"
+            Write-Log "PowerShell 别名已存在"
         }
     } catch {
-        Write-Warning "⚠ Could not test DelGuard installation: $($_.Exception.Message)"
+        Write-Log "配置 PowerShell 别名失败: $($_.Exception.Message)" "WARNING"
+    }
+}
+
+# 卸载 DelGuard
+function Uninstall-DelGuard {
+    Write-Log "开始卸载 $APP_NAME..."
+    
+    try {
+        # 删除可执行文件
+        if (Test-Path $EXECUTABLE_PATH) {
+            Remove-Item $EXECUTABLE_PATH -Force
+            Write-Log "已删除: $EXECUTABLE_PATH"
+        }
+        
+        # 删除安装目录（如果为空）
+        if ((Test-Path $INSTALL_DIR) -and ((Get-ChildItem $INSTALL_DIR).Count -eq 0)) {
+            Remove-Item $INSTALL_DIR -Force
+            Write-Log "已删除安装目录: $INSTALL_DIR"
+        }
+        
+        # 从 PATH 中移除
+        Remove-FromPath -Path $INSTALL_DIR
+        
+        # 移除 PowerShell 别名
+        Remove-PowerShellAliases
+        
+        Write-Log "$APP_NAME 卸载完成"
+        Write-Log "配置文件保留在: $CONFIG_DIR"
+        Write-Log "如需完全清理，请手动删除配置目录"
+        
+    } catch {
+        Write-Log "卸载失败: $($_.Exception.Message)" "ERROR"
+        throw
+    }
+}
+
+# 从 PATH 中移除
+function Remove-FromPath {
+    param([string]$Path)
+    
+    try {
+        if ($SystemWide) {
+            $envPath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
+            $target = "Machine"
+        } else {
+            $envPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+            $target = "User"
+        }
+        
+        if ($envPath -like "*$Path*") {
+            $newPath = $envPath -replace [regex]::Escape(";$Path"), ""
+            $newPath = $newPath -replace [regex]::Escape("$Path;"), ""
+            $newPath = $newPath -replace [regex]::Escape($Path), ""
+            [Environment]::SetEnvironmentVariable("PATH", $newPath, $target)
+            Write-Log "已从 PATH 中移除: $Path"
+        }
+    } catch {
+        Write-Log "从 PATH 中移除失败: $($_.Exception.Message)" "WARNING"
+    }
+}
+
+# 移除 PowerShell 别名
+function Remove-PowerShellAliases {
+    try {
+        $profilePath = $PROFILE.CurrentUserAllHosts
+        
+        if (Test-Path $profilePath) {
+            $content = Get-Content $profilePath -Raw
+            $newContent = $content -replace "(?s)# DelGuard 别名配置.*?(?=\r?\n\r?\n|\r?\n$|$)", ""
+            $newContent = $newContent.Trim()
+            
+            if ($newContent) {
+                Set-Content -Path $profilePath -Value $newContent -Encoding UTF8
+            } else {
+                Remove-Item $profilePath -Force
+            }
+            Write-Log "已移除 PowerShell 别名配置"
+        }
+    } catch {
+        Write-Log "移除 PowerShell 别名失败: $($_.Exception.Message)" "WARNING"
+    }
+}
+
+# 检查安装状态
+function Get-InstallStatus {
+    Write-Host "=== DelGuard 安装状态 ===" -ForegroundColor Cyan
+    
+    if (Test-Path $EXECUTABLE_PATH) {
+        Write-Host "✓ 已安装" -ForegroundColor Green
+        Write-Host "  位置: $EXECUTABLE_PATH" -ForegroundColor Gray
+        
+        try {
+            $version = & $EXECUTABLE_PATH --version 2>$null
+            Write-Host "  版本: $version" -ForegroundColor Gray
+        } catch {
+            Write-Host "  版本: 无法获取" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "✗ 未安装" -ForegroundColor Red
     }
     
-    Save-InstallationLog
+    # 检查 PATH
+    $pathCheck = $env:PATH -split ';' | Where-Object { $_ -eq $INSTALL_DIR }
+    if ($pathCheck) {
+        Write-Host "✓ 已添加到 PATH" -ForegroundColor Green
+    } else {
+        Write-Host "✗ 未添加到 PATH" -ForegroundColor Yellow
+    }
     
-} catch {
-    Write-Error "Unexpected error: $($_.Exception.Message)"
-    Write-Info "Stack trace: $($_.ScriptStackTrace)"
-    Save-InstallationLog
-    exit 1
+    # 检查别名
+    if (Get-Alias delguard -ErrorAction SilentlyContinue) {
+        Write-Host "✓ PowerShell 别名已配置" -ForegroundColor Green
+    } else {
+        Write-Host "✗ PowerShell 别名未配置" -ForegroundColor Yellow
+    }
+    
+    # 检查配置目录
+    if (Test-Path $CONFIG_DIR) {
+        Write-Host "✓ 配置目录存在: $CONFIG_DIR" -ForegroundColor Green
+    } else {
+        Write-Host "✗ 配置目录不存在" -ForegroundColor Yellow
+    }
 }
+
+# 主函数
+function Main {
+    try {
+        Write-Host "DelGuard 安装程序" -ForegroundColor Cyan
+        Write-Host "=================" -ForegroundColor Cyan
+        Write-Host ""
+        
+        if ($Status) {
+            Get-InstallStatus
+            return
+        }
+        
+        if ($Uninstall) {
+            Uninstall-DelGuard
+            return
+        }
+        
+        Install-DelGuard
+        
+    } catch {
+        Write-Log "操作失败: $($_.Exception.Message)" "ERROR"
+        Write-Host ""
+        Write-Host "安装失败！" -ForegroundColor Red
+        Write-Host "错误信息: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "日志文件: $LOG_FILE" -ForegroundColor Gray
+        exit 1
+    }
+}
+
+# 执行主函数
+Main

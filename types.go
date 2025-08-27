@@ -4,6 +4,16 @@ import (
 	"strings"
 )
 
+// CommandMode 命令模式类型
+type CommandMode int
+
+const (
+	ModeDel CommandMode = iota // del命令模式
+	ModeRM                      // rm命令模式
+	ModeCP                      // cp命令模式
+	ModeDefault                 // 默认delguard模式
+)
+
 // SearchResult 搜索结果结构体
 type SearchResult struct {
 	Path       string  // 文件路径

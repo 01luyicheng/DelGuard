@@ -30,7 +30,7 @@ const (
 	KindIntegrity                 // 19 - 完整性检查失败
 	KindQuota                     // 20 - 配额限制
 	KindConfig                    // 21 - 配置错误
-	KindNetwork                   // 22 - 网络错误
+	KindNetwork                   // 22 - 网络错误（但实际上我们好像用不到网络，这是一款离线的工具）
 	KindValidation                // 23 - 验证失败
 	KindResourceExhausted         // 24 - 资源耗尽
 	KindTimeout                   // 25 - 操作超时
@@ -50,6 +50,10 @@ const (
 	KindConcurrency               // 39 - 并发冲突
 	KindDeadlock                  // 40 - 死锁
 	KindCircularRef               // 41 - 循环引用
+	KindInvalidCharacter          // 42 - 无效字符
+	KindPathTooLong               // 43 - 路径过长
+	KindInvalidState              // 44 - 无效状态
+	KindUnsupportedOperation      // 45 - 不支持的操作
 )
 
 // 预定义错误
@@ -823,4 +827,48 @@ func SetErrorHandler(handler ErrorHandler) {
 // HandleError 全局错误处理函数
 func HandleError(err error, operation string, critical bool) bool {
 	return globalErrorHandler.HandleError(err, operation, critical)
+}
+
+// DGErrorType 兼容core_delete.go的错误类型
+type DGErrorType int
+
+const (
+	ErrInvalidPath DGErrorType = iota
+	ErrCriticalPath
+	ErrFileNotFoundCompat // 避免重复定义
+	ErrIOFailure
+	ErrSystem
+	ErrConfig
+)
+
+// NewDGError 创建兼容的DGError
+func NewDGError(errType DGErrorType, message string, cause error) *DGError {
+	var kind ErrKind
+	switch errType {
+	case ErrInvalidPath:
+		kind = KindInvalidArgs
+	case ErrCriticalPath:
+		kind = KindSecurity
+	case ErrFileNotFoundCompat:
+		kind = KindNotFound
+	case ErrIOFailure:
+		kind = KindIO
+	case ErrSystem:
+		kind = KindSystemFile
+	case ErrConfig:
+		kind = KindConfig
+	default:
+		kind = KindNone
+	}
+	
+	return &DGError{
+		Kind:    kind,
+		Op:      "",
+		Path:    "",
+		Cause:   cause,
+		Advice:  message,
+		Code:    "",
+		Timestamp: getCurrentTime(),
+		Stack:   captureStackTrace(2),
+	}
 }

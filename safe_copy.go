@@ -1,8 +1,8 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
-	"delguard/utils"
 	"fmt"
 	"io"
 	"log"
@@ -25,12 +25,11 @@ type SafeCopyOptions struct {
 // SafeCopy 安全复制文件
 // 如果目标文件已存在，会计算两个文件的哈希值进行比较，并在文件不同时提示用户确认
 func SafeCopy(src, dst string, opts SafeCopyOptions) error {
-
 	// 检查源文件是否存在
 	srcInfo, err := os.Stat(src)
 	if err != nil {
 		log.Printf("[ERROR] 无法访问源文件 %s: %v", src, err)
-		return fmt.Errorf("无法访问源文件 %s: %v", src, err)
+		return NewDGError(ErrFileNotFoundCompat, "无法访问源文件", err)
 	}
 
 	// 处理目录复制
@@ -175,10 +174,31 @@ func copyFileInternal(src, dst string) error {
 		return fmt.Errorf("无法创建目标目录 %s: %v", destDir, err)
 	}
 
-	// 使用统一的文件复制函数
-	if err := utils.CopyFile(src, dst); err != nil {
-		log.Printf("[ERROR] 安全复制失败: %s -> %s: %v", src, dst, err)
-		return fmt.Errorf("安全复制失败: %s -> %s: %v", src, dst, err)
+	// 执行文件复制
+	srcFile, err := os.Open(src)
+	if err != nil {
+		log.Printf("[ERROR] 无法打开源文件 %s: %v", src, err)
+		return fmt.Errorf("无法打开源文件 %s: %v", src, err)
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		log.Printf("[ERROR] 无法创建目标文件 %s: %v", dst, err)
+		return fmt.Errorf("无法创建目标文件 %s: %v", dst, err)
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	if err != nil {
+		log.Printf("[ERROR] 文件复制失败: %s -> %s: %v", src, dst, err)
+		return fmt.Errorf("文件复制失败: %s -> %s: %v", src, dst, err)
+	}
+
+	err = dstFile.Sync()
+	if err != nil {
+		log.Printf("[ERROR] 文件同步失败 %s: %v", dst, err)
+		return fmt.Errorf("文件同步失败 %s: %v", dst, err)
 	}
 
 	log.Printf("[INFO] 文件复制完成: %s -> %s", src, dst)
@@ -328,4 +348,26 @@ func preserveFileAttributes(src, dst string) error {
 	}
 
 	return nil
+}
+
+// SafeCopier 安全复制器结构体
+type SafeCopier struct {
+	config *Config
+}
+
+// NewSafeCopier 创建新的安全复制器
+func NewSafeCopier(config *Config) *SafeCopier {
+	return &SafeCopier{config: config}
+}
+
+// Copy 执行安全复制
+func (sc *SafeCopier) Copy(ctx context.Context, source, dest string, force, interactive, recursive, verbose bool) error {
+	opts := SafeCopyOptions{
+		Interactive: interactive,
+		Force:       force,
+		Verbose:     verbose,
+		Recursive:   recursive,
+		Preserve:    true,
+	}
+	return SafeCopy(source, dest, opts)
 }

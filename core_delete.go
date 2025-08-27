@@ -174,17 +174,27 @@ func (cd *CoreDeleter) basicSafetyCheck(path string) error {
 
 	// 1. 检查是否为根目录
 	if cd.isRootPath(cleanPath) {
-		return fmt.Errorf("不允许删除根目录: %s", cleanPath)
+		return NewDGError(ErrInvalidPath, "不允许删除根目录", nil)
 	}
 
 	// 2. 检查是否为当前程序
 	if cd.isSelfExecutable(cleanPath) {
-		return fmt.Errorf("不允许删除程序自身: %s", cleanPath)
+		return NewDGError(ErrInvalidPath, "不允许删除程序自身", nil)
 	}
 
-	// 3. 检查是否为重要系统目录（仅最关键的）
+	// 3. 检查是否为重要系统目录
 	if cd.isCriticalSystemPath(cleanPath) && !cd.force {
-		return fmt.Errorf("检测到关键系统路径，使用 --force 强制删除: %s", cleanPath)
+		return NewDGError(ErrCriticalPath, "检测到关键系统路径", fmt.Errorf("路径: %s", cleanPath))
+	}
+
+	// 4. 检查路径长度限制
+	if len(cleanPath) > 4096 {
+		return NewDGError(ErrInvalidPath, "路径过长", nil)
+	}
+
+	// 5. 检查路径中的非法字符
+	if strings.ContainsAny(cleanPath, "<>:\\\"|?*") {
+		return NewDGError(ErrInvalidPath, "路径包含非法字符", nil)
 	}
 
 	return nil

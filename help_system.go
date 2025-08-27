@@ -41,7 +41,7 @@ func (hs *HelpSystem) ShowHelp() {
 // showHeader 显示标题头部
 func (hs *HelpSystem) showHeader() {
 	modeName := hs.getModeDisplayName()
-	fmt.Printf("%s v%s - %s\n\n", modeName, version, T("跨平台安全删除工具"))
+	fmt.Printf("%s v%s - %s\n\n", modeName, Version, T("跨平台安全删除工具"))
 }
 
 // getModeDisplayName 获取模式显示名称

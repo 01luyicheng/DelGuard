@@ -36,32 +36,33 @@ func FormatBytes(bytes int64) string {
 	}
 }
 
-// CopyFile 统一的文件复制函数
-//
-// 参数:
-//   - src: 源文件路径
-//   - dst: 目标文件路径
-//
-// 返回值:
-//   - error: 复制过程中的错误
+// CopyFile 复制文件从源到目标
 func CopyFile(src, dst string) error {
-	sourceFile, err := os.Open(src)
+	// 打开源文件
+	srcFile, err := os.Open(src)
 	if err != nil {
-		return err
+		return fmt.Errorf("无法打开源文件: %v", err)
 	}
-	defer sourceFile.Close()
+	defer srcFile.Close()
 
-	destFile, err := os.Create(dst)
+	// 创建目标文件
+	dstFile, err := os.Create(dst)
 	if err != nil {
-		return err
+		return fmt.Errorf("无法创建目标文件: %v", err)
 	}
-	defer destFile.Close()
+	defer dstFile.Close()
 
-	_, err = io.Copy(destFile, sourceFile)
+	// 执行复制
+	_, err = io.Copy(dstFile, srcFile)
 	if err != nil {
-		return err
+		return fmt.Errorf("复制失败: %v", err)
 	}
 
-	// 同步文件系统，确保数据写入磁盘
-	return destFile.Sync()
+	// 确保数据写入磁盘
+	err = dstFile.Sync()
+	if err != nil {
+		return fmt.Errorf("同步文件失败: %v", err)
+	}
+
+	return nil
 }

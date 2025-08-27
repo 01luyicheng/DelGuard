@@ -37,6 +37,17 @@ func (op *OverwriteProtector) ProtectOverwrite(filename string) error {
 // FileOperations 提供安全的文件操作
 var FileOperations = &fileOperations{}
 
+// SafeFileInfo 安全的文件信息结构
+type SafeFileInfo struct {
+	Path         string
+	Size         int64
+	Mode         os.FileMode
+	ModTime      time.Time
+	IsDir        bool
+	Sha256       string
+	RelativePath string
+}
+
 type fileOperations struct{}
 
 // CopyFile 安全复制文件，支持覆盖保护

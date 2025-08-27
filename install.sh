@@ -1,328 +1,131 @@
 #!/bin/bash
-# DelGuard Enhanced Universal Installer for Unix Systems (Fixed Version)
-# Compatible with bash, zsh, fish, and other POSIX shells
-# Supports: Linux, macOS, FreeBSD, and other Unix-like systems
-# Version: 2.1.1 (Fixed)
 
-set -e  # Exit on any error
-set -u  # Exit on undefined variables
+# DelGuard 安装脚本 - Unix版本 (Linux/macOS)
+# 自动下载并安装 DelGuard 安全删除工具
 
-# Configuration with better defaults
-INSTALL_PATH="${INSTALL_PATH:-$HOME/bin}"
-FORCE="${FORCE:-false}"
-QUIET="${QUIET:-false}"
-UNINSTALL="${UNINSTALL:-false}"
-HELP="${HELP:-false}"
-SYSTEM_WIDE="${SYSTEM_WIDE:-false}"
-SKIP_ALIASES="${SKIP_ALIASES:-false}"
-CHECK_ONLY="${CHECK_ONLY:-false}"
-VERSION="${VERSION:-latest}"
-DEBUG="${DEBUG:-false}"
+set -e
 
-# Global variables
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_FILE="/tmp/delguard-install-$(date +%Y%m%d-%H%M%S).log"
-INSTALLATION_LOG=()
+# 常量定义
+readonly REPO_URL="https://github.com/01luyicheng/DelGuard"
+readonly RELEASE_API="https://api.github.com/repos/01luyicheng/DelGuard/releases/latest"
+readonly APP_NAME="DelGuard"
+readonly EXECUTABLE_NAME="delguard"
 
-# Enhanced color output functions with fallback
-print_color() {
-    local color="$1"
+# 颜色定义
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly CYAN='\033[0;36m'
+readonly NC='\033[0m' # No Color
+
+# 全局变量
+FORCE_INSTALL=false
+SYSTEM_WIDE=false
+UNINSTALL=false
+STATUS_CHECK=false
+VERBOSE=false
+
+# 路径配置
+if [[ "$SYSTEM_WIDE" == "true" ]]; then
+    INSTALL_DIR="/usr/local/bin"
+    CONFIG_DIR="/etc/delguard"
+else
+    INSTALL_DIR="$HOME/.local/bin"
+    CONFIG_DIR="$HOME/.config/delguard"
+fi
+
+EXECUTABLE_PATH="$INSTALL_DIR/$EXECUTABLE_NAME"
+LOG_FILE="$CONFIG_DIR/install.log"
+
+# 日志函数
+log() {
+    local level="$1"
     local message="$2"
-    local timestamp="$(date '+%H:%M:%S')"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local log_message="[$timestamp] [$level] $message"
     
-    # Add to log
-    INSTALLATION_LOG+=("$timestamp [$color] $message")
-    echo "$timestamp [$color] $message" >> "$LOG_FILE" 2>/dev/null || true
+    case "$level" in
+        "ERROR")
+            echo -e "${RED}$log_message${NC}" >&2
+            ;;
+        "WARNING")
+            echo -e "${YELLOW}$log_message${NC}"
+            ;;
+        "SUCCESS")
+            echo -e "${GREEN}$log_message${NC}"
+            ;;
+        "INFO")
+            echo -e "${BLUE}$log_message${NC}"
+            ;;
+        *)
+            echo "$log_message"
+            ;;
+    esac
     
-    if [[ "$QUIET" != "true" ]]; then
-        if command -v tput >/dev/null 2>&1 && [[ -t 1 ]]; then
-            # Terminal supports colors
-            case "$color" in
-                red)     echo -e "$(tput setaf 1)✗ $message$(tput sgr0)" ;;
-                green)   echo -e "$(tput setaf 2)✓ $message$(tput sgr0)" ;;
-                yellow)  echo -e "$(tput setaf 3)⚠ $message$(tput sgr0)" ;;
-                blue)    echo -e "$(tput setaf 4)ℹ $message$(tput sgr0)" ;;
-                cyan)    echo -e "$(tput setaf 6)ℹ $message$(tput sgr0)" ;;
-                magenta) echo -e "$(tput setaf 5)$message$(tput sgr0)" ;;
-                *)       echo "$message" ;;
-            esac
-        else
-            # Fallback without colors
-            case "$color" in
-                red)     echo "✗ $message" ;;
-                green)   echo "✓ $message" ;;
-                yellow)  echo "⚠ $message" ;;
-                blue|cyan) echo "ℹ $message" ;;
-                *)       echo "$message" ;;
-            esac
-        fi
-    fi
+    # 写入日志文件
+    mkdir -p "$(dirname "$LOG_FILE")"
+    echo "$log_message" >> "$LOG_FILE"
 }
 
-print_success() { print_color green "$1"; }
-print_warning() { print_color yellow "$1"; }
-print_error() { print_color red "$1"; }
-print_info() { print_color cyan "$1"; }
-print_header() { print_color magenta "$1"; }
-print_debug() { [[ "$DEBUG" == "true" ]] && print_color blue "[DEBUG] $1"; }
-
-# Error handling function
-handle_error() {
-    local exit_code=$?
-    local line_number=$1
-    print_error "Script failed at line $line_number with exit code $exit_code"
-    print_info "Installation log saved to: $LOG_FILE"
-    exit $exit_code
-}
-
-# Set up error trap
-trap 'handle_error $LINENO' ERR
-
+# 显示帮助信息
 show_help() {
-    cat << 'EOF'
-DelGuard Enhanced Universal Installer for Unix Systems (Fixed)
+    cat << EOF
+DelGuard 安装脚本
 
-USAGE:
-    ./install.sh [OPTIONS]
+用法: $0 [选项]
 
-OPTIONS:
-    --install-path PATH    Install to specific directory (default: $HOME/bin)
-    --force               Force overwrite existing installation
-    --quiet               Suppress output messages
-    --uninstall           Remove DelGuard installation
-    --system-wide         Install system-wide (requires sudo)
-    --skip-aliases        Skip shell alias configuration
-    --check-only          Only check installation status
-    --version VERSION     Install specific version (default: latest)
-    --debug               Enable debug output
-    --help                Show this help message
+选项:
+    -f, --force         强制重新安装
+    -s, --system        系统级安装 (需要 sudo)
+    -u, --uninstall     卸载 DelGuard
+    --status            检查安装状态
+    -v, --verbose       详细输出
+    -h, --help          显示此帮助信息
 
-EXAMPLES:
-    ./install.sh                                    # Install to default location
-    ./install.sh --install-path /usr/local/bin     # Install system-wide
-    ./install.sh --force                           # Force reinstall
-    ./install.sh --system-wide                     # Install system-wide
-    ./install.sh --skip-aliases                    # Install without aliases
-    ./install.sh --check-only                      # Check installation status
-    ./install.sh --uninstall                       # Remove DelGuard
-    ./install.sh --debug                           # Enable debug output
-
-AFTER INSTALLATION:
-    Restart your shell or run: source ~/.bashrc (or your shell config)
-    Then use these commands:
-    - del <file>     # Safe delete
-    - rm <file>      # Safe delete (replaces system rm)
-    - cp <src> <dst> # Safe copy (replaces system cp)
-    - delguard --help # Full help
-
-SUPPORTED SYSTEMS:
-    - Linux (all major distributions)
-    - macOS (Intel and Apple Silicon)
-    - FreeBSD
-    - Other Unix-like systems
+示例:
+    $0                  # 标准安装
+    $0 --force          # 强制重新安装
+    $0 --system         # 系统级安装
+    $0 --uninstall      # 卸载
 
 EOF
 }
 
-# Enhanced platform detection
-detect_platform() {
-    local uname_s="$(uname -s)"
-    local uname_m="$(uname -m)"
-    
-    print_debug "Detecting platform: uname -s = $uname_s, uname -m = $uname_m"
-    
-    case "$uname_s" in
-        Linux*)     
-            PLATFORM="linux"
-            # Detect Linux distribution
-            if [[ -f /etc/os-release ]]; then
-                DISTRO="$(grep '^ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"')"
-                print_debug "Linux distribution: $DISTRO"
-            fi
-            ;;
-        Darwin*)    
-            PLATFORM="darwin"
-            MACOS_VERSION="$(sw_vers -productVersion 2>/dev/null || echo "unknown")"
-            print_debug "macOS version: $MACOS_VERSION"
-            ;;
-        FreeBSD*)   PLATFORM="freebsd" ;;
-        NetBSD*)    PLATFORM="netbsd" ;;
-        OpenBSD*)   PLATFORM="openbsd" ;;
-        CYGWIN*|MINGW*|MSYS*) 
-            PLATFORM="windows"
-            print_error "This script is for Unix systems. Use install.bat or install.ps1 for Windows."
-            exit 1
-            ;;
-        *)          
-            PLATFORM="unknown"
-            print_warning "Unknown platform: $uname_s. Assuming Linux-like behavior."
-            PLATFORM="linux"
-            ;;
-    esac
-    
-    case "$uname_m" in
-        x86_64|amd64) ARCH="amd64" ;;
-        i386|i686)    ARCH="386" ;;
-        aarch64|arm64) ARCH="arm64" ;;
-        armv7l)       ARCH="arm" ;;
-        armv6l)       ARCH="arm" ;;
-        *)            
-            ARCH="amd64"
-            print_warning "Unknown architecture: $uname_m. Assuming amd64."
-            ;;
-    esac
-    
-    print_debug "Platform: $PLATFORM, Architecture: $ARCH"
-}
-
-# Enhanced shell detection
-detect_shell() {
-    CURRENT_SHELL="$(basename "${SHELL:-/bin/sh}")"
-    print_debug "Current shell: $CURRENT_SHELL"
-    
-    # Determine shell configuration files
-    case "$CURRENT_SHELL" in
-        bash)   
-            SHELL_CONFIGS=("$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile")
-            ;;
-        zsh)    
-            SHELL_CONFIGS=("$HOME/.zshrc" "$HOME/.zprofile")
-            ;;
-        fish)   
-            SHELL_CONFIGS=("$HOME/.config/fish/config.fish")
-            ;;
-        ksh)    
-            SHELL_CONFIGS=("$HOME/.kshrc" "$HOME/.profile")
-            ;;
-        tcsh|csh)    
-            SHELL_CONFIGS=("$HOME/.tcshrc" "$HOME/.cshrc")
-            ;;
-        *)      
-            SHELL_CONFIGS=("$HOME/.profile")
-            print_warning "Unknown shell: $CURRENT_SHELL. Using .profile for configuration."
-            ;;
-    esac
-    
-    print_debug "Shell config files: ${SHELL_CONFIGS[*]}"
-}
-
-# System dependency checks
-check_dependencies() {
-    print_info "Checking system dependencies..."
-    
-    local missing_deps=()
-    
-    # Check for required commands
-    local required_commands=("curl" "tar" "chmod" "mkdir" "cp" "rm")
-    
-    # Add platform-specific commands
-    case "$PLATFORM" in
-        darwin)
-            required_commands+=("sw_vers")
-            ;;
-        linux)
-            required_commands+=("which")
-            ;;
-    esac
-    
-    for cmd in "${required_commands[@]}"; do
-        if ! command -v "$cmd" >/dev/null 2>&1; then
-            missing_deps+=("$cmd")
-        fi
-    done
-    
-    # Check for Go if we need to build
-    if [[ ! -f "delguard" && ! -f "$SCRIPT_DIR/delguard" ]]; then
-        if ! command -v go >/dev/null 2>&1; then
-            missing_deps+=("go")
-        fi
-    fi
-    
-    if [[ ${#missing_deps[@]} -gt 0 ]]; then
-        print_error "Missing required dependencies: ${missing_deps[*]}"
-        print_info "Please install the missing dependencies and try again."
-        
-        # Provide installation hints
-        case "$PLATFORM" in
-            linux)
-                if command -v apt-get >/dev/null 2>&1; then
-                    print_info "Try: sudo apt-get install ${missing_deps[*]}"
-                elif command -v yum >/dev/null 2>&1; then
-                    print_info "Try: sudo yum install ${missing_deps[*]}"
-                elif command -v pacman >/dev/null 2>&1; then
-                    print_info "Try: sudo pacman -S ${missing_deps[*]}"
-                fi
-                ;;
-            darwin)
-                if command -v brew >/dev/null 2>&1; then
-                    print_info "Try: brew install ${missing_deps[*]}"
-                else
-                    print_info "Consider installing Homebrew: https://brew.sh/"
-                fi
-                ;;
-        esac
-        
-        return 1
-    fi
-    
-    print_success "All dependencies are available"
-    return 0
-}
-
-# Parse command line arguments with better error handling
+# 解析命令行参数
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case $1 in
-            --install-path)
-                if [[ -z "${2:-}" ]]; then
-                    print_error "Option --install-path requires a value"
-                    exit 1
-                fi
-                INSTALL_PATH="$2"
-                shift 2
-                ;;
-            --force)
-                FORCE="true"
+            -f|--force)
+                FORCE_INSTALL=true
                 shift
                 ;;
-            --quiet)
-                QUIET="true"
+            -s|--system)
+                SYSTEM_WIDE=true
+                INSTALL_DIR="/usr/local/bin"
+                CONFIG_DIR="/etc/delguard"
+                EXECUTABLE_PATH="$INSTALL_DIR/$EXECUTABLE_NAME"
+                LOG_FILE="$CONFIG_DIR/install.log"
                 shift
                 ;;
-            --uninstall)
-                UNINSTALL="true"
+            -u|--uninstall)
+                UNINSTALL=true
                 shift
                 ;;
-            --system-wide)
-                SYSTEM_WIDE="true"
+            --status)
+                STATUS_CHECK=true
                 shift
                 ;;
-            --skip-aliases)
-                SKIP_ALIASES="true"
+            -v|--verbose)
+                VERBOSE=true
                 shift
                 ;;
-            --check-only)
-                CHECK_ONLY="true"
-                shift
-                ;;
-            --version)
-                if [[ -z "${2:-}" ]]; then
-                    print_error "Option --version requires a value"
-                    exit 1
-                fi
-                VERSION="$2"
-                shift 2
-                ;;
-            --debug)
-                DEBUG="true"
-                shift
-                ;;
-            --help)
-                HELP="true"
-                shift
+            -h|--help)
+                show_help
+                exit 0
                 ;;
             *)
-                print_error "Unknown option: $1"
+                log "ERROR" "未知选项: $1"
                 show_help
                 exit 1
                 ;;
@@ -330,5 +133,395 @@ parse_args() {
     done
 }
 
-# Continue with remaining functions...
-# (Due to length limits, I'll create the rest in a separate response)
+# 检测操作系统
+detect_os() {
+    case "$(uname -s)" in
+        Linux*)
+            echo "linux"
+            ;;
+        Darwin*)
+            echo "darwin"
+            ;;
+        *)
+            log "ERROR" "不支持的操作系统: $(uname -s)"
+            exit 1
+            ;;
+    esac
+}
+
+# 检测系统架构
+detect_arch() {
+    case "$(uname -m)" in
+        x86_64|amd64)
+            echo "amd64"
+            ;;
+        aarch64|arm64)
+            echo "arm64"
+            ;;
+        armv7l)
+            echo "arm"
+            ;;
+        i386|i686)
+            echo "386"
+            ;;
+        *)
+            log "ERROR" "不支持的架构: $(uname -m)"
+            exit 1
+            ;;
+    esac
+}
+
+# 检查依赖
+check_dependencies() {
+    local deps=("curl" "tar" "grep")
+    
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" &> /dev/null; then
+            log "ERROR" "缺少依赖: $dep"
+            exit 1
+        fi
+    done
+}
+
+# 检查网络连接
+check_network() {
+    if ! curl -s --head "https://api.github.com" > /dev/null; then
+        log "ERROR" "无法连接到 GitHub，请检查网络连接"
+        exit 1
+    fi
+}
+
+# 检查权限
+check_permissions() {
+    if [[ "$SYSTEM_WIDE" == "true" ]]; then
+        if [[ $EUID -ne 0 ]]; then
+            log "ERROR" "系统级安装需要 root 权限，请使用 sudo"
+            exit 1
+        fi
+    fi
+    
+    # 检查安装目录权限
+    if [[ ! -w "$(dirname "$INSTALL_DIR")" ]]; then
+        log "ERROR" "没有写入权限: $(dirname "$INSTALL_DIR")"
+        exit 1
+    fi
+}
+
+# 获取最新版本信息
+get_latest_release() {
+    log "INFO" "获取最新版本信息..."
+    
+    local response
+    response=$(curl -s "$RELEASE_API")
+    
+    if [[ -z "$response" ]]; then
+        log "ERROR" "无法获取版本信息"
+        exit 1
+    fi
+    
+    echo "$response"
+}
+
+# 下载文件
+download_file() {
+    local url="$1"
+    local output="$2"
+    
+    log "INFO" "下载文件: $url"
+    
+    if [[ "$VERBOSE" == "true" ]]; then
+        curl -L -o "$output" "$url"
+    else
+        curl -s -L -o "$output" "$url"
+    fi
+    
+    if [[ $? -ne 0 ]]; then
+        log "ERROR" "下载失败"
+        exit 1
+    fi
+    
+    log "SUCCESS" "下载完成: $output"
+}
+
+# 安装 DelGuard
+install_delguard() {
+    log "INFO" "开始安装 $APP_NAME..."
+    
+    # 检查现有安装
+    if [[ -f "$EXECUTABLE_PATH" ]] && [[ "$FORCE_INSTALL" != "true" ]]; then
+        log "INFO" "$APP_NAME 已经安装在 $EXECUTABLE_PATH"
+        log "INFO" "使用 --force 参数强制重新安装"
+        return 0
+    fi
+    
+    # 获取系统信息
+    local os=$(detect_os)
+    local arch=$(detect_arch)
+    
+    log "INFO" "检测到系统: $os-$arch"
+    
+    # 获取最新版本
+    local release_info=$(get_latest_release)
+    local version=$(echo "$release_info" | grep -o '"tag_name": "[^"]*' | cut -d'"' -f4)
+    
+    if [[ -z "$version" ]]; then
+        log "ERROR" "无法解析版本信息"
+        exit 1
+    fi
+    
+    log "INFO" "最新版本: $version"
+    
+    # 构建下载URL
+    local asset_name="${APP_NAME}-${os}-${arch}.tar.gz"
+    local download_url=$(echo "$release_info" | grep -o "\"browser_download_url\": \"[^\"]*${asset_name}\"" | cut -d'"' -f4)
+    
+    if [[ -z "$download_url" ]]; then
+        log "ERROR" "未找到适合的安装包: $asset_name"
+        exit 1
+    fi
+    
+    log "INFO" "下载URL: $download_url"
+    
+    # 创建临时目录
+    local temp_dir=$(mktemp -d)
+    trap "rm -rf $temp_dir" EXIT
+    
+    # 下载文件
+    local archive_path="$temp_dir/$asset_name"
+    download_file "$download_url" "$archive_path"
+    
+    # 解压文件
+    log "INFO" "解压安装包..."
+    tar -xzf "$archive_path" -C "$temp_dir"
+    
+    # 查找可执行文件
+    local executable_source=$(find "$temp_dir" -name "$EXECUTABLE_NAME" -type f | head -1)
+    
+    if [[ -z "$executable_source" ]]; then
+        log "ERROR" "在安装包中未找到可执行文件"
+        exit 1
+    fi
+    
+    # 创建安装目录
+    mkdir -p "$INSTALL_DIR"
+    mkdir -p "$CONFIG_DIR"
+    
+    # 复制可执行文件
+    cp "$executable_source" "$EXECUTABLE_PATH"
+    chmod +x "$EXECUTABLE_PATH"
+    
+    log "SUCCESS" "已安装到: $EXECUTABLE_PATH"
+    
+    # 添加到 PATH
+    add_to_path
+    
+    # 安装 shell 别名
+    install_shell_aliases
+    
+    log "SUCCESS" "$APP_NAME $version 安装成功！"
+    log "INFO" "可执行文件位置: $EXECUTABLE_PATH"
+    log "INFO" "配置目录: $CONFIG_DIR"
+    log "INFO" ""
+    log "INFO" "使用方法:"
+    log "INFO" "  delguard file.txt          # 删除文件到回收站"
+    log "INFO" "  delguard -p file.txt       # 永久删除文件"
+    log "INFO" "  delguard --help            # 查看帮助"
+    log "INFO" ""
+    log "INFO" "请重新启动终端或运行 'source ~/.bashrc' 以使用 delguard 命令"
+}
+
+# 添加到 PATH
+add_to_path() {
+    local shell_rc=""
+    
+    # 检测 shell 类型
+    if [[ -n "$BASH_VERSION" ]]; then
+        shell_rc="$HOME/.bashrc"
+    elif [[ -n "$ZSH_VERSION" ]]; then
+        shell_rc="$HOME/.zshrc"
+    else
+        shell_rc="$HOME/.profile"
+    fi
+    
+    # 检查是否已在 PATH 中
+    if [[ ":$PATH:" == *":$INSTALL_DIR:"* ]]; then
+        log "INFO" "PATH 中已存在: $INSTALL_DIR"
+        return 0
+    fi
+    
+    # 添加到 shell 配置文件
+    if [[ -f "$shell_rc" ]]; then
+        if ! grep -q "$INSTALL_DIR" "$shell_rc"; then
+            echo "" >> "$shell_rc"
+            echo "# DelGuard PATH" >> "$shell_rc"
+            echo "export PATH=\"\$PATH:$INSTALL_DIR\"" >> "$shell_rc"
+            log "SUCCESS" "已添加到 PATH: $shell_rc"
+        else
+            log "INFO" "PATH 配置已存在: $shell_rc"
+        fi
+    fi
+    
+    # 更新当前会话的 PATH
+    export PATH="$PATH:$INSTALL_DIR"
+}
+
+# 安装 shell 别名
+install_shell_aliases() {
+    local shell_rc=""
+    
+    # 检测 shell 类型
+    if [[ -n "$BASH_VERSION" ]]; then
+        shell_rc="$HOME/.bashrc"
+    elif [[ -n "$ZSH_VERSION" ]]; then
+        shell_rc="$HOME/.zshrc"
+    else
+        shell_rc="$HOME/.profile"
+    fi
+    
+    if [[ -f "$shell_rc" ]]; then
+        if ! grep -q "DelGuard 别名配置" "$shell_rc"; then
+            cat >> "$shell_rc" << EOF
+
+# DelGuard 别名配置
+if command -v delguard &> /dev/null; then
+    alias dg='delguard'
+    alias del='delguard'
+    alias rm='delguard'
+fi
+EOF
+            log "SUCCESS" "已添加 shell 别名配置"
+        else
+            log "INFO" "shell 别名已存在"
+        fi
+    fi
+}
+
+# 卸载 DelGuard
+uninstall_delguard() {
+    log "INFO" "开始卸载 $APP_NAME..."
+    
+    # 删除可执行文件
+    if [[ -f "$EXECUTABLE_PATH" ]]; then
+        rm -f "$EXECUTABLE_PATH"
+        log "SUCCESS" "已删除: $EXECUTABLE_PATH"
+    fi
+    
+    # 删除安装目录（如果为空）
+    if [[ -d "$INSTALL_DIR" ]] && [[ -z "$(ls -A "$INSTALL_DIR")" ]]; then
+        rmdir "$INSTALL_DIR"
+        log "SUCCESS" "已删除安装目录: $INSTALL_DIR"
+    fi
+    
+    # 从 PATH 中移除
+    remove_from_path
+    
+    # 移除 shell 别名
+    remove_shell_aliases
+    
+    log "SUCCESS" "$APP_NAME 卸载完成"
+    log "INFO" "配置文件保留在: $CONFIG_DIR"
+    log "INFO" "如需完全清理，请手动删除配置目录"
+}
+
+# 从 PATH 中移除
+remove_from_path() {
+    local shell_configs=("$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile")
+    
+    for shell_rc in "${shell_configs[@]}"; do
+        if [[ -f "$shell_rc" ]]; then
+            # 移除 DelGuard PATH 配置
+            sed -i.bak '/# DelGuard PATH/,+1d' "$shell_rc" 2>/dev/null || true
+            log "INFO" "已从 $shell_rc 中移除 PATH 配置"
+        fi
+    done
+}
+
+# 移除 shell 别名
+remove_shell_aliases() {
+    local shell_configs=("$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile")
+    
+    for shell_rc in "${shell_configs[@]}"; do
+        if [[ -f "$shell_rc" ]]; then
+            # 移除 DelGuard 别名配置
+            sed -i.bak '/# DelGuard 别名配置/,/^fi$/d' "$shell_rc" 2>/dev/null || true
+            log "INFO" "已从 $shell_rc 中移除别名配置"
+        fi
+    done
+}
+
+# 检查安装状态
+check_install_status() {
+    echo -e "${CYAN}=== DelGuard 安装状态 ===${NC}"
+    
+    if [[ -f "$EXECUTABLE_PATH" ]]; then
+        echo -e "${GREEN}✓ 已安装${NC}"
+        echo -e "  位置: ${EXECUTABLE_PATH}"
+        
+        if command -v delguard &> /dev/null; then
+            local version=$(delguard --version 2>/dev/null || echo "无法获取")
+            echo -e "  版本: ${version}"
+        else
+            echo -e "${YELLOW}  版本: 无法获取${NC}"
+        fi
+    else
+        echo -e "${RED}✗ 未安装${NC}"
+    fi
+    
+    # 检查 PATH
+    if [[ ":$PATH:" == *":$INSTALL_DIR:"* ]]; then
+        echo -e "${GREEN}✓ 已添加到 PATH${NC}"
+    else
+        echo -e "${YELLOW}✗ 未添加到 PATH${NC}"
+    fi
+    
+    # 检查别名
+    if command -v delguard &> /dev/null; then
+        echo -e "${GREEN}✓ 命令可用${NC}"
+    else
+        echo -e "${YELLOW}✗ 命令不可用${NC}"
+    fi
+    
+    # 检查配置目录
+    if [[ -d "$CONFIG_DIR" ]]; then
+        echo -e "${GREEN}✓ 配置目录存在: $CONFIG_DIR${NC}"
+    else
+        echo -e "${YELLOW}✗ 配置目录不存在${NC}"
+    fi
+}
+
+# 主函数
+main() {
+    echo -e "${CYAN}DelGuard 安装程序${NC}"
+    echo -e "${CYAN}=================${NC}"
+    echo ""
+    
+    # 解析参数
+    parse_args "$@"
+    
+    # 检查依赖
+    check_dependencies
+    
+    # 执行相应操作
+    if [[ "$STATUS_CHECK" == "true" ]]; then
+        check_install_status
+        exit 0
+    fi
+    
+    if [[ "$UNINSTALL" == "true" ]]; then
+        uninstall_delguard
+        exit 0
+    fi
+    
+    # 检查权限和网络
+    check_permissions
+    check_network
+    
+    # 安装
+    install_delguard
+}
+
+# 错误处理
+trap 'log "ERROR" "安装过程中发生错误，请查看日志: $LOG_FILE"' ERR
+
+# 执行主函数
+main "$@"

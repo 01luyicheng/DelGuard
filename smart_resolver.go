@@ -5,6 +5,17 @@ import (
 	"os"
 )
 
+// 全局变量定义
+var (
+	similarityThreshold float64 = DefaultSimilarityThreshold
+	searchContent       bool
+	recursive           bool
+	searchParent        bool
+	force               bool
+	forceConfirm        bool
+	smartSearch         bool
+)
+
 // smartResolveFile 智能解析文件路径
 func smartResolveFile(target string) ([]string, error) {
 	// 先提示用户没有找到指定文件

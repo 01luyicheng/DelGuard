@@ -62,8 +62,11 @@ type Config struct {
 	OutputPrefix        string `json:"output_prefix"`         // 自定义前缀，默认 "DelGuard: "
 
 	// 日志轮转设置
-	LogMaxSize     int64 `json:"log_max_size"`     // 日志文件最大大小(MB)
-	LogMaxBackups  int   `json:"log_max_backups"`  // 日志文件最大备份数量
+	// 日志配置
+	EnableLogging bool  `json:"enable_logging"`
+	LogMaxAge     int   `json:"log_max_age"`
+	LogMaxSize    int64 `json:"log_max_size"`
+	LogMaxBackups int   `json:"log_max_backups"`
 	LogRotateDaily bool  `json:"log_rotate_daily"` // 是否按日轮转
 	LogCompress    bool  `json:"log_compress"`     // 是否压缩旧日志
 
@@ -1010,6 +1013,53 @@ func hasField(config *Config, fieldName string) bool {
 	}
 }
 
+// SaveDefaultConfig 保存默认配置
+func SaveDefaultConfig(path string) error {
+	defaultConfig := &Config{}
+	defaultConfig.setDefaults()
+	// 覆盖部分默认值
+	defaultConfig.Language = detectSystemLanguage()
+	defaultConfig.MaxFileSize = 10 * 1024 * 1024 * 1024 // 10GB
+	defaultConfig.EnableLogging = true
+	defaultConfig.LogMaxSize = 100 * 1024 * 1024 // 100MB
+	defaultConfig.LogMaxBackups = 5
+	defaultConfig.LogMaxAge = 30 // 30天
+
+	// 确保目录存在
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	return defaultConfig.Save(path)
+}
+
+// detectSystemLanguage 检测系统语言
+func detectSystemLanguage() string {
+	lang := os.Getenv("LANG")
+	if lang == "" {
+		lang = os.Getenv("LANGUAGE")
+	}
+	if lang == "" {
+		return "zh-CN"
+	}
+
+	// 简化语言检测
+	lang = strings.ToLower(lang)
+	switch {
+	case strings.Contains(lang, "zh"):
+		return "zh-CN"
+	case strings.Contains(lang, "en"):
+		return "en-US"
+	case strings.Contains(lang, "ja"):
+		return "ja"
+	case strings.Contains(lang, "ko"):
+		return "ko-KR"
+	default:
+		return "en-US"
+	}
+}
+
 func (c *Config) Save(path string) error {
 	if err := c.Validate(); err != nil {
 		return fmt.Errorf("配置验证失败: %w", err)
@@ -1018,22 +1068,26 @@ func (c *Config) Save(path string) error {
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return fmt.Errorf("无法创建配置目录: %w", err)
 	}
-	tempFile := path + ".tmp"
-	file, err := os.Create(tempFile)
+	
+	// 使用直接写入方式，避免重命名问题
+	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
-		return fmt.Errorf("无法创建临时配置文件: %w", err)
-	}
-	defer file.Close()
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(c); err != nil {
-		os.Remove(tempFile)
 		return fmt.Errorf("配置文件编码失败: %w", err)
 	}
-	if err := os.Rename(tempFile, path); err != nil {
-		os.Remove(tempFile)
+	
+	// 尝试直接写入，如果文件存在则先删除
+	if _, err := os.Stat(path); err == nil {
+		// 文件存在，先尝试删除
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("无法删除旧配置文件: %w", err)
+		}
+	}
+	
+	// 直接写入新文件
+	if err := os.WriteFile(path, data, 0644); err != nil {
 		return fmt.Errorf("无法保存配置文件: %w", err)
 	}
+	
 	return nil
 }
 
