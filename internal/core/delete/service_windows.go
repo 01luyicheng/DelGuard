@@ -9,6 +9,11 @@ import (
 	"unsafe"
 )
 
+// moveToUnixTrash 在Windows系统上不可用
+func (s *Service) moveToUnixTrash(filePath string) error {
+	return fmt.Errorf("Unix回收站功能在此平台不可用")
+}
+
 // moveToWindowsRecycleBin Windows回收站实现
 func (s *Service) moveToWindowsRecycleBin(filePath string) error {
 	// 使用Windows API将文件移动到回收站

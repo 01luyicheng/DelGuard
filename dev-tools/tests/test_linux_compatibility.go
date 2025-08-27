@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+func main() {
+	TestLinuxCompatibility()
+}
+
 func TestLinuxCompatibility() {
 	fmt.Println("=== Linux/macOS兼容性测试 ===")
 

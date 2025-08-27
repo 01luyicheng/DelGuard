@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"delguard/internal/core/delete"
-	"delguard/internal/core/search"
+	"github.com/01luyicheng/DelGuard/internal/core/delete"
+	"github.com/01luyicheng/DelGuard/internal/core/search"
 )
 
 func BenchmarkLargeFileDelete(b *testing.B) {

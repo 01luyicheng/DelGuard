@@ -21,30 +21,61 @@ DelGuard 是一个跨平台的安全文件删除工具，通过将文件移动�
 ```bash
 git clone https://github.com/01luyicheng/DelGuard.git
 cd DelGuard
-go build -o DelGuard.exe .
+go build -o delguard ./cmd/delguard
 ```
 
-### Windows 用户
-下载最新的 `DelGuard.exe` 文件，将其添加到系统 PATH 中即可使用。
+### 使用安装脚本
+**Windows:**
+```powershell
+.\install.ps1
+```
+
+**Linux/macOS:**
+```bash
+./install.sh
+```
 
 ## 📖 使用方法
 
-### 基本删除
+### 基本命令
 ```bash
-DelGuard 文件名
-DelGuard test.txt
+# 安全删除文件
+delguard delete file.txt
+delguard del file.txt
+
+# 搜索文件
+delguard search "*.txt"
+delguard find "*.log"
+
+# 查看版本
+delguard version
+
+# 查看帮助
+delguard help
 ```
 
-### 批量删除
+### 高级选项
 ```bash
-DelGuard *.tmp
-DelGuard folder/
+# 递归删除目录
+delguard delete -r directory/
+
+# 详细输出
+delguard delete -v file.txt
+
+# 强制删除（跳过确认）
+delguard delete -f file.txt
+
+# 预览模式（不实际删除）
+delguard delete --dry-run file.txt
 ```
 
-### 覆盖文件保护
-当目标文件已存在时，DelGuard 会自动创建备份：
+### 配置管理
 ```bash
-DelGuard newfile.txt existingfile.txt
+# 查看配置
+delguard config show
+
+# 设置配置项
+delguard config set language zh-cn
 ```
 
 ## 🎯 错误处理
@@ -58,10 +89,33 @@ DelGuard 提供智能错误提示，常见错误包括：
 
 ## 🔧 配置
 
-配置文件位于 `~/.delguard/config.json`，支持自定义：
-- 回收站行为
-- 安全检查级别
-- 提示信息显示
+DelGuard 支持通过配置文件自定义行为。配置文件位于：
+- Windows: `%APPDATA%\DelGuard\config.yaml`
+- Linux: `~/.config/delguard/config.yaml`
+
+### 配置选项
+```yaml
+# 删除行为配置
+delete:
+  confirm_before_delete: true    # 删除前确认
+  use_recycle_bin: true         # 使用回收站
+  backup_before_overwrite: true # 覆盖前备份
+
+# 安全配置
+security:
+  max_file_size: "100MB"        # 最大文件大小限制
+  forbidden_extensions: [".sys", ".dll"]  # 禁止删除的扩展名
+  
+# 界面配置
+ui:
+  language: "zh-cn"             # 界面语言
+  show_progress: true           # 显示进度条
+
+# 监控配置
+monitor:
+  enable_logging: true          # 启用操作日志
+  log_level: "info"            # 日志级别
+```
 
 ## 📄 技术栈
 

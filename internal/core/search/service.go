@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // FileInfo 文件信息
@@ -213,18 +214,54 @@ func (s *Service) Execute(ctx context.Context, args []string) error {
 		return fmt.Errorf("请指定搜索目标")
 	}
 
-	for _, target := range args {
-		if err := s.searchTarget(ctx, target); err != nil {
-			return fmt.Errorf("搜索 %s 失败: %v", target, err)
+	var pattern string
+	var searchPath string = "."
+
+	// 解析参数
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--pattern" && i+1 < len(args) {
+			pattern = args[i+1]
+			i++ // 跳过pattern值
+		} else if !strings.HasPrefix(args[i], "-") {
+			// 这是搜索路径
+			searchPath = args[i]
 		}
 	}
 
-	return nil
+	if pattern == "" {
+		// 如果没有指定pattern，使用第一个非选项参数作为pattern
+		for _, arg := range args {
+			if !strings.HasPrefix(arg, "-") {
+				pattern = arg
+				break
+			}
+		}
+	}
+
+	if pattern == "" {
+		return fmt.Errorf("请指定搜索模式")
+	}
+
+	return s.searchTarget(ctx, pattern, searchPath)
 }
 
 // searchTarget 搜索目标
-func (s *Service) searchTarget(ctx context.Context, target string) error {
-	// 这里会实现具体的搜索逻辑
-	fmt.Printf("搜索: %s\n", target)
+func (s *Service) searchTarget(ctx context.Context, pattern, searchPath string) error {
+	// 执行实际的文件搜索
+	results, err := s.FindFiles(searchPath, pattern, true)
+	if err != nil {
+		return fmt.Errorf("搜索失败: %v", err)
+	}
+
+	if len(results) == 0 {
+		fmt.Printf("未找到匹配 '%s' 的文件\n", pattern)
+		return nil
+	}
+
+	fmt.Printf("找到 %d 个匹配文件:\n", len(results))
+	for _, file := range results {
+		fmt.Printf("  %s\n", file.Path)
+	}
+
 	return nil
 }
