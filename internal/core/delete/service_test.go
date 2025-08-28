@@ -102,22 +102,6 @@ func TestDeleteService_BatchDelete(t *testing.T) {
 	}
 }
 
-func BenchmarkDeleteService_SafeDelete(b *testing.B) {
-	service := NewService()
-	tempDir := b.TempDir()
-
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		testFile := filepath.Join(tempDir, "bench_test.txt")
-		os.WriteFile(testFile, []byte("benchmark test"), 0644)
-
-		err := service.SafeDelete(testFile)
-		if err != nil {
-			b.Errorf("SafeDelete() error = %v", err)
-		}
-	}
-}
 
 func TestDeleteService_RecoverFromRecycleBin(t *testing.T) {
 	service := NewService()

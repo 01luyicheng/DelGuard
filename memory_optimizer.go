@@ -87,18 +87,26 @@ func (mo *MemoryOptimizer) performCleanup() {
 
 	// 检查内存使用情况
 	if int64(m.Alloc) > mo.forceGCThreshold {
-		mo.outputManager.Debug("内存使用超过阈值，执行强制GC: %d MB", m.Alloc/1024/1024)
+		// 只在必要时输出简化的调试信息
+		if mo.outputManager != nil && mo.outputManager.IsDebugEnabled() {
+			mo.outputManager.Debug("执行内存清理: %d MB", m.Alloc/1024/1024)
+		}
 		runtime.GC()
 
 		// 再次检查
 		runtime.ReadMemStats(&m)
-		mo.outputManager.Debug("GC后内存使用: %d MB", m.Alloc/1024/1024)
+		// 简化调试信息输出
+		if mo.outputManager != nil && mo.outputManager.IsDebugEnabled() {
+			mo.outputManager.Debug("内存清理完成: %d MB", m.Alloc/1024/1024)
+		}
 	}
 
 	// 检查是否超过内存限制
 	if int64(m.Sys) > mo.memoryLimit {
-		mo.outputManager.Warn("系统内存使用超过限制: %d MB > %d MB",
-			m.Sys/1024/1024, mo.memoryLimit/1024/1024)
+		// 只在警告级别输出关键信息
+		if mo.outputManager != nil {
+			mo.outputManager.Warn("内存使用超限: %d MB", m.Sys/1024/1024)
+		}
 
 		// 执行更激进的清理
 		mo.aggressiveCleanup()
@@ -107,7 +115,10 @@ func (mo *MemoryOptimizer) performCleanup() {
 
 // aggressiveCleanup 激进清理
 func (mo *MemoryOptimizer) aggressiveCleanup() {
-	mo.outputManager.Debug("执行激进内存清理")
+	// 只在调试模式下输出详细信息
+	if mo.outputManager != nil && mo.outputManager.IsDebugEnabled() {
+		mo.outputManager.Debug("执行内存清理")
+	}
 
 	// 强制GC
 	runtime.GC()
@@ -119,7 +130,10 @@ func (mo *MemoryOptimizer) aggressiveCleanup() {
 	// 清理全局缓存（如果存在）
 	// 这里可以添加具体的缓存清理逻辑
 
-	mo.outputManager.Debug("激进内存清理完成")
+	// 简化完成信息
+	if mo.outputManager != nil && mo.outputManager.IsDebugEnabled() {
+		mo.outputManager.Debug("内存清理完成")
+	}
 }
 
 // OptimizeForOperation 为特定操作优化内存
@@ -134,17 +148,24 @@ func (mo *MemoryOptimizer) OptimizeForOperation(operation string) func() {
 	case "large_file_operation":
 		// 大文件操作：降低GC频率
 		originalGCPercent = debug.SetGCPercent(200)
-		mo.outputManager.Debug("为大文件操作优化内存设置")
+		// 简化调试信息
+		if mo.outputManager != nil && mo.outputManager.IsDebugEnabled() {
+			mo.outputManager.Debug("优化大文件操作内存")
+		}
 
 	case "many_small_files":
 		// 多小文件操作：提高GC频率
 		originalGCPercent = debug.SetGCPercent(50)
-		mo.outputManager.Debug("为多小文件操作优化内存设置")
+		if mo.outputManager != nil && mo.outputManager.IsDebugEnabled() {
+			mo.outputManager.Debug("优化小文件操作内存")
+		}
 
 	case "search_operation":
 		// 搜索操作：平衡设置
 		originalGCPercent = debug.SetGCPercent(100)
-		mo.outputManager.Debug("为搜索操作优化内存设置")
+		if mo.outputManager != nil && mo.outputManager.IsDebugEnabled() {
+			mo.outputManager.Debug("优化搜索操作内存")
+		}
 
 	default:
 		return func() {}
@@ -153,7 +174,10 @@ func (mo *MemoryOptimizer) OptimizeForOperation(operation string) func() {
 	// 返回恢复函数
 	return func() {
 		debug.SetGCPercent(originalGCPercent)
-		mo.outputManager.Debug("恢复原始内存设置")
+		// 只在调试模式下输出恢复信息
+		if mo.outputManager != nil && mo.outputManager.IsDebugEnabled() {
+			mo.outputManager.Debug("恢复内存设置")
+		}
 	}
 }
 
@@ -200,7 +224,10 @@ func (mo *MemoryOptimizer) SetGCPercent(percent int) {
 
 	mo.gcPercent = percent
 	debug.SetGCPercent(percent)
-	mo.outputManager.Debug("设置GC百分比: %d", percent)
+	// 简化调试信息
+	if mo.outputManager != nil && mo.outputManager.IsDebugEnabled() {
+		mo.outputManager.Debug("设置GC: %d%%", percent)
+	}
 }
 
 // SetMemoryLimit 设置内存限制
@@ -209,7 +236,10 @@ func (mo *MemoryOptimizer) SetMemoryLimit(limit int64) {
 	defer mo.mu.Unlock()
 
 	mo.memoryLimit = limit
-	mo.outputManager.Debug("设置内存限制: %d MB", limit/1024/1024)
+	// 简化调试信息
+	if mo.outputManager != nil && mo.outputManager.IsDebugEnabled() {
+		mo.outputManager.Debug("内存限制: %d MB", limit/1024/1024)
+	}
 }
 
 // SetForceGCThreshold 设置强制GC阈值
@@ -218,7 +248,10 @@ func (mo *MemoryOptimizer) SetForceGCThreshold(threshold int64) {
 	defer mo.mu.Unlock()
 
 	mo.forceGCThreshold = threshold
-	mo.outputManager.Debug("设置强制GC阈值: %d MB", threshold/1024/1024)
+	// 简化调试信息
+	if mo.outputManager != nil && mo.outputManager.IsDebugEnabled() {
+		mo.outputManager.Debug("GC阈值: %d MB", threshold/1024/1024)
+	}
 }
 
 // ForceGC 强制执行GC
@@ -239,8 +272,10 @@ func (mo *MemoryOptimizer) ForceGC() {
 	duration := time.Since(start)
 	freed := beforeGC.Alloc - afterGC.Alloc
 
-	mo.outputManager.Debug("强制GC完成: 耗时 %v, 释放内存 %d KB",
-		duration, freed/1024)
+	// 只在调试模式下输出详细信息，并简化输出
+	if mo.outputManager != nil && mo.outputManager.IsDebugEnabled() {
+		mo.outputManager.Debug("GC完成: %v, 释放 %d KB", duration, freed/1024)
+	}
 }
 
 // CheckMemoryPressure 检查内存压力
@@ -279,7 +314,10 @@ func (mo *MemoryOptimizer) OptimizeMemoryLayout() {
 		return
 	}
 
-	mo.outputManager.Debug("开始优化内存布局")
+	// 只在调试模式下输出信息
+	if mo.outputManager != nil && mo.outputManager.IsDebugEnabled() {
+		mo.outputManager.Debug("优化内存布局")
+	}
 
 	// 执行GC
 	runtime.GC()
@@ -300,7 +338,10 @@ func (mo *MemoryOptimizer) OptimizeMemoryLayout() {
 		debug.SetGCPercent(100) // 默认设置
 	}
 
-	mo.outputManager.Debug("内存布局优化完成")
+	// 简化完成信息
+	if mo.outputManager != nil && mo.outputManager.IsDebugEnabled() {
+		mo.outputManager.Debug("内存优化完成")
+	}
 }
 
 // Enable 启用内存优化器

@@ -1,0 +1,364 @@
+package monitor
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"path/filepath"
+	"sync"
+	"time"
+
+	"github.com/fsnotify/fsnotify"
+)
+
+// FileEvent 文件事件类型
+type FileEvent struct {
+	Path      string
+	Operation string // CREATE, WRITE, REMOVE, RENAME, CHMOD
+	Timestamp time.Time
+	Size      int64
+}
+
+// FileMonitor 文件监控器
+type FileMonitor struct {
+	watcher   *fsnotify.Watcher
+	events    chan FileEvent
+	errors    chan error
+	ctx       context.Context
+	cancel    context.CancelFunc
+	mu        sync.RWMutex
+	watching  map[string]bool
+	callbacks map[string][]func(FileEvent)
+	config    *MonitorConfig
+}
+
+// MonitorConfig 监控配置
+type MonitorConfig struct {
+	BufferSize       int           // 事件缓冲区大小
+	BatchTimeout     time.Duration // 批处理超时
+	MaxWatchPaths    int           // 最大监控路径数
+	IgnorePatterns   []string      // 忽略的文件模式
+	EnableRecursive  bool          // 是否递归监控
+	DebounceInterval time.Duration // 防抖间隔
+}
+
+// DefaultMonitorConfig 默认监控配置
+func DefaultMonitorConfig() *MonitorConfig {
+	return &MonitorConfig{
+		BufferSize:       1000,
+		BatchTimeout:     100 * time.Millisecond,
+		MaxWatchPaths:    100,
+		IgnorePatterns:   []string{"*.tmp", "*.swp", ".git/*", "node_modules/*"},
+		EnableRecursive:  true,
+		DebounceInterval: 50 * time.Millisecond,
+	}
+}
+
+// NewFileMonitor 创建文件监控器
+func NewFileMonitor(config *MonitorConfig) (*FileMonitor, error) {
+	if config == nil {
+		config = DefaultMonitorConfig()
+	}
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, fmt.Errorf("创建文件监控器失败: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	fm := &FileMonitor{
+		watcher:   watcher,
+		events:    make(chan FileEvent, config.BufferSize),
+		errors:    make(chan error, 100),
+		ctx:       ctx,
+		cancel:    cancel,
+		watching:  make(map[string]bool),
+		callbacks: make(map[string][]func(FileEvent)),
+		config:    config,
+	}
+
+	// 启动监控协程
+	go fm.watchLoop()
+	go fm.processEvents()
+
+	return fm, nil
+}
+
+// AddWatch 添加监控路径
+func (fm *FileMonitor) AddWatch(path string) error {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+
+	if len(fm.watching) >= fm.config.MaxWatchPaths {
+		return fmt.Errorf("已达到最大监控路径数限制: %d", fm.config.MaxWatchPaths)
+	}
+
+	cleanPath := filepath.Clean(path)
+	if fm.watching[cleanPath] {
+		return nil // 已经在监控
+	}
+
+	err := fm.watcher.Add(cleanPath)
+	if err != nil {
+		return fmt.Errorf("添加监控路径失败: %v", err)
+	}
+
+	fm.watching[cleanPath] = true
+	log.Printf("开始监控路径: %s", cleanPath)
+
+	// 如果启用递归监控，添加子目录
+	if fm.config.EnableRecursive {
+		go fm.addRecursiveWatch(cleanPath)
+	}
+
+	return nil
+}
+
+// RemoveWatch 移除监控路径
+func (fm *FileMonitor) RemoveWatch(path string) error {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+
+	cleanPath := filepath.Clean(path)
+	if !fm.watching[cleanPath] {
+		return nil // 未在监控
+	}
+
+	err := fm.watcher.Remove(cleanPath)
+	if err != nil {
+		return fmt.Errorf("移除监控路径失败: %v", err)
+	}
+
+	delete(fm.watching, cleanPath)
+	delete(fm.callbacks, cleanPath)
+	log.Printf("停止监控路径: %s", cleanPath)
+
+	return nil
+}
+
+// AddCallback 添加事件回调
+func (fm *FileMonitor) AddCallback(path string, callback func(FileEvent)) {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+
+	cleanPath := filepath.Clean(path)
+	fm.callbacks[cleanPath] = append(fm.callbacks[cleanPath], callback)
+}
+
+// watchLoop 监控循环
+func (fm *FileMonitor) watchLoop() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("文件监控协程异常: %v", r)
+		}
+	}()
+
+	for {
+		select {
+		case <-fm.ctx.Done():
+			return
+
+		case event, ok := <-fm.watcher.Events:
+			if !ok {
+				return
+			}
+
+			if fm.shouldIgnoreEvent(event) {
+				continue
+			}
+
+			fileEvent := fm.convertEvent(event)
+			select {
+			case fm.events <- fileEvent:
+			case <-time.After(fm.config.BatchTimeout):
+				log.Printf("事件缓冲区满，丢弃事件: %s", event.Name)
+			}
+
+		case err, ok := <-fm.watcher.Errors:
+			if !ok {
+				return
+			}
+
+			select {
+			case fm.errors <- err:
+			default:
+				log.Printf("错误缓冲区满，丢弃错误: %v", err)
+			}
+		}
+	}
+}
+
+// processEvents 处理事件
+func (fm *FileMonitor) processEvents() {
+	debouncer := make(map[string]time.Time)
+	ticker := time.NewTicker(fm.config.DebounceInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-fm.ctx.Done():
+			return
+
+		case event := <-fm.events:
+			// 防抖处理
+			if lastTime, exists := debouncer[event.Path]; exists {
+				if time.Since(lastTime) < fm.config.DebounceInterval {
+					continue
+				}
+			}
+			debouncer[event.Path] = time.Now()
+
+			// 执行回调
+			fm.executeCallbacks(event)
+
+		case <-ticker.C:
+			// 清理过期的防抖记录
+			now := time.Now()
+			for path, lastTime := range debouncer {
+				if now.Sub(lastTime) > fm.config.DebounceInterval*2 {
+					delete(debouncer, path)
+				}
+			}
+		}
+	}
+}
+
+// shouldIgnoreEvent 检查是否应该忽略事件
+func (fm *FileMonitor) shouldIgnoreEvent(event fsnotify.Event) bool {
+	for _, pattern := range fm.config.IgnorePatterns {
+		if matched, _ := filepath.Match(pattern, filepath.Base(event.Name)); matched {
+			return true
+		}
+	}
+	return false
+}
+
+// convertEvent 转换事件格式
+func (fm *FileMonitor) convertEvent(event fsnotify.Event) FileEvent {
+	var operation string
+	switch {
+	case event.Op&fsnotify.Create == fsnotify.Create:
+		operation = "CREATE"
+	case event.Op&fsnotify.Write == fsnotify.Write:
+		operation = "WRITE"
+	case event.Op&fsnotify.Remove == fsnotify.Remove:
+		operation = "REMOVE"
+	case event.Op&fsnotify.Rename == fsnotify.Rename:
+		operation = "RENAME"
+	case event.Op&fsnotify.Chmod == fsnotify.Chmod:
+		operation = "CHMOD"
+	default:
+		operation = "UNKNOWN"
+	}
+
+	return FileEvent{
+		Path:      event.Name,
+		Operation: operation,
+		Timestamp: time.Now(),
+	}
+}
+
+// executeCallbacks 执行回调函数
+func (fm *FileMonitor) executeCallbacks(event FileEvent) {
+	fm.mu.RLock()
+	defer fm.mu.RUnlock()
+
+	// 查找匹配的回调
+	for watchPath, callbacks := range fm.callbacks {
+		if fm.pathMatches(event.Path, watchPath) {
+			for _, callback := range callbacks {
+				go func(cb func(FileEvent)) {
+					defer func() {
+						if r := recover(); r != nil {
+							log.Printf("回调函数异常: %v", r)
+						}
+					}()
+					cb(event)
+				}(callback)
+			}
+		}
+	}
+}
+
+// pathMatches 检查路径是否匹配
+func (fm *FileMonitor) pathMatches(eventPath, watchPath string) bool {
+	eventPath = filepath.Clean(eventPath)
+	watchPath = filepath.Clean(watchPath)
+
+	// 精确匹配
+	if eventPath == watchPath {
+		return true
+	}
+
+	// 如果启用递归，检查是否为子路径
+	if fm.config.EnableRecursive {
+		rel, err := filepath.Rel(watchPath, eventPath)
+		if err == nil && !filepath.IsAbs(rel) && rel != ".." {
+			return true
+		}
+	}
+
+	return false
+}
+
+// addRecursiveWatch 递归添加监控
+func (fm *FileMonitor) addRecursiveWatch(rootPath string) {
+	filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+
+		if info.IsDir() && path != rootPath {
+			fm.mu.Lock()
+			if len(fm.watching) < fm.config.MaxWatchPaths && !fm.watching[path] {
+				if err := fm.watcher.Add(path); err == nil {
+					fm.watching[path] = true
+				}
+			}
+			fm.mu.Unlock()
+		}
+
+		return nil
+	})
+}
+
+// GetStats 获取监控统计信息
+func (fm *FileMonitor) GetStats() map[string]interface{} {
+	fm.mu.RLock()
+	defer fm.mu.RUnlock()
+
+	return map[string]interface{}{
+		"watching_paths":  len(fm.watching),
+		"callback_count":  len(fm.callbacks),
+		"events_buffered": len(fm.events),
+		"errors_buffered": len(fm.errors),
+		"max_watch_paths": fm.config.MaxWatchPaths,
+	}
+}
+
+// Close 关闭监控器
+func (fm *FileMonitor) Close() error {
+	fm.cancel()
+
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+
+	if fm.watcher != nil {
+		err := fm.watcher.Close()
+		fm.watcher = nil
+		return err
+	}
+
+	return nil
+}
+
+// GetEvents 获取事件通道（只读）
+func (fm *FileMonitor) GetEvents() <-chan FileEvent {
+	return fm.events
+}
+
+// GetErrors 获取错误通道（只读）
+func (fm *FileMonitor) GetErrors() <-chan error {
+	return fm.errors
+}

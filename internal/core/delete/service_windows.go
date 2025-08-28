@@ -53,3 +53,8 @@ func (s *Service) moveToWindowsRecycleBin(filePath string) error {
 
 	return nil
 }
+
+// moveToUnixTrash 在Windows系统上不可用
+func (s *Service) moveToUnixTrash(filePath string) error {
+	return fmt.Errorf("Unix回收站功能在Windows平台不可用")
+}

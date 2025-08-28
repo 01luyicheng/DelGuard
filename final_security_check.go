@@ -338,11 +338,7 @@ func (sc *SecurityChecker) generateReport() {
 	fmt.Println("- 定期更新安全配置模板")
 	fmt.Println("- 监控安全日志中的异常活动")
 
-	// 保存报告到文件
-	reportPath := "security_check_report.txt"
-	reportContent := sc.formatReport()
-	os.WriteFile(reportPath, []byte(reportContent), 0644)
-	fmt.Printf("\n详细报告已保存到: %s\n", reportPath)
+	fmt.Printf("\n安全检查完成\n")
 }
 
 // formatReport 格式化报告内容

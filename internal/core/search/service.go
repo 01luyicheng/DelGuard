@@ -26,7 +26,9 @@ type DuplicateGroup struct {
 
 // Service 搜索服务
 type Service struct {
-	config interface{}
+	config       interface{}
+	enhancedEngine *EnhancedSearchEngine
+	searchIndex    *SearchIndex
 }
 
 // NewService 创建搜索服务 - 支持无参数调用
@@ -36,7 +38,9 @@ func NewService(config ...interface{}) *Service {
 		cfg = config[0]
 	}
 	return &Service{
-		config: cfg,
+		config:         cfg,
+		enhancedEngine: NewEnhancedSearchEngine(),
+		searchIndex:    NewSearchIndex(),
 	}
 }
 
@@ -227,4 +231,34 @@ func (s *Service) searchTarget(ctx context.Context, target string) error {
 	// 这里会实现具体的搜索逻辑
 	fmt.Printf("搜索: %s\n", target)
 	return nil
+}
+
+// EnhancedSearch 增强搜索
+func (s *Service) EnhancedSearch(ctx context.Context, rootPath string, filter SearchFilter) ([]EnhancedResult, error) {
+	return s.enhancedEngine.MultiSearch(ctx, rootPath, filter)
+}
+
+// QuickSearch 快速搜索
+func (s *Service) QuickSearch(rootPath, query string) ([]string, error) {
+	return s.enhancedEngine.QuickSearch(rootPath, query)
+}
+
+// BuildSearchIndex 构建搜索索引
+func (s *Service) BuildSearchIndex(rootPath string) error {
+	return s.searchIndex.BuildIndex(rootPath)
+}
+
+// SearchByName 按名称搜索（使用索引）
+func (s *Service) SearchByName(pattern string) []*IndexEntry {
+	return s.searchIndex.SearchByName(pattern)
+}
+
+// SearchByExtension 按扩展名搜索（使用索引）
+func (s *Service) SearchByExtension(ext string) []*IndexEntry {
+	return s.searchIndex.SearchByExtension(ext)
+}
+
+// GetIndexStats 获取索引统计
+func (s *Service) GetIndexStats() map[string]int {
+	return s.searchIndex.GetStats()
 }

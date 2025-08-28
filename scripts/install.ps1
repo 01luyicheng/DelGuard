@@ -11,6 +11,22 @@ param(
     [switch]$Uninstall
 )
 
+# 确保PowerShell使用UTF-8编码显示中文
+if ($PSVersionTable.PSVersion.Major -lt 6) {
+    # Windows PowerShell 5.1需要设置控制台编码
+    try {
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        [Console]::InputEncoding = [System.Text.Encoding]::UTF8
+        # 设置控制台代码页为UTF-8
+        chcp 65001 | Out-Null
+    } catch {
+        Write-Warning "无法设置UTF-8编码，中文显示可能异常"
+    }
+} else {
+    # PowerShell 7+ 默认支持UTF-8
+    $PSDefaultParameterValues['*:Encoding'] = 'utf8'
+}
+
 # Color output functions
 function Write-ColorOutput {
     param([string]$Message, [string]$Color = "White")

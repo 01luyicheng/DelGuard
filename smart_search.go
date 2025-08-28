@@ -694,6 +694,9 @@ func (s *SmartFileSearch) searchByRegexWithContext(ctx context.Context, pattern 
 					if len(matches) > 0 {
 						// 获取第一个匹配的上下文
 						match := matches[0]
+						if len(match) < 2 {
+							continue
+						}
 						start := match[0] - 30
 						if start < 0 {
 							start = 0

@@ -1,0 +1,394 @@
+package monitor
+
+import (
+	"context"
+	"fmt"
+	"runtime"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
+// PerformanceMetrics 性能指标
+type PerformanceMetrics struct {
+	CPUUsage          float64
+	MemoryUsage       uint64
+	GoroutineCount    int
+	EventsProcessed   int64
+	EventsPerSecond   float64
+	AverageLatency    time.Duration
+	ErrorRate         float64
+	LastUpdated       time.Time
+}
+
+// PerformanceMonitor 性能监控器
+type PerformanceMonitor struct {
+	ctx              context.Context
+	cancel           context.CancelFunc
+	mu               sync.RWMutex
+	metrics          *PerformanceMetrics
+	eventCounter     int64
+	errorCounter     int64
+	latencySum       int64
+	latencyCount     int64
+	startTime        time.Time
+	lastEventTime    time.Time
+	config           *PerformanceConfig
+	memStats         runtime.MemStats
+	callbacks        []func(*PerformanceMetrics)
+}
+
+// PerformanceConfig 性能监控配置
+type PerformanceConfig struct {
+	UpdateInterval    time.Duration
+	MetricsRetention  time.Duration
+	AlertThresholds   AlertThresholds
+	EnableProfiling   bool
+	EnableMemoryGC    bool
+	GCInterval        time.Duration
+}
+
+// AlertThresholds 告警阈值
+type AlertThresholds struct {
+	CPUUsageThreshold    float64
+	MemoryUsageThreshold uint64
+	ErrorRateThreshold   float64
+	LatencyThreshold     time.Duration
+}
+
+// DefaultPerformanceConfig 默认性能配置
+func DefaultPerformanceConfig() *PerformanceConfig {
+	return &PerformanceConfig{
+		UpdateInterval:   time.Second,
+		MetricsRetention: 5 * time.Minute,
+		AlertThresholds: AlertThresholds{
+			CPUUsageThreshold:    80.0,
+			MemoryUsageThreshold: 1024 * 1024 * 1024, // 1GB
+			ErrorRateThreshold:   0.05,                // 5%
+			LatencyThreshold:     100 * time.Millisecond,
+		},
+		EnableProfiling: false,
+		EnableMemoryGC:  true,
+		GCInterval:      30 * time.Second,
+	}
+}
+
+// NewPerformanceMonitor 创建性能监控器
+func NewPerformanceMonitor(config *PerformanceConfig) *PerformanceMonitor {
+	if config == nil {
+		config = DefaultPerformanceConfig()
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	pm := &PerformanceMonitor{
+		ctx:       ctx,
+		cancel:    cancel,
+		config:    config,
+		startTime: time.Now(),
+		metrics: &PerformanceMetrics{
+			LastUpdated: time.Now(),
+		},
+		callbacks: make([]func(*PerformanceMetrics), 0),
+	}
+
+	// 启动监控协程
+	go pm.monitorLoop()
+
+	if config.EnableMemoryGC {
+		go pm.memoryGCLoop()
+	}
+
+	return pm
+}
+
+// RecordEvent 记录事件
+func (pm *PerformanceMonitor) RecordEvent() {
+	atomic.AddInt64(&pm.eventCounter, 1)
+	pm.lastEventTime = time.Now()
+}
+
+// RecordError 记录错误
+func (pm *PerformanceMonitor) RecordError() {
+	atomic.AddInt64(&pm.errorCounter, 1)
+}
+
+// RecordLatency 记录延迟
+func (pm *PerformanceMonitor) RecordLatency(latency time.Duration) {
+	atomic.AddInt64(&pm.latencySum, int64(latency))
+	atomic.AddInt64(&pm.latencyCount, 1)
+}
+
+// AddCallback 添加性能指标回调
+func (pm *PerformanceMonitor) AddCallback(callback func(*PerformanceMetrics)) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	pm.callbacks = append(pm.callbacks, callback)
+}
+
+// monitorLoop 监控循环
+func (pm *PerformanceMonitor) monitorLoop() {
+	ticker := time.NewTicker(pm.config.UpdateInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-pm.ctx.Done():
+			return
+		case <-ticker.C:
+			pm.updateMetrics()
+			pm.checkAlerts()
+			pm.notifyCallbacks()
+		}
+	}
+}
+
+// updateMetrics 更新性能指标
+func (pm *PerformanceMonitor) updateMetrics() {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	// 更新内存统计
+	runtime.ReadMemStats(&pm.memStats)
+
+	// 计算事件处理速率
+	eventCount := atomic.LoadInt64(&pm.eventCounter)
+	errorCount := atomic.LoadInt64(&pm.errorCounter)
+	latencySum := atomic.LoadInt64(&pm.latencySum)
+	latencyCount := atomic.LoadInt64(&pm.latencyCount)
+
+	duration := time.Since(pm.startTime).Seconds()
+	eventsPerSecond := float64(eventCount) / duration
+
+	// 计算错误率
+	var errorRate float64
+	if eventCount > 0 {
+		errorRate = float64(errorCount) / float64(eventCount)
+	}
+
+	// 计算平均延迟
+	var avgLatency time.Duration
+	if latencyCount > 0 {
+		avgLatency = time.Duration(latencySum / latencyCount)
+	}
+
+	// 更新指标
+	pm.metrics = &PerformanceMetrics{
+		CPUUsage:        pm.getCPUUsage(),
+		MemoryUsage:     pm.memStats.Alloc,
+		GoroutineCount:  runtime.NumGoroutine(),
+		EventsProcessed: eventCount,
+		EventsPerSecond: eventsPerSecond,
+		AverageLatency:  avgLatency,
+		ErrorRate:       errorRate,
+		LastUpdated:     time.Now(),
+	}
+}
+
+// getCPUUsage 获取CPU使用率（简化实现）
+func (pm *PerformanceMonitor) getCPUUsage() float64 {
+	// 这是一个简化的CPU使用率计算
+	// 在实际应用中，可能需要更精确的CPU监控
+	return float64(runtime.NumGoroutine()) / float64(runtime.NumCPU()) * 10.0
+}
+
+// checkAlerts 检查告警
+func (pm *PerformanceMonitor) checkAlerts() {
+	metrics := pm.GetMetrics()
+	thresholds := pm.config.AlertThresholds
+
+	if metrics.CPUUsage > thresholds.CPUUsageThreshold {
+		pm.triggerAlert("CPU", fmt.Sprintf("CPU使用率过高: %.2f%%", metrics.CPUUsage))
+	}
+
+	if metrics.MemoryUsage > thresholds.MemoryUsageThreshold {
+		pm.triggerAlert("Memory", fmt.Sprintf("内存使用过高: %d bytes", metrics.MemoryUsage))
+	}
+
+	if metrics.ErrorRate > thresholds.ErrorRateThreshold {
+		pm.triggerAlert("Error", fmt.Sprintf("错误率过高: %.2f%%", metrics.ErrorRate*100))
+	}
+
+	if metrics.AverageLatency > thresholds.LatencyThreshold {
+		pm.triggerAlert("Latency", fmt.Sprintf("平均延迟过高: %v", metrics.AverageLatency))
+	}
+}
+
+// triggerAlert 触发告警
+func (pm *PerformanceMonitor) triggerAlert(alertType, message string) {
+	fmt.Printf("[ALERT] %s: %s\n", alertType, message)
+	// 这里可以添加更多的告警处理逻辑，如发送邮件、写入日志等
+}
+
+// notifyCallbacks 通知回调函数
+func (pm *PerformanceMonitor) notifyCallbacks() {
+	pm.mu.RLock()
+	callbacks := make([]func(*PerformanceMetrics), len(pm.callbacks))
+	copy(callbacks, pm.callbacks)
+	metrics := *pm.metrics // 复制指标
+	pm.mu.RUnlock()
+
+	for _, callback := range callbacks {
+		go func(cb func(*PerformanceMetrics)) {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("性能监控回调异常: %v\n", r)
+				}
+			}()
+			cb(&metrics)
+		}(callback)
+	}
+}
+
+// memoryGCLoop 内存垃圾回收循环
+func (pm *PerformanceMonitor) memoryGCLoop() {
+	ticker := time.NewTicker(pm.config.GCInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-pm.ctx.Done():
+			return
+		case <-ticker.C:
+			pm.performMemoryGC()
+		}
+	}
+}
+
+// performMemoryGC 执行内存垃圾回收
+func (pm *PerformanceMonitor) performMemoryGC() {
+	var m1, m2 runtime.MemStats
+	runtime.ReadMemStats(&m1)
+
+	runtime.GC()
+
+	runtime.ReadMemStats(&m2)
+
+	freed := m1.Alloc - m2.Alloc
+	if freed > 0 {
+		fmt.Printf("GC完成，释放内存: %d bytes\n", freed)
+	}
+}
+
+// GetMetrics 获取当前性能指标
+func (pm *PerformanceMonitor) GetMetrics() *PerformanceMetrics {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	// 返回指标的副本
+	return &PerformanceMetrics{
+		CPUUsage:        pm.metrics.CPUUsage,
+		MemoryUsage:     pm.metrics.MemoryUsage,
+		GoroutineCount:  pm.metrics.GoroutineCount,
+		EventsProcessed: pm.metrics.EventsProcessed,
+		EventsPerSecond: pm.metrics.EventsPerSecond,
+		AverageLatency:  pm.metrics.AverageLatency,
+		ErrorRate:       pm.metrics.ErrorRate,
+		LastUpdated:     pm.metrics.LastUpdated,
+	}
+}
+
+// GetDetailedStats 获取详细统计信息
+func (pm *PerformanceMonitor) GetDetailedStats() map[string]interface{} {
+	runtime.ReadMemStats(&pm.memStats)
+
+	return map[string]interface{}{
+		"uptime":           time.Since(pm.startTime).String(),
+		"goroutines":       runtime.NumGoroutine(),
+		"memory_alloc":     pm.memStats.Alloc,
+		"memory_total":     pm.memStats.TotalAlloc,
+		"memory_sys":       pm.memStats.Sys,
+		"gc_runs":          pm.memStats.NumGC,
+		"gc_pause_total":   pm.memStats.PauseTotalNs,
+		"events_total":     atomic.LoadInt64(&pm.eventCounter),
+		"errors_total":     atomic.LoadInt64(&pm.errorCounter),
+		"last_event_time":  pm.lastEventTime.Format(time.RFC3339),
+	}
+}
+
+// ResetCounters 重置计数器
+func (pm *PerformanceMonitor) ResetCounters() {
+	atomic.StoreInt64(&pm.eventCounter, 0)
+	atomic.StoreInt64(&pm.errorCounter, 0)
+	atomic.StoreInt64(&pm.latencySum, 0)
+	atomic.StoreInt64(&pm.latencyCount, 0)
+	pm.startTime = time.Now()
+}
+
+// GenerateReport 生成性能报告
+func (pm *PerformanceMonitor) GenerateReport() string {
+	metrics := pm.GetMetrics()
+	stats := pm.GetDetailedStats()
+
+	report := fmt.Sprintf(`
+性能监控报告
+============
+更新时间: %s
+运行时间: %s
+
+性能指标:
+- CPU使用率: %.2f%%
+- 内存使用: %d bytes (%.2f MB)
+- 协程数量: %d
+- 事件处理: %d 个
+- 处理速率: %.2f 事件/秒
+- 平均延迟: %v
+- 错误率: %.2f%%
+
+系统统计:
+- 总内存分配: %d bytes
+- 系统内存: %d bytes
+- GC运行次数: %d
+- GC总暂停时间: %d ns
+- 最后事件时间: %s
+`,
+		metrics.LastUpdated.Format("2006-01-02 15:04:05"),
+		stats["uptime"],
+		metrics.CPUUsage,
+		metrics.MemoryUsage,
+		float64(metrics.MemoryUsage)/(1024*1024),
+		metrics.GoroutineCount,
+		metrics.EventsProcessed,
+		metrics.EventsPerSecond,
+		metrics.AverageLatency,
+		metrics.ErrorRate*100,
+		stats["memory_total"],
+		stats["memory_sys"],
+		stats["gc_runs"],
+		stats["gc_pause_total"],
+		stats["last_event_time"],
+	)
+
+	return report
+}
+
+// Close 关闭性能监控器
+func (pm *PerformanceMonitor) Close() error {
+	pm.cancel()
+	return nil
+}
+
+// StartProfiling 开始性能分析（全局函数，保持兼容性）
+func StartProfiling() {
+	// 这里可以启动全局性能分析
+}
+
+// StopProfiling 停止性能分析（全局函数，保持兼容性）
+func StopProfiling() interface{} {
+	return nil
+}
+
+// GeneratePerformanceReport 生成性能报告（全局函数，保持兼容性）
+func GeneratePerformanceReport() string {
+	return "性能报告功能已优化，请使用 PerformanceMonitor.GenerateReport()"
+}
+
+// StartMemoryOptimizer 启动内存优化器（全局函数，保持兼容性）
+func StartMemoryOptimizer(ctx context.Context) {
+	// 这里可以启动全局内存优化
+}
+
+// StopMemoryOptimizer 停止内存优化器（全局函数，保持兼容性）
+func StopMemoryOptimizer() {
+	// 这里可以停止全局内存优化
+}

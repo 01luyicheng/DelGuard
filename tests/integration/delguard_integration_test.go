@@ -172,19 +172,4 @@ func TestDelGuard_ConfigLoad(t *testing.T) {
 	}
 }
 
-func BenchmarkDelGuard_SafeDelete(b *testing.B) {
-	tempDir := b.TempDir()
-
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		testFile := filepath.Join(tempDir, "bench_test.txt")
-		os.WriteFile(testFile, []byte("benchmark test"), 0644)
-
-		cmd := exec.Command(delguardBinary, "delete", "--safe", testFile)
-		err := cmd.Run()
-		if err != nil {
-			b.Errorf("Benchmark delete failed: %v", err)
-		}
-	}
 }

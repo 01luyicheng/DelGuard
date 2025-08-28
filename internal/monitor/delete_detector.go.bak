@@ -1,0 +1,476 @@
+package monitor
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+)
+
+// DeleteEvent 删除事件
+type DeleteEvent struct {
+	Path        string
+	Type        string // FILE, DIRECTORY, BATCH
+	Method      string // DIRECT, RECYCLE_BIN, SYSTEM_CALL
+	Timestamp   time.Time
+	Size        int64
+	Confidence  float64 // 检测置信度 0-1
+	Metadata    map[string]interface{}
+}
+
+// DeleteDetector 删除检测器
+type DeleteDetector struct {
+	fileMonitor   *FileMonitor
+	ctx           context.Context
+	cancel        context.CancelFunc
+	mu            sync.RWMutex
+	recentDeletes map[string]*DeleteEvent
+	callbacks     []func(*DeleteEvent)
+	config        *DetectorConfig
+	stats         *DetectorStats
+}
+
+// DetectorConfig 检测器配置
+type DetectorConfig struct {
+	ConfidenceThreshold   float64       // 置信度阈值
+	BatchDetectionWindow  time.Duration // 批量删除检测窗口
+	RecentDeletesTTL      time.Duration // 最近删除记录TTL
+	EnableBatchDetection  bool          // 启用批量删除检测
+	EnableMethodDetection bool          // 启用删除方法检测
+	MaxRecentDeletes      int           // 最大最近删除记录数
+}
+
+// DetectorStats 检测器统计
+type DetectorStats struct {
+	TotalDeletes     int64
+	FileDeletes      int64
+	DirectoryDeletes int64
+	BatchDeletes     int64
+	FalsePositives   int64
+	LastReset        time.Time
+	mu               sync.RWMutex
+}
+
+// DefaultDetectorConfig 默认检测器配置
+func DefaultDetectorConfig() *DetectorConfig {
+	return &DetectorConfig{
+		ConfidenceThreshold:   0.7,
+		BatchDetectionWindow:  2 * time.Second,
+		RecentDeletesTTL:      30 * time.Second,
+		EnableBatchDetection:  true,
+		EnableMethodDetection: true,
+		MaxRecentDeletes:      1000,
+	}
+}
+
+// NewDeleteDetector 创建删除检测器
+func NewDeleteDetector(fileMonitor *FileMonitor, config *DetectorConfig) *DeleteDetector {
+	if config == nil {
+		config = DefaultDetectorConfig()
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	dd := &DeleteDetector{
+		fileMonitor:   fileMonitor,
+		ctx:           ctx,
+		cancel:        cancel,
+		recentDeletes: make(map[string]*DeleteEvent),
+		callbacks:     make([]func(*DeleteEvent), 0),
+		config:        config,
+		stats:         &DetectorStats{LastReset: time.Now()},
+	}
+
+	// 注册文件监控回调
+	fileMonitor.AddCallback("", dd.handleFileEvent)
+
+	// 启动清理协程
+	go dd.cleanupLoop()
+	go dd.batchDetectionLoop()
+
+	return dd
+}
+
+// AddCallback 添加删除事件回调
+func (dd *DeleteDetector) AddCallback(callback func(*DeleteEvent)) {
+	dd.mu.Lock()
+	defer dd.mu.Unlock()
+	dd.callbacks = append(dd.callbacks, callback)
+}
+
+// handleFileEvent 处理文件事件
+func (dd *DeleteDetector) handleFileEvent(event FileEvent) {
+	if event.Operation != "REMOVE" {
+		return
+	}
+
+	deleteEvent := dd.analyzeDeleteEvent(event)
+	if deleteEvent.Confidence >= dd.config.ConfidenceThreshold {
+		dd.recordDelete(deleteEvent)
+		dd.notifyCallbacks(deleteEvent)
+	}
+}
+
+// analyzeDeleteEvent 分析删除事件
+func (dd *DeleteDetector) analyzeDeleteEvent(event FileEvent) *DeleteEvent {
+	deleteEvent := &DeleteEvent{
+		Path:      event.Path,
+		Timestamp: event.Timestamp,
+		Size:      event.Size,
+		Metadata:  make(map[string]interface{}),
+	}
+
+	// 检测文件类型
+	dd.detectFileType(deleteEvent)
+
+	// 检测删除方法
+	if dd.config.EnableMethodDetection {
+		dd.detectDeleteMethod(deleteEvent)
+	}
+
+	// 计算置信度
+	dd.calculateConfidence(deleteEvent)
+
+	return deleteEvent
+}
+
+// detectFileType 检测文件类型
+func (dd *DeleteDetector) detectFileType(event *DeleteEvent) {
+	// 由于文件已被删除，我们需要从路径推断类型
+	if strings.Contains(event.Path, ".") {
+		event.Type = "FILE"
+	} else {
+		// 检查是否为目录（通过路径特征）
+		if strings.HasSuffix(event.Path, string(filepath.Separator)) {
+			event.Type = "DIRECTORY"
+		} else {
+			// 尝试从最近的事件推断
+			event.Type = "FILE" // 默认为文件
+		}
+	}
+
+	event.Metadata["inferred_type"] = true
+}
+
+// detectDeleteMethod 检测删除方法
+func (dd *DeleteDetector) detectDeleteMethod(event *DeleteEvent) {
+	path := strings.ToLower(event.Path)
+
+	// 检查是否为回收站操作
+	if dd.isRecycleBinPath(path) {
+		event.Method = "RECYCLE_BIN"
+		event.Metadata["recycle_bin_operation"] = true
+		return
+	}
+
+	// 检查是否为系统调用删除
+	if dd.isSystemCallDelete(event) {
+		event.Method = "SYSTEM_CALL"
+		event.Metadata["system_call"] = true
+		return
+	}
+
+	// 默认为直接删除
+	event.Method = "DIRECT"
+}
+
+// isRecycleBinPath 检查是否为回收站路径
+func (dd *DeleteDetector) isRecycleBinPath(path string) bool {
+	recycleBinPatterns := []string{
+		"$recycle.bin",
+		"recycler",
+		".trash",
+		".trashes",
+		".local/share/trash",
+	}
+
+	for _, pattern := range recycleBinPatterns {
+		if strings.Contains(path, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isSystemCallDelete 检查是否为系统调用删除
+func (dd *DeleteDetector) isSystemCallDelete(event *DeleteEvent) bool {
+	// 检查删除时间间隔，系统调用通常很快
+	if time.Since(event.Timestamp) < 10*time.Millisecond {
+		return true
+	}
+
+	// 检查路径特征
+	if strings.Contains(event.Path, "temp") || strings.Contains(event.Path, "tmp") {
+		return true
+	}
+
+	return false
+}
+
+// calculateConfidence 计算置信度
+func (dd *DeleteDetector) calculateConfidence(event *DeleteEvent) {
+	confidence := 0.5 // 基础置信度
+
+	// 根据文件类型调整
+	switch event.Type {
+	case "FILE":
+		confidence += 0.2
+	case "DIRECTORY":
+		confidence += 0.3
+	}
+
+	// 根据删除方法调整
+	switch event.Method {
+	case "DIRECT":
+		confidence += 0.2
+	case "RECYCLE_BIN":
+		confidence += 0.1
+	case "SYSTEM_CALL":
+		confidence += 0.3
+	}
+
+	// 根据路径特征调整
+	if dd.isSuspiciousPath(event.Path) {
+		confidence -= 0.2
+	}
+
+	// 根据时间特征调整
+	if dd.isRecentBatchDelete(event) {
+		confidence += 0.1
+		event.Type = "BATCH"
+	}
+
+	// 确保置信度在有效范围内
+	if confidence > 1.0 {
+		confidence = 1.0
+	} else if confidence < 0.0 {
+		confidence = 0.0
+	}
+
+	event.Confidence = confidence
+}
+
+// isSuspiciousPath 检查是否为可疑路径
+func (dd *DeleteDetector) isSuspiciousPath(path string) bool {
+	suspiciousPatterns := []string{
+		".git",
+		"node_modules",
+		".cache",
+		".tmp",
+		"__pycache__",
+	}
+
+	lowerPath := strings.ToLower(path)
+	for _, pattern := range suspiciousPatterns {
+		if strings.Contains(lowerPath, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isRecentBatchDelete 检查是否为批量删除
+func (dd *DeleteDetector) isRecentBatchDelete(event *DeleteEvent) bool {
+	if !dd.config.EnableBatchDetection {
+		return false
+	}
+
+	dd.mu.RLock()
+	defer dd.mu.RUnlock()
+
+	now := time.Now()
+	count := 0
+
+	for _, recentEvent := range dd.recentDeletes {
+		if now.Sub(recentEvent.Timestamp) <= dd.config.BatchDetectionWindow {
+			count++
+		}
+	}
+
+	return count >= 3 // 3个或以上删除事件认为是批量删除
+}
+
+// recordDelete 记录删除事件
+func (dd *DeleteDetector) recordDelete(event *DeleteEvent) {
+	dd.mu.Lock()
+	defer dd.mu.Unlock()
+
+	// 记录到最近删除
+	dd.recentDeletes[event.Path] = event
+
+	// 限制最近删除记录数量
+	if len(dd.recentDeletes) > dd.config.MaxRecentDeletes {
+		dd.cleanupOldDeletes()
+	}
+
+	// 更新统计
+	dd.updateStats(event)
+}
+
+// updateStats 更新统计信息
+func (dd *DeleteDetector) updateStats(event *DeleteEvent) {
+	dd.stats.mu.Lock()
+	defer dd.stats.mu.Unlock()
+
+	dd.stats.TotalDeletes++
+
+	switch event.Type {
+	case "FILE":
+		dd.stats.FileDeletes++
+	case "DIRECTORY":
+		dd.stats.DirectoryDeletes++
+	case "BATCH":
+		dd.stats.BatchDeletes++
+	}
+}
+
+// notifyCallbacks 通知回调函数
+func (dd *DeleteDetector) notifyCallbacks(event *DeleteEvent) {
+	dd.mu.RLock()
+	callbacks := make([]func(*DeleteEvent), len(dd.callbacks))
+	copy(callbacks, dd.callbacks)
+	dd.mu.RUnlock()
+
+	for _, callback := range callbacks {
+		go func(cb func(*DeleteEvent)) {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("删除检测回调异常: %v\n", r)
+				}
+			}()
+			cb(event)
+		}(callback)
+	}
+}
+
+// cleanupLoop 清理循环
+func (dd *DeleteDetector) cleanupLoop() {
+	ticker := time.NewTicker(dd.config.RecentDeletesTTL / 2)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-dd.ctx.Done():
+			return
+		case <-ticker.C:
+			dd.cleanupOldDeletes()
+		}
+	}
+}
+
+// cleanupOldDeletes 清理旧的删除记录
+func (dd *DeleteDetector) cleanupOldDeletes() {
+	dd.mu.Lock()
+	defer dd.mu.Unlock()
+
+	now := time.Now()
+	for path, event := range dd.recentDeletes {
+		if now.Sub(event.Timestamp) > dd.config.RecentDeletesTTL {
+			delete(dd.recentDeletes, path)
+		}
+	}
+}
+
+// batchDetectionLoop 批量检测循环
+func (dd *DeleteDetector) batchDetectionLoop() {
+	if !dd.config.EnableBatchDetection {
+		return
+	}
+
+	ticker := time.NewTicker(dd.config.BatchDetectionWindow)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-dd.ctx.Done():
+			return
+		case <-ticker.C:
+			dd.detectBatchOperations()
+		}
+	}
+}
+
+// detectBatchOperations 检测批量操作
+func (dd *DeleteDetector) detectBatchOperations() {
+	dd.mu.RLock()
+	defer dd.mu.RUnlock()
+
+	now := time.Now()
+	recentEvents := make([]*DeleteEvent, 0)
+
+	for _, event := range dd.recentDeletes {
+		if now.Sub(event.Timestamp) <= dd.config.BatchDetectionWindow {
+			recentEvents = append(recentEvents, event)
+		}
+	}
+
+	if len(recentEvents) >= 5 {
+		// 创建批量删除事件
+		batchEvent := &DeleteEvent{
+			Path:       fmt.Sprintf("BATCH_DELETE_%d_files", len(recentEvents)),
+			Type:       "BATCH",
+			Method:     "BATCH_OPERATION",
+			Timestamp:  now,
+			Confidence: 0.9,
+			Metadata: map[string]interface{}{
+				"batch_size":  len(recentEvents),
+				"time_window": dd.config.BatchDetectionWindow.String(),
+			},
+		}
+
+		dd.notifyCallbacks(batchEvent)
+	}
+}
+
+// GetStats 获取统计信息
+func (dd *DeleteDetector) GetStats() *DetectorStats {
+	dd.stats.mu.RLock()
+	defer dd.stats.mu.RUnlock()
+
+	// 返回统计信息的副本
+	return &DetectorStats{
+		TotalDeletes:     dd.stats.TotalDeletes,
+		FileDeletes:      dd.stats.FileDeletes,
+		DirectoryDeletes: dd.stats.DirectoryDeletes,
+		BatchDeletes:     dd.stats.BatchDeletes,
+		FalsePositives:   dd.stats.FalsePositives,
+		LastReset:        dd.stats.LastReset,
+	}
+}
+
+// ResetStats 重置统计信息
+func (dd *DeleteDetector) ResetStats() {
+	dd.stats.mu.Lock()
+	defer dd.stats.mu.Unlock()
+
+	dd.stats.TotalDeletes = 0
+	dd.stats.FileDeletes = 0
+	dd.stats.DirectoryDeletes = 0
+	dd.stats.BatchDeletes = 0
+	dd.stats.FalsePositives = 0
+	dd.stats.LastReset = time.Now()
+}
+
+// GetRecentDeletes 获取最近删除记录
+func (dd *DeleteDetector) GetRecentDeletes() map[string]*DeleteEvent {
+	dd.mu.RLock()
+	defer dd.mu.RUnlock()
+
+	result := make(map[string]*DeleteEvent)
+	for k, v := range dd.recentDeletes {
+		result[k] = v
+	}
+
+	return result
+}
+
+// Close 关闭检测器
+func (dd *DeleteDetector) Close() error {
+	dd.cancel()
+	return nil
+}

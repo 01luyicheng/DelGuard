@@ -520,27 +520,262 @@ type PropertiesFormatter struct{}
 // Parse 解析YAML格式的配置文件
 // 当前版本暂不支持YAML格式，建议使用JSON格式
 func (yf *YAMLFormatter) Parse(content []byte) (*AdvancedConfig, error) {
-	return nil, fmt.Errorf("YAML格式暂未实现，请使用JSON格式")
+	// 简单的YAML解析实现（基础版本）
+	config := NewDefaultAdvancedConfig()
+	
+	lines := strings.Split(string(content), "\n")
+	currentSection := ""
+	indent := 0
+	
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		
+		// 计算缩进级别
+		currentIndent := len(line) - len(strings.TrimLeft(line, " "))
+		
+		// 处理键值对
+		if strings.Contains(trimmed, ":") {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) == 2 {
+				key := strings.TrimSpace(parts[0])
+				value := strings.TrimSpace(parts[1])
+				
+				// 根据缩进判断是否为顶级节
+				if currentIndent == 0 && value == "" {
+					currentSection = key
+					indent = currentIndent
+					continue
+				}
+				
+				// 设置配置值
+				if err := yf.setConfigValue(config, currentSection, key, value); err != nil {
+					return nil, fmt.Errorf("设置YAML配置值失败 %s.%s=%s: %v", currentSection, key, value, err)
+				}
+			}
+		}
+	}
+	
+	return config, nil
 }
 
-// Format 将配置对象格式化为YAML格式
-// 当前版本暂不支持YAML格式，建议使用JSON格式
 func (yf *YAMLFormatter) Format(config *AdvancedConfig) ([]byte, error) {
-	return nil, fmt.Errorf("YAML格式化暂未实现，请使用JSON格式")
+	var result strings.Builder
+	
+	result.WriteString("# DelGuard 高级配置文件 (YAML格式)\n")
+	result.WriteString("# 生成时间: " + time.Now().Format("2006-01-02 15:04:05") + "\n\n")
+	
+	// 基础配置
+	result.WriteString("basic:\n")
+	result.WriteString(fmt.Sprintf("  version: \"%s\"\n", config.Version))
+	result.WriteString(fmt.Sprintf("  language: \"%s\"\n", config.Language))
+	result.WriteString(fmt.Sprintf("  log_level: \"%s\"\n", config.LogLevel))
+	result.WriteString(fmt.Sprintf("  interactive_mode: \"%s\"\n", config.InteractiveMode))
+	result.WriteString(fmt.Sprintf("  safe_mode: \"%s\"\n", config.SafeMode))
+	result.WriteString("\n")
+	
+	// 性能配置
+	result.WriteString("performance:\n")
+	result.WriteString(fmt.Sprintf("  show_progress: %t\n", config.Performance.ShowProgress))
+	result.WriteString(fmt.Sprintf("  batch_size: %d\n", config.Performance.BatchSize))
+	result.WriteString(fmt.Sprintf("  parallel: %t\n", config.Performance.Parallel))
+	result.WriteString(fmt.Sprintf("  max_workers: %d\n", config.Performance.MaxWorkers))
+	result.WriteString("\n")
+	
+	// UI配置
+	result.WriteString("ui:\n")
+	result.WriteString(fmt.Sprintf("  color_output: %t\n", config.UI.ColorOutput))
+	result.WriteString(fmt.Sprintf("  show_stats: %t\n", config.UI.ShowStats))
+	result.WriteString(fmt.Sprintf("  notifications: %t\n", config.UI.Notifications))
+	result.WriteString(fmt.Sprintf("  progress_style: \"%s\"\n", config.UI.ProgressStyle))
+	result.WriteString("\n")
+	
+	return []byte(result.String()), nil
 }
 
-// Validate 验证YAML格式的配置内容
-// 当前版本暂不支持YAML格式，建议使用JSON格式
 func (yf *YAMLFormatter) Validate(content []byte) error {
-	return fmt.Errorf("YAML验证暂未实现，请使用JSON格式")
+	lines := strings.Split(string(content), "\n")
+	
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		
+		// 验证YAML格式
+		if !strings.Contains(trimmed, ":") {
+			return fmt.Errorf("第%d行: YAML格式错误，缺少冒号分隔符", i+1)
+		}
+		
+		// 检查缩进一致性（简单检查）
+		if strings.HasPrefix(line, "\t") {
+			return fmt.Errorf("第%d行: YAML不允许使用制表符缩进，请使用空格", i+1)
+		}
+	}
+	
+	return nil
 }
 
 func (tf *TOMLFormatter) Parse(content []byte) (*AdvancedConfig, error) {
-	return nil, fmt.Errorf("TOML格式暂未实现，请使用JSON格式")
+	// 简单的TOML解析实现（基础版本）
+	config := NewDefaultAdvancedConfig()
+	
+	lines := strings.Split(string(content), "\n")
+	currentSection := ""
+	
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		
+		// 处理节
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			currentSection = strings.Trim(line, "[]")
+			continue
+		}
+		
+		// 处理键值对
+		if strings.Contains(line, "=") {
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				key := strings.TrimSpace(parts[0])
+				value := strings.TrimSpace(parts[1])
+				
+				// 移除引号
+				if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {
+					value = strings.Trim(value, "\"")
+				}
+				
+				// 设置配置值
+				if err := tf.setConfigValue(config, currentSection, key, value); err != nil {
+					return nil, fmt.Errorf("设置TOML配置值失败 [%s]%s=%s: %v", currentSection, key, value, err)
+				}
+			}
+		}
+	}
+	
+	return config, nil
 }
 
 func (tf *TOMLFormatter) Format(config *AdvancedConfig) ([]byte, error) {
-	return nil, fmt.Errorf("TOML格式化暂未实现，请使用JSON格式")
+	var result strings.Builder
+	
+	result.WriteString("# DelGuard 高级配置文件 (TOML格式)\n")
+	result.WriteString("# 生成时间: " + time.Now().Format("2006-01-02 15:04:05") + "\n\n")
+	
+	// 基础配置
+	result.WriteString("[basic]\n")
+	result.WriteString(fmt.Sprintf("version = \"%s\"\n", config.Version))
+	result.WriteString(fmt.Sprintf("language = \"%s\"\n", config.Language))
+	result.WriteString(fmt.Sprintf("log_level = \"%s\"\n", config.LogLevel))
+	result.WriteString(fmt.Sprintf("interactive_mode = \"%s\"\n", config.InteractiveMode))
+	result.WriteString(fmt.Sprintf("safe_mode = \"%s\"\n", config.SafeMode))
+	result.WriteString("\n")
+	
+	// 性能配置
+	result.WriteString("[performance]\n")
+	result.WriteString(fmt.Sprintf("show_progress = %t\n", config.Performance.ShowProgress))
+	result.WriteString(fmt.Sprintf("batch_size = %d\n", config.Performance.BatchSize))
+	result.WriteString(fmt.Sprintf("parallel = %t\n", config.Performance.Parallel))
+	result.WriteString(fmt.Sprintf("max_workers = %d\n", config.Performance.MaxWorkers))
+	result.WriteString("\n")
+	
+	// UI配置
+	result.WriteString("[ui]\n")
+	result.WriteString(fmt.Sprintf("color_output = %t\n", config.UI.ColorOutput))
+	result.WriteString(fmt.Sprintf("show_stats = %t\n", config.UI.ShowStats))
+	result.WriteString(fmt.Sprintf("notifications = %t\n", config.UI.Notifications))
+	result.WriteString(fmt.Sprintf("progress_style = \"%s\"\n", config.UI.ProgressStyle))
+	result.WriteString("\n")
+	
+	return []byte(result.String()), nil
+}
+
+func (tf *TOMLFormatter) Validate(content []byte) error {
+	lines := strings.Split(string(content), "\n")
+	
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		
+		// 验证节格式
+		if strings.HasPrefix(line, "[") {
+			if !strings.HasSuffix(line, "]") {
+				return fmt.Errorf("第%d行: TOML节格式错误，缺少闭合括号", i+1)
+			}
+			continue
+		}
+		
+		// 验证键值对格式
+		if !strings.Contains(line, "=") {
+			return fmt.Errorf("第%d行: TOML格式错误，缺少等号分隔符", i+1)
+		}
+	}
+	
+	return nil
+}
+
+// YAML格式的配置设置方法
+func (yf *YAMLFormatter) setConfigValue(config *AdvancedConfig, section, key, value string) error {
+	switch section {
+	case "basic":
+		return yf.setBasicConfig(config, key, value)
+	case "performance":
+		return yf.setPerformanceConfig(config, key, value)
+	case "ui":
+		return yf.setUIConfig(config, key, value)
+	default:
+		return fmt.Errorf("未知的配置节: %s", section)
+	}
+}
+
+func (yf *YAMLFormatter) setBasicConfig(config *AdvancedConfig, key, value string) error {
+	inf := &INIFormatter{}
+	return inf.setBasicConfig(config, key, value)
+}
+
+func (yf *YAMLFormatter) setPerformanceConfig(config *AdvancedConfig, key, value string) error {
+	inf := &INIFormatter{}
+	return inf.setPerformanceConfig(config, key, value)
+}
+
+func (yf *YAMLFormatter) setUIConfig(config *AdvancedConfig, key, value string) error {
+	inf := &INIFormatter{}
+	return inf.setUIConfig(config, key, value)
+}
+
+// TOML格式的配置设置方法
+func (tf *TOMLFormatter) setConfigValue(config *AdvancedConfig, section, key, value string) error {
+	switch section {
+	case "basic":
+		return tf.setBasicConfig(config, key, value)
+	case "performance":
+		return tf.setPerformanceConfig(config, key, value)
+	case "ui":
+		return tf.setUIConfig(config, key, value)
+	default:
+		return fmt.Errorf("未知的配置节: %s", section)
+	}
+}
+
+func (tf *TOMLFormatter) setBasicConfig(config *AdvancedConfig, key, value string) error {
+	inf := &INIFormatter{}
+	return inf.setBasicConfig(config, key, value)
+}
+
+func (tf *TOMLFormatter) setPerformanceConfig(config *AdvancedConfig, key, value string) error {
+	inf := &INIFormatter{}
+	return inf.setPerformanceConfig(config, key, value)
+}
+
+func (tf *TOMLFormatter) setUIConfig(config *AdvancedConfig, key, value string) error {
+	inf := &INIFormatter{}
+	return inf.setUIConfig(config, key, value)
 }
 
 func (tf *TOMLFormatter) Validate(content []byte) error {
@@ -548,25 +783,296 @@ func (tf *TOMLFormatter) Validate(content []byte) error {
 }
 
 func (inf *INIFormatter) Parse(content []byte) (*AdvancedConfig, error) {
-	return nil, fmt.Errorf("INI格式暂未实现，请使用JSON格式")
+	config := NewDefaultAdvancedConfig()
+	
+	lines := strings.Split(string(content), "\n")
+	currentSection := ""
+	
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, ";") || strings.HasPrefix(line, "#") {
+			continue
+		}
+		
+		// 处理节
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			currentSection = strings.Trim(line, "[]")
+			continue
+		}
+		
+		// 处理键值对
+		if strings.Contains(line, "=") {
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				key := strings.TrimSpace(parts[0])
+				value := strings.TrimSpace(parts[1])
+				
+				// 根据节和键设置配置值
+				if err := inf.setConfigValue(config, currentSection, key, value); err != nil {
+					return nil, fmt.Errorf("设置配置值失败 [%s]%s=%s: %v", currentSection, key, value, err)
+				}
+			}
+		}
+	}
+	
+	return config, nil
 }
 
 func (inf *INIFormatter) Format(config *AdvancedConfig) ([]byte, error) {
-	return nil, fmt.Errorf("INI格式化暂未实现，请使用JSON格式")
+	var result strings.Builder
+	
+	result.WriteString("# DelGuard 高级配置文件 (INI格式)\n")
+	result.WriteString("# 生成时间: " + time.Now().Format("2006-01-02 15:04:05") + "\n\n")
+	
+	// 基础配置
+	result.WriteString("[basic]\n")
+	result.WriteString(fmt.Sprintf("version = %s\n", config.Version))
+	result.WriteString(fmt.Sprintf("language = %s\n", config.Language))
+	result.WriteString(fmt.Sprintf("log_level = %s\n", config.LogLevel))
+	result.WriteString(fmt.Sprintf("interactive_mode = %s\n", config.InteractiveMode))
+	result.WriteString(fmt.Sprintf("safe_mode = %s\n", config.SafeMode))
+	result.WriteString("\n")
+	
+	// 性能配置
+	result.WriteString("[performance]\n")
+	result.WriteString(fmt.Sprintf("show_progress = %t\n", config.Performance.ShowProgress))
+	result.WriteString(fmt.Sprintf("batch_size = %d\n", config.Performance.BatchSize))
+	result.WriteString(fmt.Sprintf("parallel = %t\n", config.Performance.Parallel))
+	result.WriteString(fmt.Sprintf("max_workers = %d\n", config.Performance.MaxWorkers))
+	result.WriteString("\n")
+	
+	// UI配置
+	result.WriteString("[ui]\n")
+	result.WriteString(fmt.Sprintf("color_output = %t\n", config.UI.ColorOutput))
+	result.WriteString(fmt.Sprintf("show_stats = %t\n", config.UI.ShowStats))
+	result.WriteString(fmt.Sprintf("notifications = %t\n", config.UI.Notifications))
+	result.WriteString(fmt.Sprintf("progress_style = %s\n", config.UI.ProgressStyle))
+	result.WriteString("\n")
+	
+	return []byte(result.String()), nil
 }
 
 func (inf *INIFormatter) Validate(content []byte) error {
-	return fmt.Errorf("INI验证暂未实现，请使用JSON格式")
+	lines := strings.Split(string(content), "\n")
+	
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, ";") || strings.HasPrefix(line, "#") {
+			continue
+		}
+		
+		// 验证节格式
+		if strings.HasPrefix(line, "[") {
+			if !strings.HasSuffix(line, "]") {
+				return fmt.Errorf("第%d行: INI节格式错误，缺少闭合括号", i+1)
+			}
+			continue
+		}
+		
+		// 验证键值对格式
+		if !strings.Contains(line, "=") {
+			return fmt.Errorf("第%d行: INI格式错误，缺少等号分隔符", i+1)
+		}
+	}
+	
+	return nil
 }
 
 func (pf *PropertiesFormatter) Parse(content []byte) (*AdvancedConfig, error) {
-	return nil, fmt.Errorf("Properties格式暂未实现，请使用JSON格式")
+	config := NewDefaultAdvancedConfig()
+	
+	lines := strings.Split(string(content), "\n")
+	
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "!") {
+			continue
+		}
+		
+		// 处理键值对
+		var key, value string
+		if strings.Contains(line, "=") {
+			parts := strings.SplitN(line, "=", 2)
+			key = strings.TrimSpace(parts[0])
+			value = strings.TrimSpace(parts[1])
+		} else if strings.Contains(line, ":") {
+			parts := strings.SplitN(line, ":", 2)
+			key = strings.TrimSpace(parts[0])
+			value = strings.TrimSpace(parts[1])
+		} else {
+			continue
+		}
+		
+		// 设置配置值
+		if err := pf.setConfigValue(config, key, value); err != nil {
+			return nil, fmt.Errorf("设置配置值失败 %s=%s: %v", key, value, err)
+		}
+	}
+	
+	return config, nil
 }
 
 func (pf *PropertiesFormatter) Format(config *AdvancedConfig) ([]byte, error) {
-	return nil, fmt.Errorf("Properties格式化暂未实现，请使用JSON格式")
+	var result strings.Builder
+	
+	result.WriteString("# DelGuard 高级配置文件 (Properties格式)\n")
+	result.WriteString("# 生成时间: " + time.Now().Format("2006-01-02 15:04:05") + "\n\n")
+	
+	// 基础配置
+	result.WriteString("# 基础配置\n")
+	result.WriteString(fmt.Sprintf("basic.version=%s\n", config.Version))
+	result.WriteString(fmt.Sprintf("basic.language=%s\n", config.Language))
+	result.WriteString(fmt.Sprintf("basic.log_level=%s\n", config.LogLevel))
+	result.WriteString(fmt.Sprintf("basic.interactive_mode=%s\n", config.InteractiveMode))
+	result.WriteString(fmt.Sprintf("basic.safe_mode=%s\n", config.SafeMode))
+	result.WriteString("\n")
+	
+	// 性能配置
+	result.WriteString("# 性能配置\n")
+	result.WriteString(fmt.Sprintf("performance.show_progress=%t\n", config.Performance.ShowProgress))
+	result.WriteString(fmt.Sprintf("performance.batch_size=%d\n", config.Performance.BatchSize))
+	result.WriteString(fmt.Sprintf("performance.parallel=%t\n", config.Performance.Parallel))
+	result.WriteString(fmt.Sprintf("performance.max_workers=%d\n", config.Performance.MaxWorkers))
+	result.WriteString("\n")
+	
+	// UI配置
+	result.WriteString("# UI配置\n")
+	result.WriteString(fmt.Sprintf("ui.color_output=%t\n", config.UI.ColorOutput))
+	result.WriteString(fmt.Sprintf("ui.show_stats=%t\n", config.UI.ShowStats))
+	result.WriteString(fmt.Sprintf("ui.notifications=%t\n", config.UI.Notifications))
+	result.WriteString(fmt.Sprintf("ui.progress_style=%s\n", config.UI.ProgressStyle))
+	result.WriteString("\n")
+	
+	return []byte(result.String()), nil
 }
 
 func (pf *PropertiesFormatter) Validate(content []byte) error {
-	return fmt.Errorf("Properties验证暂未实现，请使用JSON格式")
+	lines := strings.Split(string(content), "\n")
+	
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "!") {
+			continue
+		}
+		
+		// 验证键值对格式
+		if !strings.Contains(line, "=") && !strings.Contains(line, ":") {
+			return fmt.Errorf("第%d行: Properties格式错误，缺少分隔符(= 或 :)", i+1)
+		}
+	}
+	
+	return nil
+}
+
+// setConfigValue 为INI格式设置配置值
+func (inf *INIFormatter) setConfigValue(config *AdvancedConfig, section, key, value string) error {
+	switch section {
+	case "basic":
+		return inf.setBasicConfig(config, key, value)
+	case "performance":
+		return inf.setPerformanceConfig(config, key, value)
+	case "ui":
+		return inf.setUIConfig(config, key, value)
+	default:
+		return fmt.Errorf("未知的配置节: %s", section)
+	}
+}
+
+// setBasicConfig 设置基础配置
+func (inf *INIFormatter) setBasicConfig(config *AdvancedConfig, key, value string) error {
+	switch key {
+	case "version":
+		config.Version = value
+	case "language":
+		config.Language = value
+	case "log_level":
+		config.LogLevel = value
+	case "interactive_mode":
+		config.InteractiveMode = value
+	case "safe_mode":
+		config.SafeMode = value
+	default:
+		return fmt.Errorf("未知的基础配置键: %s", key)
+	}
+	return nil
+}
+
+// setPerformanceConfig 设置性能配置
+func (inf *INIFormatter) setPerformanceConfig(config *AdvancedConfig, key, value string) error {
+	switch key {
+	case "show_progress":
+		config.Performance.ShowProgress = strings.ToLower(value) == "true"
+	case "batch_size":
+		var batchSize int
+		if _, err := fmt.Sscanf(value, "%d", &batchSize); err != nil {
+			return fmt.Errorf("无效的batch_size值: %s", value)
+		}
+		config.Performance.BatchSize = batchSize
+	case "parallel":
+		config.Performance.Parallel = strings.ToLower(value) == "true"
+	case "max_workers":
+		var maxWorkers int
+		if _, err := fmt.Sscanf(value, "%d", &maxWorkers); err != nil {
+			return fmt.Errorf("无效的max_workers值: %s", value)
+		}
+		config.Performance.MaxWorkers = maxWorkers
+	default:
+		return fmt.Errorf("未知的性能配置键: %s", key)
+	}
+	return nil
+}
+
+// setUIConfig 设置UI配置
+func (inf *INIFormatter) setUIConfig(config *AdvancedConfig, key, value string) error {
+	switch key {
+	case "color_output":
+		config.UI.ColorOutput = strings.ToLower(value) == "true"
+	case "show_stats":
+		config.UI.ShowStats = strings.ToLower(value) == "true"
+	case "notifications":
+		config.UI.Notifications = strings.ToLower(value) == "true"
+	case "progress_style":
+		config.UI.ProgressStyle = value
+	default:
+		return fmt.Errorf("未知的UI配置键: %s", key)
+	}
+	return nil
+}
+
+// setConfigValue 为Properties格式设置配置值
+func (pf *PropertiesFormatter) setConfigValue(config *AdvancedConfig, key, value string) error {
+	parts := strings.Split(key, ".")
+	if len(parts) < 2 {
+		return fmt.Errorf("Properties键格式错误，应为 section.key 格式: %s", key)
+	}
+	
+	section := parts[0]
+	configKey := strings.Join(parts[1:], ".")
+	
+	switch section {
+	case "basic":
+		return pf.setBasicConfig(config, configKey, value)
+	case "performance":
+		return pf.setPerformanceConfig(config, configKey, value)
+	case "ui":
+		return pf.setUIConfig(config, configKey, value)
+	default:
+		return fmt.Errorf("未知的配置节: %s", section)
+	}
+}
+
+// Properties格式的配置设置方法（复用INI的方法）
+func (pf *PropertiesFormatter) setBasicConfig(config *AdvancedConfig, key, value string) error {
+	inf := &INIFormatter{}
+	return inf.setBasicConfig(config, key, value)
+}
+
+func (pf *PropertiesFormatter) setPerformanceConfig(config *AdvancedConfig, key, value string) error {
+	inf := &INIFormatter{}
+	return inf.setPerformanceConfig(config, key, value)
+}
+
+func (pf *PropertiesFormatter) setUIConfig(config *AdvancedConfig, key, value string) error {
+	inf := &INIFormatter{}
+	return inf.setUIConfig(config, key, value)
 }

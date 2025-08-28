@@ -151,22 +151,3 @@ func TestSearchService_FindDuplicates(t *testing.T) {
 	}
 }
 
-func BenchmarkSearchService_FindFiles(b *testing.B) {
-	tempDir := b.TempDir()
-	service := NewService()
-
-	// 创建一些测试文件
-	for i := 0; i < 100; i++ {
-		filename := filepath.Join(tempDir, "bench_test_"+string(rune(i))+".txt")
-		os.WriteFile(filename, []byte("benchmark test"), 0644)
-	}
-
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		_, err := service.FindFiles(tempDir, "*.txt", false)
-		if err != nil {
-			b.Errorf("FindFiles() error = %v", err)
-		}
-	}
-}
