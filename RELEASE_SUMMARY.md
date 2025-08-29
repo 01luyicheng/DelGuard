@@ -8,8 +8,8 @@
 ## ✨ 新增功能
 
 ### 1. 一行命令安装
-- **Windows**: `powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/install-oneline.ps1' -UseBasicParsing | Invoke-Expression }"`
-- **Linux/macOS**: `curl -fsSL https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/install-oneline.sh | sudo bash`
+- **Windows**: `powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/install-oneline.ps1' -UseBasicParsing | Invoke-Expression }"`
+- **Linux/macOS**: `curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/install-oneline.sh | sudo bash`
 
 ### 2. 智能平台检测
 - 自动检测操作系统类型（Windows/Linux/macOS）

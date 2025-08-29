@@ -6,12 +6,12 @@
 # 检查root权限
 if [[ $EUID -ne 0 ]]; then
     echo "❌ 此脚本需要root权限运行"
-    echo "请使用: curl -fsSL https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/install-oneline.sh | sudo bash"
+    echo "请使用: curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/install-oneline.sh | sudo bash"
     exit 1
 fi
 
 # 设置参数
-OWNER="your-username"  # 替换为你的GitHub用户名
+OWNER="01luyicheng"  # GitHub用户名
 REPO="DelGuard"
 VERSION="v1.4.1"
 

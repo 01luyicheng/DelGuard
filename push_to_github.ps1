@@ -2,7 +2,7 @@
 # 用于将 v1.4.1 版本推送到GitHub
 
 param(
-    [string]$Owner = "your-username",  # 替换为你的GitHub用户名
+    [string]$Owner = "01luyicheng",  # GitHub用户名
     [string]$Repo = "DelGuard",
     [string]$Version = "v1.4.1",
     [switch]$Force

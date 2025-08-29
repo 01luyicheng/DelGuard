@@ -12,7 +12,7 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 # 参数设置
-OWNER="your-username"  # 替换为你的GitHub用户名
+OWNER="01luyicheng"  # GitHub用户名
 REPO="DelGuard"
 VERSION="v1.4.1"
 
@@ -24,7 +24,7 @@ show_help() {
     echo "  ./push_to_github.sh [选项]"
     echo ""
     echo "选项:"
-    echo "  -o, --owner OWNER    GitHub用户名 (默认: your-username)"
+    echo "  -o, --owner OWNER    GitHub用户名 (默认: 01luyicheng)"
     echo "  -v, --version VER    版本号 (默认: v1.4.1)"
     echo "  -f, --force          强制推送"
     echo "  -h, --help           显示帮助"

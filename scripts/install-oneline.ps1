@@ -1,6 +1,6 @@
 # DelGuard 一行命令安装脚本 (Windows)
 # 使用方法：复制粘贴以下命令到PowerShell即可
-# powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/install-oneline.ps1' -UseBasicParsing | Invoke-Expression }"
+# powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/install-oneline.ps1' -UseBasicParsing | Invoke-Expression }"
 
 # 检查管理员权限
 if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
@@ -10,7 +10,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # 设置参数
-$Owner = "your-username"  # 替换为你的GitHub用户名
+$Owner = "01luyicheng"  # GitHub用户名
 $Repo = "DelGuard"
 $Version = "v1.4.1"
 

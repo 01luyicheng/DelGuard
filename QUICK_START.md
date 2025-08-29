@@ -5,22 +5,22 @@
 ### Windows
 ```powershell
 # 一行命令安装（最简单）
-powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/install-oneline.ps1' -UseBasicParsing | Invoke-Expression }"
+powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/install-oneline.ps1' -UseBasicParsing | Invoke-Expression }"
 
 # 或者使用完整脚本（可自定义参数）
-powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/quick-install.ps1' -OutFile 'quick-install.ps1'; .\quick-install.ps1 }"
+powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.ps1' -OutFile 'quick-install.ps1'; .\quick-install.ps1 }"
 ```
 
 ### Linux/macOS
 ```bash
 # 一行命令安装（最简单）
-curl -fsSL https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/install-oneline.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/install-oneline.sh | sudo bash
 
 # 或者使用完整脚本（可自定义参数）
-curl -fsSL https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/quick-install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.sh | sudo bash
 
 # 备用wget命令
-wget -qO- https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/quick-install.sh | sudo bash
+wget -qO- https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.sh | sudo bash
 ```
 
 ## ✅ 安装验证
@@ -198,10 +198,8 @@ delguard restore filename.txt    # 恢复文件
 ### 文档资源
 - 📖 [完整文档](README.md)
 - 🔧 [安装指南](INSTALL.md)
-- 🐛 [问题反馈](https://github.com/your-username/DelGuard/issues)
-
-### 社区支持
-- 💬 [GitHub Discussions](https://github.com/your-username/DelGuard/discussions)
+- 🐛 [问题反馈](https://github.com/01luyicheng/DelGuard/issues)
+- 💬 [GitHub Discussions](https://github.com/01luyicheng/DelGuard/discussions)
 - 📧 邮件支持：等待设置
 
 ## 🎯 下一步

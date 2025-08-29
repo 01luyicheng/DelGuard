@@ -18,12 +18,12 @@ DelGuard 是一款跨平台的命令行安全删除工具，通过拦截系统�
 
 #### Windows
 ```powershell
-powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/quick-install.ps1' -OutFile 'quick-install.ps1'; .\quick-install.ps1 }"
+powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.ps1' -OutFile 'quick-install.ps1'; .\quick-install.ps1 }"
 ```
 
 #### Linux/macOS
 ```bash
-curl -fsSL https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/quick-install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.sh | sudo bash
 ```
 
 ### 手动安装

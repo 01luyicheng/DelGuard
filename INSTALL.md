@@ -4,17 +4,17 @@
 
 ### Windows (PowerShell)
 ```powershell
-powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/quick-install.ps1' -OutFile 'quick-install.ps1'; .\quick-install.ps1 }"
+powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.ps1' -OutFile 'quick-install.ps1'; .\quick-install.ps1 }"
 ```
 
 ### Linux/macOS (Bash)
 ```bash
-curl -fsSL https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/quick-install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.sh | sudo bash
 ```
 
 ### 备用安装方法 (使用wget)
 ```bash
-wget -qO- https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/quick-install.sh | sudo bash
+wget -qO- https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.sh | sudo bash
 ```
 
 ## 📦 安装选项
@@ -25,7 +25,7 @@ wget -qO- https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/
 .\quick-install.ps1 -Version v1.4.1
 
 # Linux/macOS
-curl -fsSL https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/quick-install.sh | sudo bash -s -- --version v1.4.1
+curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.sh | sudo bash -s -- --version v1.4.1
 ```
 
 ### 强制重新安装
@@ -34,13 +34,13 @@ curl -fsSL https://raw.githubusercontent.com/your-username/DelGuard/main/scripts
 .\quick-install.ps1 -Force
 
 # Linux/macOS
-curl -fsSL https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/quick-install.sh | sudo bash -s -- --force
+curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.sh | sudo bash -s -- --force
 ```
 
 ## 🔧 手动安装
 
 ### 1. 从GitHub下载
-访问 [GitHub Releases](https://github.com/your-username/DelGuard/releases) 下载对应平台的二进制文件。
+访问 [GitHub Releases](https://github.com/01luyicheng/DelGuard/releases) 下载对应平台的二进制文件。
 
 ### 2. 手动安装
 ```bash
@@ -90,8 +90,8 @@ sudo delguard-uninstall
 
 ## 🔗 相关链接
 
-- [GitHub仓库](https://github.com/your-username/DelGuard)
-- [问题反馈](https://github.com/your-username/DelGuard/issues)
+- [GitHub仓库](https://github.com/01luyicheng/DelGuard)
+- [问题反馈](https://github.com/01luyicheng/DelGuard/issues)
 - [使用文档](README.md)
 
 ## ⚠️ 注意事项

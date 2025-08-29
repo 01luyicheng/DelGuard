@@ -4,7 +4,7 @@
 param(
     [string]$Version = "v1.4.1",
     [string]$Repo = "DelGuard",
-    [string]$Owner = "your-username",  # 需要替换为实际的GitHub用户名
+    [string]$Owner = "01luyicheng",  # GitHub用户名
     [switch]$Force
 )
 
@@ -146,7 +146,7 @@ function Show-Usage {
     Write-ColorMessage "选项:"
     Write-ColorMessage "  -Version <版本>    指定版本 (默认: v1.4.1)" Cyan
     Write-ColorMessage "  -Force             强制重新安装" Cyan
-    Write-ColorMessage "  -Owner <用户名>    GitHub用户名 (默认: your-username)" Cyan
+    Write-ColorMessage "  -Owner <用户名>    GitHub用户名 (默认: 01luyicheng)" Cyan
     Write-ColorMessage ""
     Write-ColorMessage "示例:"
     Write-ColorMessage "  .\quick-install.ps1" White

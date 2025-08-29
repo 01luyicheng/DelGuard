@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 # 默认配置
 VERSION="v1.4.1"
 REPO="DelGuard"
-OWNER="your-username"  # 需要替换为实际的GitHub用户名
+OWNER="01luyicheng"  # GitHub用户名
 FORCE=false
 
 # 帮助信息
@@ -28,7 +28,7 @@ show_help() {
     echo "选项:"
     echo "  -v, --version VERSION    指定版本 (默认: v1.4.1)"
     echo "  -f, --force              强制重新安装"
-    echo "  -o, --owner OWNER        GitHub用户名 (默认: your-username)"
+    echo "  -o, --owner OWNER        GitHub用户名 (默认: 01luyicheng)"
     echo "  -h, --help               显示此帮助信息"
     echo ""
     echo "示例:"

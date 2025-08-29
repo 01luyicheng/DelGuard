@@ -71,8 +71,8 @@
 
 #### ✨ 新增功能
 - **一行命令安装**：支持Windows、Linux、macOS的一行命令安装
-  - Windows: `powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/quick-install.ps1' -OutFile 'quick-install.ps1'; .\quick-install.ps1 }"`
-  - Linux/macOS: `curl -fsSL https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/quick-install.sh | sudo bash`
+  - Windows: `powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.ps1' -OutFile 'quick-install.ps1'; .\quick-install.ps1 }`"
+- Linux/macOS: `curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.sh | sudo bash`
 - **自动检测平台**：智能检测操作系统和架构，下载对应版本
 - **版本选择**：支持指定版本安装，如 `v1.4.1`
 - **强制重装**：支持强制重新安装现有版本
