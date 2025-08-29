@@ -2,6 +2,7 @@ package installer
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -226,7 +227,9 @@ func (m *MacOSInstaller) removeShellConfig() error {
 	}
 
 	for _, configFile := range configFiles {
-		m.removeConfigFromFile(configFile)
+		if err := m.removeConfigFromFile(configFile); err != nil {
+			log.Printf("移除配置失败: %v", err)
+		}
 	}
 
 	return nil

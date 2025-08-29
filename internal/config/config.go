@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -113,6 +114,7 @@ func setDefaults() {
 }
 
 // createDefaultConfig 创建默认配置文件
+// createDefaultConfig 创建默认配置文件
 func createDefaultConfig(configDir string) error {
 	// 确保配置目录存在
 	if err := os.MkdirAll(configDir, 0755); err != nil {
@@ -159,6 +161,8 @@ func getDefaultLogPath() string {
 		logDir = filepath.Join(os.Getenv("HOME"), ".local", "share", "delguard", "logs")
 	}
 
-	os.MkdirAll(logDir, 0755)
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		log.Printf("创建日志目录失败: %v", err)
+	}
 	return filepath.Join(logDir, "delguard.log")
 }

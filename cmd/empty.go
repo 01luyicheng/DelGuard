@@ -103,7 +103,10 @@ func runEmpty(cmd *cobra.Command, args []string) error {
 	if !force {
 		fmt.Print("确认要清空回收站吗? 请输入 'yes' 确认: ")
 		var response string
-		fmt.Scanln(&response)
+		if _, err := fmt.Scanln(&response); err != nil {
+			fmt.Println("❌ 读取输入失败，操作已取消")
+			return nil
+		}
 		if response != "yes" && response != "YES" {
 			fmt.Println("❌ 操作已取消")
 			return nil

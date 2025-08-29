@@ -2,6 +2,7 @@ package installer
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -226,7 +227,9 @@ func (l *LinuxInstaller) removeShellConfig() error {
 	}
 
 	for _, configFile := range configFiles {
-		l.removeConfigFromFile(configFile)
+		if err := l.removeConfigFromFile(configFile); err != nil {
+			log.Printf("移除配置失败: %v", err)
+		}
 	}
 
 	return nil

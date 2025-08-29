@@ -1,5 +1,7 @@
 #!/bin/bash
-# DelGuard Linux/macOS 安装脚本
+
+# DelGuard 智能安装脚本
+# 支持 Linux 和 macOS 系统自动检测和安装
 
 set -e
 
@@ -10,210 +12,332 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# 配置
+# 全局变量
+DELGUARD_VERSION="latest"
 INSTALL_DIR="/usr/local/bin"
-BACKUP_DIR="/usr/local/share/delguard/backup"
-DELGUARD_BIN="./delguard"
+CONFIG_DIR="$HOME/.config/delguard"
+GITHUB_REPO="01luyicheng/DelGuard"
+TEMP_DIR="/tmp/delguard-install"
 
-# 检查是否为root用户
-check_root() {
-    if [[ $EUID -ne 0 ]]; then
-        echo -e "${RED}❌ 此脚本需要root权限运行${NC}"
-        echo -e "${YELLOW}请使用: sudo $0${NC}"
-        exit 1
-    fi
+# 打印带颜色的消息
+print_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
 }
 
-# 检查操作系统
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# 检测操作系统
 detect_os() {
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
         OS="linux"
-        SHELL_RC="/etc/bash.bashrc"
     elif [[ "$OSTYPE" == "darwin"* ]]; then
-        OS="macos"
-        SHELL_RC="/etc/bashrc"
+        OS="darwin"
     else
-        echo -e "${RED}❌ 不支持的操作系统: $OSTYPE${NC}"
+        print_error "不支持的操作系统: $OSTYPE"
         exit 1
     fi
-    echo -e "${GREEN}✅ 检测到操作系统: $OS${NC}"
+    print_info "检测到操作系统: $OS"
 }
 
-# 安装DelGuard
-install_delguard() {
-    echo -e "${GREEN}🚀 开始安装 DelGuard...${NC}"
-    
-    # 检查DelGuard可执行文件
-    if [[ ! -f "$DELGUARD_BIN" ]]; then
-        echo -e "${RED}❌ 找不到 delguard 可执行文件，请先编译项目${NC}"
-        echo -e "${YELLOW}运行: go build -o delguard .${NC}"
-        exit 1
-    fi
-    
-    # 创建备份目录
-    mkdir -p "$BACKUP_DIR"
-    
-    # 复制DelGuard到系统目录
-    cp "$DELGUARD_BIN" "$INSTALL_DIR/delguard"
-    chmod +x "$INSTALL_DIR/delguard"
-    echo -e "${GREEN}✅ DelGuard 已安装到 $INSTALL_DIR${NC}"
-    
-    # 备份原始rm命令
-    if [[ -f "$INSTALL_DIR/rm" ]] && [[ ! -f "$BACKUP_DIR/rm.original" ]]; then
-        cp "$INSTALL_DIR/rm" "$BACKUP_DIR/rm.original"
-        echo -e "${GREEN}✅ 已备份原始rm命令${NC}"
-    fi
-    
-    # 创建rm命令替换脚本
-    cat > "$INSTALL_DIR/rm" << 'EOF'
-#!/bin/bash
-# DelGuard 安全删除脚本
-exec /usr/local/bin/delguard delete "$@"
-EOF
-    chmod +x "$INSTALL_DIR/rm"
-    
-    # 创建别名（作为备用方案）
-    ALIAS_LINE="alias rm='/usr/local/bin/delguard delete'"
-    
-    # 添加到系统shell配置
-    if [[ -f "$SHELL_RC" ]]; then
-        if ! grep -q "delguard delete" "$SHELL_RC"; then
-            echo "" >> "$SHELL_RC"
-            echo "# DelGuard 安全删除别名" >> "$SHELL_RC"
-            echo "$ALIAS_LINE" >> "$SHELL_RC"
-            echo -e "${GREEN}✅ 已添加rm别名到 $SHELL_RC${NC}"
-        fi
-    fi
-    
-    # 添加到用户shell配置
-    for user_home in /home/*; do
-        if [[ -d "$user_home" ]]; then
-            user_bashrc="$user_home/.bashrc"
-            user_zshrc="$user_home/.zshrc"
-            
-            # 添加到.bashrc
-            if [[ -f "$user_bashrc" ]]; then
-                if ! grep -q "delguard delete" "$user_bashrc"; then
-                    echo "" >> "$user_bashrc"
-                    echo "# DelGuard 安全删除别名" >> "$user_bashrc"
-                    echo "$ALIAS_LINE" >> "$user_bashrc"
-                fi
-            fi
-            
-            # 添加到.zshrc
-            if [[ -f "$user_zshrc" ]]; then
-                if ! grep -q "delguard delete" "$user_zshrc"; then
-                    echo "" >> "$user_zshrc"
-                    echo "# DelGuard 安全删除别名" >> "$user_zshrc"
-                    echo "$ALIAS_LINE" >> "$user_zshrc"
-                fi
-            fi
-        fi
-    done
-    
-    # 创建卸载信息
-    cat > "$BACKUP_DIR/install_info.json" << EOF
-{
-    "install_date": "$(date -Iseconds)",
-    "version": "1.0.0",
-    "os": "$OS",
-    "install_dir": "$INSTALL_DIR",
-    "backup_dir": "$BACKUP_DIR"
-}
-EOF
-    
-    echo -e "${GREEN}🎉 DelGuard 安装完成！${NC}"
-    echo -e "${YELLOW}现在可以使用以下命令：${NC}"
-    echo -e "${BLUE}  rm <文件>          - 安全删除文件到回收站${NC}"
-    echo -e "${BLUE}  delguard list      - 查看回收站内容${NC}"
-    echo -e "${BLUE}  delguard restore   - 恢复文件${NC}"
-    echo -e "${BLUE}  delguard status    - 查看状态${NC}"
-    echo ""
-    echo -e "${YELLOW}⚠️  请重新登录或运行 'source ~/.bashrc' 以使别名生效${NC}"
-}
-
-# 卸载DelGuard
-uninstall_delguard() {
-    echo -e "${YELLOW}🗑️  开始卸载 DelGuard...${NC}"
-    
-    if [[ ! -d "$BACKUP_DIR" ]]; then
-        echo -e "${RED}❌ DelGuard 未安装或安装信息丢失${NC}"
-        exit 1
-    fi
-    
-    # 恢复原始rm命令
-    if [[ -f "$BACKUP_DIR/rm.original" ]]; then
-        cp "$BACKUP_DIR/rm.original" "$INSTALL_DIR/rm"
-        echo -e "${GREEN}✅ 已恢复原始rm命令${NC}"
-    fi
-    
-    # 删除DelGuard
-    rm -f "$INSTALL_DIR/delguard"
-    
-    # 从shell配置中移除别名
-    if [[ -f "$SHELL_RC" ]]; then
-        sed -i '/# DelGuard 安全删除别名/d' "$SHELL_RC"
-        sed -i '/delguard delete/d' "$SHELL_RC"
-    fi
-    
-    # 从用户shell配置中移除别名
-    for user_home in /home/*; do
-        if [[ -d "$user_home" ]]; then
-            for rc_file in "$user_home/.bashrc" "$user_home/.zshrc"; do
-                if [[ -f "$rc_file" ]]; then
-                    sed -i '/# DelGuard 安全删除别名/d' "$rc_file"
-                    sed -i '/delguard delete/d' "$rc_file"
-                fi
-            done
-        fi
-    done
-    
-    # 删除备份目录
-    rm -rf "$BACKUP_DIR"
-    rmdir "/usr/local/share/delguard" 2>/dev/null || true
-    
-    echo -e "${GREEN}✅ DelGuard 已成功卸载${NC}"
-}
-
-# 显示帮助
-show_help() {
-    echo "DelGuard 安装脚本"
-    echo ""
-    echo "用法:"
-    echo "  sudo $0 [选项]"
-    echo ""
-    echo "选项:"
-    echo "  -h, --help      显示此帮助信息"
-    echo "  -u, --uninstall 卸载DelGuard"
-    echo ""
-    echo "示例:"
-    echo "  sudo $0                # 安装DelGuard"
-    echo "  sudo $0 --uninstall    # 卸载DelGuard"
-}
-
-# 主逻辑
-main() {
-    case "${1:-}" in
-        -h|--help)
-            show_help
-            exit 0
+# 检测系统架构
+detect_arch() {
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64)
+            ARCH="amd64"
             ;;
-        -u|--uninstall)
-            check_root
-            detect_os
-            uninstall_delguard
+        aarch64|arm64)
+            ARCH="arm64"
             ;;
-        "")
-            check_root
-            detect_os
-            install_delguard
+        armv7l)
+            ARCH="arm"
             ;;
         *)
-            echo -e "${RED}❌ 未知选项: $1${NC}"
-            show_help
+            print_error "不支持的架构: $ARCH"
             exit 1
             ;;
     esac
+    print_info "检测到系统架构: $ARCH"
 }
 
+# 检查依赖
+check_dependencies() {
+    print_info "检查系统依赖..."
+    
+    # 检查必要的命令
+    local deps=("curl" "tar")
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" &> /dev/null; then
+            print_error "缺少依赖: $dep"
+            print_info "请先安装 $dep 后重试"
+            exit 1
+        fi
+    done
+    
+    print_success "依赖检查通过"
+}
+
+# 检查权限
+check_permissions() {
+    print_info "检查安装权限..."
+    
+    if [[ ! -w "$INSTALL_DIR" ]]; then
+        print_warning "需要管理员权限安装到 $INSTALL_DIR"
+        if [[ $EUID -ne 0 ]]; then
+            print_info "请使用 sudo 运行此脚本"
+            exit 1
+        fi
+    fi
+    
+    print_success "权限检查通过"
+}
+
+# 获取最新版本
+get_latest_version() {
+    print_info "获取最新版本信息..."
+    
+    if [[ "$DELGUARD_VERSION" == "latest" ]]; then
+        DELGUARD_VERSION=$(curl -s "https://api.github.com/repos/$GITHUB_REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        if [[ -z "$DELGUARD_VERSION" ]]; then
+            print_error "无法获取最新版本信息"
+            exit 1
+        fi
+    fi
+    
+    print_info "目标版本: $DELGUARD_VERSION"
+}
+
+# 下载二进制文件
+download_binary() {
+    print_info "下载 DelGuard 二进制文件..."
+    
+    # 构建下载URL
+    local binary_name="delguard-${OS}-${ARCH}"
+    if [[ "$OS" == "linux" ]]; then
+        binary_name="${binary_name}.tar.gz"
+    else
+        binary_name="${binary_name}.tar.gz"
+    fi
+    
+    local download_url="https://github.com/$GITHUB_REPO/releases/download/$DELGUARD_VERSION/$binary_name"
+    
+    # 创建临时目录
+    mkdir -p "$TEMP_DIR"
+    cd "$TEMP_DIR"
+    
+    print_info "下载地址: $download_url"
+    
+    # 下载文件
+    if ! curl -L -o "$binary_name" "$download_url"; then
+        print_error "下载失败"
+        cleanup
+        exit 1
+    fi
+    
+    # 解压文件
+    print_info "解压文件..."
+    if ! tar -xzf "$binary_name"; then
+        print_error "解压失败"
+        cleanup
+        exit 1
+    fi
+    
+    print_success "下载完成"
+}
+
+# 安装二进制文件
+install_binary() {
+    print_info "安装 DelGuard..."
+    
+    # 查找解压后的二进制文件
+    local binary_path
+    if [[ -f "delguard" ]]; then
+        binary_path="delguard"
+    elif [[ -f "bin/delguard" ]]; then
+        binary_path="bin/delguard"
+    else
+        print_error "找不到二进制文件"
+        cleanup
+        exit 1
+    fi
+    
+    # 复制到安装目录
+    if ! cp "$binary_path" "$INSTALL_DIR/delguard"; then
+        print_error "安装失败"
+        cleanup
+        exit 1
+    fi
+    
+    # 设置执行权限
+    chmod +x "$INSTALL_DIR/delguard"
+    
+    print_success "DelGuard 已安装到 $INSTALL_DIR/delguard"
+}
+
+# 创建配置目录
+create_config() {
+    print_info "创建配置目录..."
+    
+    mkdir -p "$CONFIG_DIR"
+    
+    # 创建默认配置文件
+    cat > "$CONFIG_DIR/config.yaml" << EOF
+# DelGuard 配置文件
+verbose: false
+force: false
+quiet: false
+
+# 回收站设置
+trash:
+  auto_clean: false
+  max_days: 30
+  max_size: "1GB"
+
+# 日志设置
+log:
+  level: "info"
+  file: "$CONFIG_DIR/delguard.log"
+EOF
+    
+    print_success "配置目录已创建: $CONFIG_DIR"
+}
+
+# 配置Shell别名
+setup_shell_aliases() {
+    print_info "配置Shell别名..."
+    
+    local shell_configs=()
+    
+    # 检测用户使用的Shell
+    if [[ -n "$BASH_VERSION" ]] || [[ "$SHELL" == *"bash"* ]]; then
+        shell_configs+=("$HOME/.bashrc" "$HOME/.bash_profile")
+    fi
+    
+    if [[ -n "$ZSH_VERSION" ]] || [[ "$SHELL" == *"zsh"* ]]; then
+        shell_configs+=("$HOME/.zshrc" "$HOME/.zprofile")
+    fi
+    
+    # 添加通用配置文件
+    shell_configs+=("$HOME/.profile")
+    
+    local alias_content="
+# DelGuard 别名配置
+alias del='delguard delete'
+alias rm='delguard delete'
+alias trash='delguard delete'
+alias restore='delguard restore'
+alias empty-trash='delguard empty'
+"
+    
+    for config_file in "${shell_configs[@]}"; do
+        if [[ -f "$config_file" ]]; then
+            # 检查是否已经配置过
+            if ! grep -q "DelGuard 别名配置" "$config_file" 2>/dev/null; then
+                echo "$alias_content" >> "$config_file"
+                print_info "已添加别名到: $config_file"
+            fi
+        fi
+    done
+    
+    print_success "Shell别名配置完成"
+}
+
+# 验证安装
+verify_installation() {
+    print_info "验证安装..."
+    
+    # 检查二进制文件
+    if [[ ! -f "$INSTALL_DIR/delguard" ]]; then
+        print_error "二进制文件不存在"
+        return 1
+    fi
+    
+    # 检查执行权限
+    if [[ ! -x "$INSTALL_DIR/delguard" ]]; then
+        print_error "二进制文件没有执行权限"
+        return 1
+    fi
+    
+    # 测试运行
+    if ! "$INSTALL_DIR/delguard" --version &>/dev/null; then
+        print_warning "无法运行 delguard --version，但文件已安装"
+    fi
+    
+    print_success "安装验证通过"
+}
+
+# 清理临时文件
+cleanup() {
+    if [[ -d "$TEMP_DIR" ]]; then
+        rm -rf "$TEMP_DIR"
+        print_info "已清理临时文件"
+    fi
+}
+
+# 显示安装完成信息
+show_completion_info() {
+    print_success "🎉 DelGuard 安装完成！"
+    echo
+    echo "📍 安装位置: $INSTALL_DIR/delguard"
+    echo "📁 配置目录: $CONFIG_DIR"
+    echo
+    echo "🚀 快速开始:"
+    echo "  delguard --help          # 查看帮助"
+    echo "  delguard delete <file>   # 删除文件到回收站"
+    echo "  delguard list           # 查看回收站内容"
+    echo "  delguard restore <file> # 恢复文件"
+    echo "  delguard empty          # 清空回收站"
+    echo
+    echo "💡 别名已配置 (重新打开终端后生效):"
+    echo "  del <file>     # 等同于 delguard delete"
+    echo "  rm <file>      # 等同于 delguard delete (安全替代)"
+    echo "  restore <file> # 等同于 delguard restore"
+    echo "  empty-trash    # 等同于 delguard empty"
+    echo
+    echo "📖 更多信息: https://github.com/$GITHUB_REPO"
+}
+
+# 主函数
+main() {
+    echo "🛡️  DelGuard 智能安装脚本"
+    echo "================================"
+    echo
+    
+    # 检查系统环境
+    detect_os
+    detect_arch
+    check_dependencies
+    check_permissions
+    
+    # 下载和安装
+    get_latest_version
+    download_binary
+    install_binary
+    
+    # 配置
+    create_config
+    setup_shell_aliases
+    
+    # 验证和清理
+    verify_installation
+    cleanup
+    
+    # 显示完成信息
+    show_completion_info
+}
+
+# 错误处理
+trap cleanup EXIT
+
+# 运行主函数
 main "$@"

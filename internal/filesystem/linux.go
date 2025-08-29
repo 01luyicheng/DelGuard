@@ -2,6 +2,7 @@ package filesystem
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,8 +74,7 @@ func (l *LinuxTrashManager) MoveToTrash(filePath string) error {
 	}
 
 	// 移动文件到Trash
-	err = os.Rename(absPath, targetPath)
-	if err != nil {
+	if err := os.Rename(absPath, targetPath); err != nil {
 		return fmt.Errorf("移动到Trash失败: %v", err)
 	}
 
@@ -82,7 +82,9 @@ func (l *LinuxTrashManager) MoveToTrash(filePath string) error {
 	err = l.createTrashInfo(infoFilePath, absPath)
 	if err != nil {
 		// 如果创建info文件失败，尝试恢复原文件
-		os.Rename(targetPath, absPath)
+		if err := os.Rename(targetPath, absPath); err != nil {
+			log.Printf("恢复原文件失败: %v", err)
+		}
 		return fmt.Errorf("创建Trash信息文件失败: %v", err)
 	}
 

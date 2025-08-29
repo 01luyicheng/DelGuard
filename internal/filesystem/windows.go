@@ -9,7 +9,6 @@ import (
 
 // WindowsTrashManager Windows回收站管理器
 type WindowsTrashManager struct {
-	trashPath string
 }
 
 // NewWindowsTrashManager 创建Windows回收站管理器

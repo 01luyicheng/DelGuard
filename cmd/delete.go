@@ -2,41 +2,32 @@ package cmd
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
-
-	"delguard/internal/filesystem"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"delguard/internal/filesystem"
 )
 
-// deleteCmd 删除命令
 var deleteCmd = &cobra.Command{
-	Use:     "delete [文件或目录...]",
+	Use:   "delete [files...]",
+	Short: "安全删除文件到回收站",
+	Long: `将指定的文件或目录安全地移动到系统回收站。
+支持多个文件同时删除，支持通配符模式。`,
 	Aliases: []string{"del", "rm"},
-	Short:   "安全删除文件或目录到回收站",
-	Long: `安全删除文件或目录到回收站，而不是直接删除。
-
-支持删除多个文件和目录，支持通配符匹配。
-删除的文件可以通过 'delguard restore' 命令恢复。
-
-示例:
-  delguard delete file.txt
-  delguard delete *.log
-  delguard delete dir1 dir2
-  delguard rm file.txt  # 别名
-  delguard del file.txt # 别名`,
-	Args: cobra.MinimumNArgs(1),
-	RunE: runDelete,
+	Args:    cobra.MinimumNArgs(1),
+	RunE:    runDelete,
 }
 
 func init() {
 	rootCmd.AddCommand(deleteCmd)
-
-	// 添加标志
 	deleteCmd.Flags().BoolP("force", "f", false, "强制删除，不显示确认提示")
 	deleteCmd.Flags().BoolP("recursive", "r", false, "递归删除目录")
+	deleteCmd.Flags().BoolP("verbose", "v", false, "显示详细信息")
 	deleteCmd.Flags().BoolP("interactive", "i", false, "交互式删除，每个文件都询问")
 	deleteCmd.Flags().BoolP("dry-run", "n", false, "预览模式，显示将要删除的文件但不实际删除")
 }
@@ -128,7 +119,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 			if info.IsDir() {
 				fileType = "目录"
 			}
-			fmt.Printf("  📄 %s (%s, %s)\n", file, fileType, filesystem.FormatFileSize(info.Size()))
+			fmt.Printf("  📄 %s (%s)\n", file, fileType)
 		}
 		return nil
 	}
@@ -137,8 +128,14 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	if !force && !interactive {
 		fmt.Printf("🗑️  将要删除 %d 个项目到回收站，确认吗? [y/N]: ", len(validFiles))
 		var response string
-		fmt.Scanln(&response)
-		if response != "y" && response != "Y" && response != "yes" && response != "YES" {
+		if _, err := fmt.Scanln(&response); err != nil {
+			log.Printf("读取输入时出错: %v", err)
+			fmt.Println("❌ 读取输入失败，操作已取消")
+			return nil
+		}
+
+		response = strings.ToLower(strings.TrimSpace(response))
+		if response != "y" && response != "yes" {
 			fmt.Println("❌ 操作已取消")
 			return nil
 		}
@@ -153,8 +150,14 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		if interactive {
 			fmt.Printf("删除 '%s'? [y/N]: ", file)
 			var response string
-			fmt.Scanln(&response)
-			if response != "y" && response != "Y" {
+			if _, err := fmt.Scanln(&response); err != nil {
+				log.Printf("读取输入时出错: %v", err)
+				fmt.Println("❌ 读取输入失败，跳过此文件")
+				continue
+			}
+
+			response = strings.ToLower(strings.TrimSpace(response))
+			if response != "y" && response != "yes" {
 				if verbose {
 					fmt.Printf("⏭️  跳过: %s\n", file)
 				}

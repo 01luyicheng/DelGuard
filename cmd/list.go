@@ -217,7 +217,7 @@ func displayShortFormat(files []filesystem.TrashFile, humanReadable bool) {
 
 	for _, file := range files {
 		// 文件名（带图标）
-		nameWithIcon := file.Name
+		var nameWithIcon string
 		if file.IsDirectory {
 			nameWithIcon = "📁 " + file.Name
 		} else {
