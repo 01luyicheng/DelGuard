@@ -89,6 +89,166 @@ func (l *LinuxTrashManager) MoveToTrash(filePath string) error {
 	return nil
 }
 
+// ListTrashContents 列出回收站内容（接口实现）
+func (l *LinuxTrashManager) ListTrashContents() ([]TrashItem, error) {
+	files, err := l.ListTrashFiles()
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]TrashItem, len(files))
+	for i, file := range files {
+		items[i] = TrashItem{
+			Name:         file.Name,
+			OriginalPath: file.OriginalPath,
+			Path:         file.TrashPath,
+			Size:         file.Size,
+			DeletedTime:  file.DeletedTime,
+			IsDirectory:  file.IsDirectory,
+		}
+	}
+
+	return items, nil
+}
+
+// RestoreFromTrash 从回收站恢复文件（接口实现）
+func (l *LinuxTrashManager) RestoreFromTrash(fileName string, originalPath string) error {
+	files, err := l.ListTrashFiles()
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		if file.Name == fileName {
+			targetPath := originalPath
+			if targetPath == "" {
+				targetPath = file.OriginalPath
+			}
+			return l.RestoreFile(file, targetPath)
+		}
+	}
+
+	return fmt.Errorf("文件未找到: %s", fileName)
+}
+
+// GetStats 获取回收站统计信息
+func (l *LinuxTrashManager) GetStats() (*TrashStats, error) {
+	files, err := l.ListTrashContents()
+	if err != nil {
+		return nil, err
+	}
+
+	stats := &TrashStats{
+		TotalFiles: int64(len(files)),
+		TotalSize:  0,
+	}
+
+	if len(files) > 0 {
+		stats.OldestFile = files[0].DeletedTime
+		for _, file := range files {
+			stats.TotalSize += file.Size
+			if file.DeletedTime.Before(stats.OldestFile) {
+				stats.OldestFile = file.DeletedTime
+			}
+		}
+	}
+
+	return stats, nil
+}
+
+// GetTrashStats 获取回收站统计信息（原有方法）
+func (l *LinuxTrashManager) GetTrashStats() (*TrashStats, error) {
+	return l.GetStats()
+}
+
+// CleanOldFiles 清理过期文件
+func (l *LinuxTrashManager) CleanOldFiles(maxDays int) error {
+	files, err := l.ListTrashFiles()
+	if err != nil {
+		return err
+	}
+
+	cutoffTime := time.Now().AddDate(0, 0, -maxDays)
+
+	for _, file := range files {
+		if file.DeletedTime.Before(cutoffTime) {
+			if err := os.RemoveAll(file.TrashPath); err != nil {
+				return fmt.Errorf("清理过期文件失败 %s: %v", file.TrashPath, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ValidateTrash 验证回收站完整性
+func (l *LinuxTrashManager) ValidateTrash() error {
+	// 检查回收站目录是否存在，不存在则创建
+	if _, err := os.Stat(l.trashPath); os.IsNotExist(err) {
+		if err := os.MkdirAll(l.trashPath, 0755); err != nil {
+			return fmt.Errorf("创建回收站目录失败: %v", err)
+		}
+	}
+
+	// 创建必要的子目录
+	filesDir := filepath.Join(l.trashPath, "files")
+	infoDir := filepath.Join(l.trashPath, "info")
+
+	if err := os.MkdirAll(filesDir, 0755); err != nil {
+		return fmt.Errorf("创建files目录失败: %v", err)
+	}
+
+	if err := os.MkdirAll(infoDir, 0755); err != nil {
+		return fmt.Errorf("创建info目录失败: %v", err)
+	}
+
+	return nil
+}
+
+// Clear 清空回收站
+func (l *LinuxTrashManager) Clear() error {
+	trashPath, err := l.GetTrashPath()
+	if err != nil {
+		return err
+	}
+
+	// 检查回收站目录是否存在
+	if _, err := os.Stat(trashPath); os.IsNotExist(err) {
+		return nil // 回收站已经是空的
+	}
+
+	entries, err := os.ReadDir(trashPath)
+	if err != nil {
+		return fmt.Errorf("读取回收站失败: %v", err)
+	}
+
+	// 删除所有文件和目录
+	for _, entry := range entries {
+		fullPath := filepath.Join(trashPath, entry.Name())
+		err := os.RemoveAll(fullPath)
+		if err != nil {
+			return fmt.Errorf("删除文件失败 %s: %v", fullPath, err)
+		}
+	}
+
+	return nil
+}
+
+// IsEmpty 检查回收站是否为空
+func (l *LinuxTrashManager) IsEmpty() bool {
+	trashPath, err := l.GetTrashPath()
+	if err != nil {
+		return true
+	}
+
+	entries, err := os.ReadDir(trashPath)
+	if err != nil {
+		return true
+	}
+
+	return len(entries) == 0
+}
+
 // createTrashInfo 创建Trash信息文件
 func (l *LinuxTrashManager) createTrashInfo(infoPath, originalPath string) error {
 	// 创建符合XDG Trash规范的.trashinfo文件

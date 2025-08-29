@@ -164,3 +164,143 @@ func (w *WindowsTrashManager) EmptyTrash() error {
 
 	return nil
 }
+
+// ListTrashContents 列出回收站内容（接口实现）
+func (w *WindowsTrashManager) ListTrashContents() ([]TrashItem, error) {
+	files, err := w.ListTrashFiles()
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]TrashItem, len(files))
+	for i, file := range files {
+		items[i] = TrashItem{
+			Name:         file.Name,
+			OriginalPath: file.OriginalPath,
+			Path:         file.TrashPath,
+			Size:         file.Size,
+			DeletedTime:  file.DeletedTime,
+			IsDirectory:  file.IsDirectory,
+		}
+	}
+
+	return items, nil
+}
+
+// RestoreFromTrash 从回收站恢复文件（接口实现）
+func (w *WindowsTrashManager) RestoreFromTrash(fileName string, originalPath string) error {
+	files, err := w.ListTrashFiles()
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		if file.Name == fileName {
+			targetPath := originalPath
+			if targetPath == "" {
+				targetPath = file.OriginalPath
+			}
+			return w.RestoreFile(file, targetPath)
+		}
+	}
+
+	return fmt.Errorf("文件未找到: %s", fileName)
+}
+
+// GetStats 获取回收站统计信息（接口实现）
+func (w *WindowsTrashManager) GetStats() (*TrashStats, error) {
+	return w.GetTrashStats()
+}
+
+// Clear 清空回收站（接口实现）
+func (w *WindowsTrashManager) Clear() error {
+	return w.EmptyTrash()
+}
+
+// IsEmpty 检查回收站是否为空
+func (w *WindowsTrashManager) IsEmpty() bool {
+	files, err := w.ListTrashFiles()
+	if err != nil {
+		return true
+	}
+	return len(files) == 0
+}
+
+// GetTrashStats 获取回收站统计信息
+func (w *WindowsTrashManager) GetTrashStats() (*TrashStats, error) {
+	files, err := w.ListTrashFiles()
+	if err != nil {
+		return nil, err
+	}
+
+	stats := &TrashStats{
+		TotalFiles: int64(len(files)),
+		TotalSize:  0,
+	}
+
+	if len(files) > 0 {
+		stats.OldestFile = files[0].DeletedTime
+		for _, file := range files {
+			stats.TotalSize += file.Size
+			if file.DeletedTime.Before(stats.OldestFile) {
+				stats.OldestFile = file.DeletedTime
+			}
+		}
+	}
+
+	return stats, nil
+}
+
+// CleanOldFiles 清理过期文件
+func (w *WindowsTrashManager) CleanOldFiles(maxDays int) error {
+	files, err := w.ListTrashFiles()
+	if err != nil {
+		return err
+	}
+
+	cutoffTime := time.Now().AddDate(0, 0, -maxDays)
+
+	for _, file := range files {
+		if file.DeletedTime.Before(cutoffTime) {
+			if err := os.RemoveAll(file.TrashPath); err != nil {
+				return fmt.Errorf("清理过期文件失败 %s: %v", file.TrashPath, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ValidateTrash 验证回收站完整性
+func (w *WindowsTrashManager) ValidateTrash() error {
+	trashPath, err := w.GetTrashPath()
+	if err != nil {
+		return err
+	}
+
+	// 检查回收站目录是否存在，不存在则创建
+	if _, err := os.Stat(trashPath); os.IsNotExist(err) {
+		if err := os.MkdirAll(trashPath, 0755); err != nil {
+			return fmt.Errorf("创建回收站目录失败: %v", err)
+		}
+	}
+
+	// 检查目录权限
+	if !w.hasWritePermission(trashPath) {
+		return fmt.Errorf("回收站目录无写权限: %s", trashPath)
+	}
+
+	return nil
+}
+
+// hasWritePermission 检查写权限
+func (w *WindowsTrashManager) hasWritePermission(path string) bool {
+	testFile := filepath.Join(path, ".delguard_test")
+	file, err := os.Create(testFile)
+	if err != nil {
+		return false
+	}
+	file.Close()
+	os.Remove(testFile)
+	return true
+}
