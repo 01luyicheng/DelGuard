@@ -1,7 +1,7 @@
 #!/bin/bash
 # DelGuard 一行命令安装脚本 (Linux/macOS)
 # 使用方法：复制粘贴以下命令到终端即可
-# curl -fsSL https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/install-oneline.sh | sudo bash
+# curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/install-oneline.sh | sudo bash
 
 # 检查root权限
 if [[ $EUID -ne 0 ]]; then
