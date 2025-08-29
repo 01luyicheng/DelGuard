@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -22,7 +23,7 @@ var rootCmd = &cobra.Command{
 • 恢复已删除的文件
 • 清空回收站
 • 跨平台支持 (Windows/macOS/Linux)`,
-	Version: "1.5.0",
+	Version: "1.5.1",
 }
 
 // Execute 执行根命令
@@ -39,8 +40,12 @@ func init() {
 	rootCmd.PersistentFlags().BoolP("quiet", "q", false, "静默模式")
 
 	// 绑定标志到viper
-	viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
-	viper.BindPFlag("quiet", rootCmd.PersistentFlags().Lookup("quiet"))
+	if err := viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose")); err != nil {
+		log.Printf("绑定verbose标志失败: %v", err)
+	}
+	if err := viper.BindPFlag("quiet", rootCmd.PersistentFlags().Lookup("quiet")); err != nil {
+		log.Printf("绑定quiet标志失败: %v", err)
+	}
 }
 
 // initConfig 初始化配置
