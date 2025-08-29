@@ -22,7 +22,7 @@ var rootCmd = &cobra.Command{
 • 恢复已删除的文件
 • 清空回收站
 • 跨平台支持 (Windows/macOS/Linux)`,
-	Version: "1.0.0",
+	Version: "1.4.1",
 }
 
 // Execute 执行根命令

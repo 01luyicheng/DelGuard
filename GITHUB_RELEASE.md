@@ -30,8 +30,8 @@ git push origin v1.0.0
 访问 https://github.com/YOUR_USERNAME/DelGuard/releases/new
 
 #### Release 信息：
-- **Tag**: v1.0.0
-- **Release title**: DelGuard v1.0.0 - 跨平台安全删除工具
+- **Tag**: v1.4.1
+- **Release title**: DelGuard v1.4.1 - 一键安装，跨平台安全删除工具
 - **Description**: 
 
 ```markdown

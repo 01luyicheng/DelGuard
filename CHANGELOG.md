@@ -65,6 +65,41 @@
 - 网络文件系统支持有限
 - 某些特殊权限文件可能无法恢复
 
+## [1.4.1] - 2024-12-19
+
+### 🚀 一键安装功能
+
+#### ✨ 新增功能
+- **一行命令安装**：支持Windows、Linux、macOS的一行命令安装
+  - Windows: `powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/quick-install.ps1' -OutFile 'quick-install.ps1'; .\quick-install.ps1 }"`
+  - Linux/macOS: `curl -fsSL https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/quick-install.sh | sudo bash`
+- **自动检测平台**：智能检测操作系统和架构，下载对应版本
+- **版本选择**：支持指定版本安装，如 `v1.4.1`
+- **强制重装**：支持强制重新安装现有版本
+- **自动清理**：安装完成后自动清理临时文件
+
+#### 🔧 安装脚本特性
+- **Windows PowerShell脚本** (`quick-install.ps1`):
+  - 自动检测系统架构 (x64/ARM64)
+  - 管理员权限检查
+  - 自动添加到系统PATH
+  - 创建卸载脚本
+  - 彩色输出和进度提示
+
+- **Linux/macOS Bash脚本** (`quick-install.sh`):
+  - 跨平台支持 (Ubuntu, CentOS, macOS等)
+  - 自动检测系统类型和架构
+  - root权限检查
+  - 备份原始rm命令
+  - 创建卸载脚本
+  - 支持curl和wget下载
+
+#### 📖 安装文档
+- **完整安装指南**：`INSTALL.md` 提供详细安装说明
+- **多平台支持**：覆盖Windows、Linux、macOS三大平台
+- **故障排除**：常见问题和解决方案
+- **卸载指南**：安全卸载步骤
+
 ### 🌟 后续计划
 - [ ] 图形界面支持
 - [ ] 网络同步功能

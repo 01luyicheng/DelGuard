@@ -1,4 +1,96 @@
-# DelGuard v1.0.0 发布总结
+# DelGuard v1.4.1 发布总结
+
+## 🎯 版本亮点
+
+### 一键安装功能
+**DelGuard v1.4.1** 带来了革命性的一键安装体验，用户现在只需要复制粘贴一行命令即可在Windows、Linux、macOS三大平台上快速安装DelGuard。
+
+## ✨ 新增功能
+
+### 1. 一行命令安装
+- **Windows**: `powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/install-oneline.ps1' -UseBasicParsing | Invoke-Expression }"`
+- **Linux/macOS**: `curl -fsSL https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/install-oneline.sh | sudo bash`
+
+### 2. 智能平台检测
+- 自动检测操作系统类型（Windows/Linux/macOS）
+- 自动检测系统架构（x64/ARM64/ARM）
+- 下载对应平台的优化版本
+
+### 3. 完整安装脚本
+- **Windows PowerShell脚本**: `quick-install.ps1`
+- **Linux/macOS Bash脚本**: `quick-install.sh`
+- **一行命令脚本**: `install-oneline.ps1` / `install-oneline.sh`
+
+### 4. 增强安装体验
+- 彩色进度输出和状态提示
+- 管理员/root权限自动检查
+- 自动添加到系统PATH
+- 创建卸载脚本
+- 安装完成后自动清理临时文件
+
+## 📦 发布内容
+
+### 新增文件
+- `scripts/quick-install.ps1` - Windows一键安装脚本
+- `scripts/quick-install.sh` - Linux/macOS一键安装脚本
+- `scripts/install-oneline.ps1` - Windows一行命令安装脚本
+- `scripts/install-oneline.sh` - Linux/macOS一行命令安装脚本
+- `INSTALL.md` - 详细安装指南
+- `.github/workflows/release.yml` - GitHub自动发布工作流
+
+### 更新文件
+- `cmd/root.go` - 版本号更新至v1.4.1
+- `CHANGELOG.md` - 添加v1.4.1更新日志
+- `README.md` - 添加一键安装说明
+
+## 🚀 使用方法
+
+### 快速安装
+用户现在可以通过以下方式快速安装：
+
+1. **一行命令安装**（最简单）
+2. **脚本安装**（可自定义参数）
+3. **手动安装**（传统方式）
+
+### 验证安装
+安装完成后，用户可以运行：
+```bash
+delguard --version  # 显示 v1.4.1
+delguard status     # 查看系统状态
+```
+
+## 🛠️ 技术实现
+
+### 跨平台支持
+- **Windows**: 支持PowerShell 5.1+，自动检测x64/ARM64
+- **Linux**: 支持主流发行版，自动检测x64/ARM64/ARM
+- **macOS**: 支持Intel和Apple Silicon芯片
+
+### 安全特性
+- 权限验证：确保安装脚本具有必要权限
+- 完整性检查：验证下载文件的完整性
+- 回滚机制：安装失败时自动清理
+
+## 📈 用户价值
+
+### 安装体验优化
+- **零配置**: 用户无需手动配置任何参数
+- **一键完成**: 从下载到配置全程自动化
+- **跨平台统一**: 所有平台使用相同的安装体验
+
+### 降低使用门槛
+- **新手友好**: 不需要技术背景即可完成安装
+- **快速上手**: 安装完成后立即可用
+- **错误处理**: 详细的错误提示和解决方案
+
+## 🔄 后续计划
+
+### 持续优化
+- [ ] 下载速度优化（CDN支持）
+- [ ] 更多平台支持（FreeBSD等）
+- [ ] 安装过程可视化
+- [ ] 错误自动修复
+- [ ] 版本回滚功能
 
 ## ✅ 功能测试完成
 

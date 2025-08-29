@@ -14,7 +14,21 @@ DelGuard 是一款跨平台的命令行安全删除工具，通过拦截系统�
 
 ## 🚀 快速开始
 
-### 编译项目
+### 一行命令安装 (推荐)
+
+#### Windows
+```powershell
+powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/quick-install.ps1' -OutFile 'quick-install.ps1'; .\quick-install.ps1 }"
+```
+
+#### Linux/macOS
+```bash
+curl -fsSL https://raw.githubusercontent.com/your-username/DelGuard/main/scripts/quick-install.sh | sudo bash
+```
+
+### 手动安装
+
+#### 编译项目
 
 ```bash
 # 克隆项目
@@ -28,7 +42,7 @@ go mod tidy
 go build -o delguard .
 ```
 
-### 安装DelGuard
+#### 手动安装DelGuard
 
 #### Windows
 ```powershell
