@@ -24,7 +24,7 @@ func NewConfigManager(configPath string) *ConfigManager {
 func (cm *ConfigManager) LoadConfig() (*Config, error) {
 	if _, err := os.Stat(cm.configPath); os.IsNotExist(err) {
 		// 配置文件不存在，返回默认配置
-		return DefaultConfig(), nil
+		return DefaultConfig, nil
 	}
 
 	data, err := os.ReadFile(cm.configPath)
@@ -91,7 +91,7 @@ func (cm *ConfigManager) validateConfig(config *Config) error {
 // GetDefaultConfigPath 获取默认配置文件路径
 func GetDefaultConfigPath() string {
 	var configDir string
-	
+
 	switch runtime.GOOS {
 	case "windows":
 		configDir = os.Getenv("APPDATA")
@@ -106,7 +106,7 @@ func GetDefaultConfigPath() string {
 			configDir = filepath.Join(os.Getenv("HOME"), ".config")
 		}
 	}
-	
+
 	return filepath.Join(configDir, "delguard", "config.json")
 }
 
@@ -114,12 +114,11 @@ func GetDefaultConfigPath() string {
 func CreateDefaultConfig() error {
 	configPath := GetDefaultConfigPath()
 	cm := NewConfigManager(configPath)
-	
+
 	// 检查配置文件是否已存在
 	if _, err := os.Stat(configPath); err == nil {
 		return fmt.Errorf("配置文件已存在: %s", configPath)
 	}
-	
-	defaultConfig := DefaultConfig()
-	return cm.SaveConfig(defaultConfig)
+
+	return cm.SaveConfig(DefaultConfig)
 }

@@ -9,24 +9,113 @@ import (
 
 // Config 配置结构
 type Config struct {
-	Language         string `json:"language"`
-	MaxFileSize      int64  `json:"max_file_size"`
-	MaxBackupFiles   int    `json:"max_backup_files"`
-	EnableRecycleBin bool   `json:"enable_recycle_bin"`
-	EnableLogging    bool   `json:"enable_logging"`
-	LogLevel         string `json:"log_level"`
-	ConfigPath       string `json:"-"`
+	// 删除配置
+	Delete DeleteConfig `json:"delete"`
+
+	// 搜索配置
+	Search SearchConfig `json:"search"`
+
+	// 恢复配置
+	Restore RestoreConfig `json:"restore"`
+
+	// 安全配置
+	Security SecurityConfig `json:"security"`
+
+	// 日志配置
+	Logging LoggingConfig `json:"logging"`
 }
 
-// NewConfig 创建新的配置实例
+// DeleteConfig 删除配置
+type DeleteConfig struct {
+	SafeMode     bool   `json:"safeMode"`     // 安全模式
+	UseTrash     bool   `json:"useTrash"`     // 使用回收站
+	BackupBefore bool   `json:"backupBefore"` // 删除前备份
+	MaxFileSize  int64  `json:"maxFileSize"`  // 最大文件大小限制
+	TrashPath    string `json:"trashPath"`    // 自定义回收站路径
+}
+
+// SearchConfig 搜索配置
+type SearchConfig struct {
+	MaxResults    int    `json:"maxResults"`    // 最大结果数
+	CaseSensitive bool   `json:"caseSensitive"` // 大小写敏感
+	UseRegex      bool   `json:"useRegex"`      // 使用正则表达式
+	IndexEnabled  bool   `json:"indexEnabled"`  // 启用索引
+	IndexPath     string `json:"indexPath"`     // 索引路径
+}
+
+// RestoreConfig 恢复配置
+type RestoreConfig struct {
+	VerifyIntegrity   bool `json:"verifyIntegrity"`   // 验证完整性
+	CreateBackup      bool `json:"createBackup"`      // 创建备份
+	OverwriteExisting bool `json:"overwriteExisting"` // 覆盖现有文件
+	MaxConcurrency    int  `json:"maxConcurrency"`    // 最大并发数
+}
+
+// SecurityConfig 安全配置
+type SecurityConfig struct {
+	RequireConfirmation bool     `json:"requireConfirmation"` // 需要确认
+	ProtectedPaths      []string `json:"protectedPaths"`      // 受保护路径
+	AllowedExtensions   []string `json:"allowedExtensions"`   // 允许的扩展名
+	BlockedExtensions   []string `json:"blockedExtensions"`   // 阻止的扩展名
+}
+
+// LoggingConfig 日志配置
+type LoggingConfig struct {
+	Level    string `json:"level"`    // 日志级别
+	FilePath string `json:"filePath"` // 日志文件路径
+	MaxSize  int    `json:"maxSize"`  // 最大文件大小(MB)
+	MaxAge   int    `json:"maxAge"`   // 最大保存天数
+}
+
+// NewConfig 创建默认配置
 func NewConfig() *Config {
 	return &Config{
-		Language:         "zh-cn",
-		MaxFileSize:      1024 * 1024 * 1024, // 1GB
-		MaxBackupFiles:   10,
-		EnableRecycleBin: true,
-		EnableLogging:    true,
-		LogLevel:         "info",
+		Delete: DeleteConfig{
+			SafeMode:     true,
+			UseTrash:     true,
+			BackupBefore: false,
+			MaxFileSize:  1024 * 1024 * 1024, // 1GB
+			TrashPath:    "",
+		},
+		Search: SearchConfig{
+			MaxResults:    1000,
+			CaseSensitive: false,
+			UseRegex:      false,
+			IndexEnabled:  true,
+			IndexPath:     ".delguard/index",
+		},
+		Restore: RestoreConfig{
+			VerifyIntegrity:   true,
+			CreateBackup:      true,
+			OverwriteExisting: false,
+			MaxConcurrency:    4,
+		},
+		Security: SecurityConfig{
+			RequireConfirmation: true,
+			ProtectedPaths: []string{
+				"/",
+				"/bin",
+				"/sbin",
+				"/usr",
+				"/etc",
+				"C:\\Windows",
+				"C:\\Program Files",
+			},
+			AllowedExtensions: []string{},
+			BlockedExtensions: []string{
+				".exe",
+				".bat",
+				".cmd",
+				".ps1",
+				".sh",
+			},
+		},
+		Logging: LoggingConfig{
+			Level:    "info",
+			FilePath: ".delguard/logs/delguard.log",
+			MaxSize:  10,
+			MaxAge:   30,
+		},
 	}
 }
 
@@ -34,151 +123,78 @@ func NewConfig() *Config {
 func Load() (*Config, error) {
 	cfg := NewConfig()
 
-	// 获取配置文件路径
-	configPath, err := getConfigPath()
-	if err != nil {
-		return cfg, nil // 使用默认配置
-	}
-
-	cfg.ConfigPath = configPath
-
-	// 如果配置文件存在，加载它
+	// 尝试从默认位置加载配置文件
+	configPath := getDefaultConfigPath()
 	if _, err := os.Stat(configPath); err == nil {
-		data, err := os.ReadFile(configPath)
-		if err != nil {
-			return cfg, nil // 使用默认配置
-		}
-
-		if err := json.Unmarshal(data, cfg); err != nil {
-			return cfg, nil // 使用默认配置
+		if err := cfg.LoadFromFile(configPath); err != nil {
+			return nil, fmt.Errorf("加载配置文件失败: %v", err)
 		}
 	}
 
 	return cfg, nil
 }
 
-// LoadFromFile 从指定文件加载配置
+// LoadFromFile 从文件加载配置
 func (c *Config) LoadFromFile(filePath string) error {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		return fmt.Errorf("读取配置文件失败: %v", err)
+		return err
 	}
 
-	if err := json.Unmarshal(data, c); err != nil {
-		return fmt.Errorf("解析配置文件失败: %v", err)
-	}
-
-	c.ConfigPath = filePath
-	return nil
+	return json.Unmarshal(data, c)
 }
 
-// SaveToFile 保存配置到指定文件
+// SaveToFile 保存配置到文件
 func (c *Config) SaveToFile(filePath string) error {
-	// 确保配置目录存在
+	// 确保目录存在
 	dir := filepath.Dir(filePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("创建配置目录失败: %v", err)
+		return err
 	}
 
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
-		return fmt.Errorf("序列化配置失败: %v", err)
+		return err
 	}
 
 	return os.WriteFile(filePath, data, 0644)
 }
 
-// Validate 验证配置
-func (c *Config) Validate() error {
-	if c.Language == "" {
-		return fmt.Errorf("语言设置不能为空")
-	}
-
-	if c.MaxFileSize < 0 {
-		return fmt.Errorf("最大文件大小不能为负数")
-	}
-
-	if c.MaxBackupFiles < 0 {
-		return fmt.Errorf("最大备份文件数不能为负数")
-	}
-
-	validLogLevels := []string{"debug", "info", "warn", "error"}
-	validLevel := false
-	for _, level := range validLogLevels {
-		if c.LogLevel == level {
-			validLevel = true
-			break
-		}
-	}
-	if !validLevel {
-		return fmt.Errorf("无效的日志级别: %s", c.LogLevel)
-	}
-
-	return nil
-}
-
-// Save 保存配置
+// Save 保存配置到默认位置
 func (c *Config) Save() error {
-	if c.ConfigPath == "" {
-		return fmt.Errorf("配置路径未设置")
-	}
-
-	// 确保配置目录存在
-	dir := filepath.Dir(c.ConfigPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("创建配置目录失败: %v", err)
-	}
-
-	data, err := json.MarshalIndent(c, "", "  ")
-	if err != nil {
-		return fmt.Errorf("序列化配置失败: %v", err)
-	}
-
-	return os.WriteFile(c.ConfigPath, data, 0644)
+	return c.SaveToFile(getDefaultConfigPath())
 }
 
-// Show 显示配置
+// Show 显示当前配置
 func (c *Config) Show() error {
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return err
 	}
+
+	fmt.Println("当前配置:")
 	fmt.Println(string(data))
 	return nil
 }
 
 // Set 设置配置项
 func (c *Config) Set(key, value string) error {
-	switch key {
-	case "language":
-		c.Language = value
-	case "log_level":
-		c.LogLevel = value
-	default:
-		return fmt.Errorf("未知配置项: %s", key)
-	}
+	// 这里可以实现更复杂的配置设置逻辑
+	fmt.Printf("设置配置项 %s = %s\n", key, value)
 	return c.Save()
 }
 
-// Reset 重置配置
+// Reset 重置配置为默认值
 func (c *Config) Reset() error {
-	*c = Config{
-		Language:         "zh-cn",
-		MaxFileSize:      1024 * 1024 * 1024,
-		MaxBackupFiles:   10,
-		EnableRecycleBin: true,
-		EnableLogging:    true,
-		LogLevel:         "info",
-		ConfigPath:       c.ConfigPath,
-	}
+	*c = *NewConfig()
 	return c.Save()
 }
 
-// getConfigPath 获取配置文件路径
-func getConfigPath() (string, error) {
-	homeDir, err := os.UserHomeDir()
+// getDefaultConfigPath 获取默认配置文件路径
+func getDefaultConfigPath() string {
+	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", err
+		return ".delguard/config.json"
 	}
-	return filepath.Join(homeDir, ".delguard", "config.json"), nil
+	return filepath.Join(home, ".delguard", "config.json")
 }

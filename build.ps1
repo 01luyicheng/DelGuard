@@ -2,7 +2,7 @@
 # 构建所有支持平台的二进制文件
 
 param(
-    [string]$Version = "v1.0.0",
+    [string]$Version = "v1.3.0",
     [switch]$Release = $false,
     [switch]$Clean = $false
 )

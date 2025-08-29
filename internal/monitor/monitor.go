@@ -111,10 +111,6 @@ func (mm *MonitorManager) IsRunning() bool {
 // 兼容性函数 - 保持向后兼容
 var globalManager *MonitorManager
 
-		stats.DeletedFiles,
-		stats.Uptime)
-}
-
 // StartMemoryOptimizer 启动内存优化器
 func StartMemoryOptimizer(ctx context.Context) {
 	if globalManager == nil {

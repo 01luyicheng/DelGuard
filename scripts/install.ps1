@@ -183,31 +183,29 @@ if (Test-Path `$delguardPath) {
     } catch { }
     
     # Define robust alias functions for all 5 commands
-    # Define robust alias functions for all 5 commands
-    # Define robust alias functions for all 5 commands
     function global:del {
-        param([Parameter(ValueFromRemainingArguments=`$true)][string[]]`$Arguments)
-        & `$delguardPath delete @Arguments
+        param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
+        & $delguardPath delete @Arguments
     }
     
     function global:rm {
-        param([Parameter(ValueFromRemainingArguments=`$true)][string[]]`$Arguments)
-        & `$delguardPath delete @Arguments
+        param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
+        & $delguardPath delete @Arguments
     }
     
     function global:cp {
-        param([Parameter(ValueFromRemainingArguments=`$true)][string[]]`$Arguments)
+        param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
         Write-Host "Copy functionality not yet implemented" -ForegroundColor Yellow
     }
     
     function global:copy {
-        param([Parameter(ValueFromRemainingArguments=`$true)][string[]]`$Arguments)
+        param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
         Write-Host "Copy functionality not yet implemented" -ForegroundColor Yellow
     }
     
     function global:delguard {
-        param([Parameter(ValueFromRemainingArguments=`$true)][string[]]`$Arguments)
-        & `$delguardPath @Arguments
+        param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
+        & $delguardPath @Arguments
     }
     
     # Show loading message only once per session
