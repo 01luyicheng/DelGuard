@@ -1,0 +1,347 @@
+package installer
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+)
+
+// LinuxInstaller Linux系统安装器
+type LinuxInstaller struct {
+	config *InstallConfig
+}
+
+// NewLinuxInstaller 创建Linux安装器
+func NewLinuxInstaller() *LinuxInstaller {
+	return &LinuxInstaller{
+		config: GetDefaultInstallConfig(),
+	}
+}
+
+// Install 在Linux上安装DelGuard
+func (l *LinuxInstaller) Install() error {
+	fmt.Println("🔧 开始在Linux上安装DelGuard...")
+
+	// 检查权限
+	if l.config.SystemWide && !IsRunningAsAdmin() {
+		return fmt.Errorf("系统级安装需要管理员权限，请使用sudo运行")
+	}
+
+	// 创建安装目录
+	if err := os.MkdirAll(l.config.InstallPath, 0755); err != nil {
+		return fmt.Errorf("创建安装目录失败: %v", err)
+	}
+
+	if err := os.MkdirAll(l.config.BackupPath, 0755); err != nil {
+		return fmt.Errorf("创建备份目录失败: %v", err)
+	}
+
+	// 获取当前可执行文件路径
+	currentExe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("获取当前可执行文件路径失败: %v", err)
+	}
+
+	// 复制DelGuard到安装目录
+	targetExe := filepath.Join(l.config.InstallPath, "delguard")
+	if err := l.copyFile(currentExe, targetExe); err != nil {
+		return fmt.Errorf("复制可执行文件失败: %v", err)
+	}
+
+	// 设置可执行权限
+	if err := os.Chmod(targetExe, 0755); err != nil {
+		return fmt.Errorf("设置可执行权限失败: %v", err)
+	}
+
+	// 创建命令别名脚本
+	if err := l.createCommandAliases(targetExe); err != nil {
+		return fmt.Errorf("创建命令别名失败: %v", err)
+	}
+
+	// 更新shell配置文件
+	if err := l.updateShellConfig(); err != nil {
+		fmt.Printf("⚠️ 更新shell配置失败: %v\n", err)
+		fmt.Println("   您可能需要手动配置shell别名")
+	}
+
+	fmt.Println("✅ DelGuard安装完成！")
+	fmt.Println("📝 安装信息:")
+	fmt.Printf("   安装路径: %s\n", l.config.InstallPath)
+	fmt.Printf("   备份路径: %s\n", l.config.BackupPath)
+	fmt.Println("🔄 请重新启动终端或运行以下命令刷新环境:")
+	fmt.Println("   source ~/.bashrc  # 或 source ~/.zshrc")
+
+	return nil
+}
+
+// Uninstall 卸载DelGuard
+func (l *LinuxInstaller) Uninstall() error {
+	fmt.Println("🗑️ 开始卸载DelGuard...")
+
+	// 删除shell配置
+	if err := l.removeShellConfig(); err != nil {
+		fmt.Printf("⚠️ 删除shell配置失败: %v\n", err)
+	}
+
+	// 删除安装目录
+	if err := os.RemoveAll(l.config.InstallPath); err != nil {
+		return fmt.Errorf("删除安装目录失败: %v", err)
+	}
+
+	fmt.Println("✅ DelGuard卸载完成！")
+	fmt.Println("🔄 请重新启动终端以完全清除别名")
+
+	return nil
+}
+
+// IsInstalled 检查是否已安装
+func (l *LinuxInstaller) IsInstalled() bool {
+	targetExe := filepath.Join(l.config.InstallPath, "delguard")
+	_, err := os.Stat(targetExe)
+	return err == nil
+}
+
+// GetInstallPath 获取安装路径
+func (l *LinuxInstaller) GetInstallPath() string {
+	return l.config.InstallPath
+}
+
+// BackupOriginalCommands 备份原始命令
+func (l *LinuxInstaller) BackupOriginalCommands() error {
+	commands := GetTargetCommands()
+	for _, cmd := range commands {
+		if err := l.backupCommand(cmd); err != nil {
+			return fmt.Errorf("备份命令 %s 失败: %v", cmd, err)
+		}
+	}
+	return nil
+}
+
+// RestoreOriginalCommands 恢复原始命令
+func (l *LinuxInstaller) RestoreOriginalCommands() error {
+	commands := GetTargetCommands()
+	for _, cmd := range commands {
+		if err := l.restoreCommand(cmd); err != nil {
+			return fmt.Errorf("恢复命令 %s 失败: %v", cmd, err)
+		}
+	}
+	return nil
+}
+
+// createCommandAliases 创建命令别名脚本
+func (l *LinuxInstaller) createCommandAliases(delguardPath string) error {
+	// 创建rm脚本
+	rmScript := fmt.Sprintf(`#!/bin/bash
+# DelGuard safe delete wrapper for 'rm' command
+"%s" delete "$@"
+`, delguardPath)
+
+	rmPath := filepath.Join(l.config.InstallPath, "rm")
+	if err := os.WriteFile(rmPath, []byte(rmScript), 0755); err != nil {
+		return fmt.Errorf("创建rm脚本失败: %v", err)
+	}
+
+	// 创建rmdir脚本
+	rmdirScript := fmt.Sprintf(`#!/bin/bash
+# DelGuard safe delete wrapper for 'rmdir' command
+"%s" delete "$@" -r
+`, delguardPath)
+
+	rmdirPath := filepath.Join(l.config.InstallPath, "rmdir")
+	if err := os.WriteFile(rmdirPath, []byte(rmdirScript), 0755); err != nil {
+		return fmt.Errorf("创建rmdir脚本失败: %v", err)
+	}
+
+	return nil
+}
+
+// updateShellConfig 更新shell配置文件
+func (l *LinuxInstaller) updateShellConfig() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	// 检测当前shell
+	shell := os.Getenv("SHELL")
+	var configFiles []string
+
+	if strings.Contains(shell, "zsh") {
+		configFiles = []string{
+			filepath.Join(homeDir, ".zshrc"),
+			filepath.Join(homeDir, ".zprofile"),
+		}
+	} else {
+		configFiles = []string{
+			filepath.Join(homeDir, ".bashrc"),
+			filepath.Join(homeDir, ".bash_profile"),
+			filepath.Join(homeDir, ".profile"),
+		}
+	}
+
+	// DelGuard配置内容
+	configContent := fmt.Sprintf(`
+# DelGuard Safe Delete Tool Configuration
+# Auto-generated by DelGuard installer
+
+# Add DelGuard to PATH
+export PATH="%s:$PATH"
+
+# DelGuard aliases
+alias rm='delguard delete'
+alias rmdir='delguard delete -r'
+
+echo "DelGuard aliases loaded successfully"
+echo "Commands: del, rm, cp, copy, delguard"
+echo "Use --help for detailed help"
+`, l.config.InstallPath)
+
+	// 更新第一个存在的配置文件
+	for _, configFile := range configFiles {
+		if err := l.updateConfigFile(configFile, configContent); err == nil {
+			return nil
+		}
+	}
+
+	// 如果没有配置文件存在，创建默认的
+	defaultConfig := configFiles[0]
+	return l.updateConfigFile(defaultConfig, configContent)
+}
+
+// removeShellConfig 删除shell配置
+func (l *LinuxInstaller) removeShellConfig() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	configFiles := []string{
+		filepath.Join(homeDir, ".zshrc"),
+		filepath.Join(homeDir, ".zprofile"),
+		filepath.Join(homeDir, ".bashrc"),
+		filepath.Join(homeDir, ".bash_profile"),
+		filepath.Join(homeDir, ".profile"),
+	}
+
+	for _, configFile := range configFiles {
+		l.removeConfigFromFile(configFile)
+	}
+
+	return nil
+}
+
+// updateConfigFile 更新配置文件
+func (l *LinuxInstaller) updateConfigFile(configFile, configContent string) error {
+	// 读取现有配置文件
+	var existingContent string
+	if content, err := os.ReadFile(configFile); err == nil {
+		existingContent = string(content)
+	}
+
+	// 检查是否已经包含DelGuard配置
+	if strings.Contains(existingContent, "DelGuard Safe Delete Tool Configuration") {
+		// 替换现有配置
+		lines := strings.Split(existingContent, "\n")
+		var newLines []string
+		skipMode := false
+
+		for _, line := range lines {
+			if strings.Contains(line, "DelGuard Safe Delete Tool Configuration") {
+				skipMode = true
+				continue
+			}
+			if skipMode && strings.TrimSpace(line) == "" && len(newLines) > 0 && strings.TrimSpace(newLines[len(newLines)-1]) == "" {
+				skipMode = false
+			}
+			if !skipMode {
+				newLines = append(newLines, line)
+			}
+		}
+
+		existingContent = strings.Join(newLines, "\n")
+	}
+
+	// 写入新配置
+	finalContent := existingContent + configContent
+	return os.WriteFile(configFile, []byte(finalContent), 0644)
+}
+
+// removeConfigFromFile 从文件中删除配置
+func (l *LinuxInstaller) removeConfigFromFile(configFile string) error {
+	content, err := os.ReadFile(configFile)
+	if err != nil {
+		return nil // 文件不存在，无需删除
+	}
+
+	existingContent := string(content)
+
+	// 移除DelGuard配置
+	if strings.Contains(existingContent, "DelGuard Safe Delete Tool Configuration") {
+		lines := strings.Split(existingContent, "\n")
+		var newLines []string
+		skipMode := false
+
+		for _, line := range lines {
+			if strings.Contains(line, "DelGuard Safe Delete Tool Configuration") {
+				skipMode = true
+				continue
+			}
+			if skipMode && strings.TrimSpace(line) == "" && len(newLines) > 0 && strings.TrimSpace(newLines[len(newLines)-1]) == "" {
+				skipMode = false
+				continue
+			}
+			if !skipMode {
+				newLines = append(newLines, line)
+			}
+		}
+
+		finalContent := strings.Join(newLines, "\n")
+		return os.WriteFile(configFile, []byte(finalContent), 0644)
+	}
+
+	return nil
+}
+
+// backupCommand 备份命令
+func (l *LinuxInstaller) backupCommand(cmdName string) error {
+	// 查找原始命令路径
+	originalPath, err := exec.LookPath(cmdName)
+	if err != nil {
+		return fmt.Errorf("找不到命令 %s", cmdName)
+	}
+
+	// 创建备份
+	backupPath := filepath.Join(l.config.BackupPath, cmdName+".original")
+	return l.copyFile(originalPath, backupPath)
+}
+
+// restoreCommand 恢复命令
+func (l *LinuxInstaller) restoreCommand(cmdName string) error {
+	backupPath := filepath.Join(l.config.BackupPath, cmdName+".original")
+	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
+		return nil // 备份不存在，无需恢复
+	}
+
+	// 这里实际上不需要恢复，因为我们使用的是别名而不是替换原始命令
+	return nil
+}
+
+// copyFile 复制文件
+func (l *LinuxInstaller) copyFile(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	_, err = destFile.ReadFrom(sourceFile)
+	return err
+}

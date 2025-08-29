@@ -1,0 +1,423 @@
+package installer
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+)
+
+// WindowsInstaller Windows系统安装器
+type WindowsInstaller struct {
+	config *InstallConfig
+}
+
+// NewWindowsInstaller 创建Windows安装器
+func NewWindowsInstaller() *WindowsInstaller {
+	return &WindowsInstaller{
+		config: GetDefaultInstallConfig(),
+	}
+}
+
+// Install 在Windows上安装DelGuard
+func (w *WindowsInstaller) Install() error {
+	fmt.Println("🔧 开始在Windows上安装DelGuard...")
+
+	// 检查权限
+	if w.config.SystemWide && !IsRunningAsAdmin() {
+		return fmt.Errorf("系统级安装需要管理员权限，请以管理员身份运行")
+	}
+
+	// 创建安装目录
+	if err := os.MkdirAll(w.config.InstallPath, 0755); err != nil {
+		return fmt.Errorf("创建安装目录失败: %v", err)
+	}
+
+	if err := os.MkdirAll(w.config.BackupPath, 0755); err != nil {
+		return fmt.Errorf("创建备份目录失败: %v", err)
+	}
+
+	// 获取当前可执行文件路径
+	currentExe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("获取当前可执行文件路径失败: %v", err)
+	}
+
+	// 复制DelGuard到安装目录
+	targetExe := filepath.Join(w.config.InstallPath, "delguard.exe")
+	if err := w.copyFile(currentExe, targetExe); err != nil {
+		return fmt.Errorf("复制可执行文件失败: %v", err)
+	}
+
+	// 创建命令别名脚本
+	if err := w.createCommandAliases(targetExe); err != nil {
+		return fmt.Errorf("创建命令别名失败: %v", err)
+	}
+
+	// 添加到PATH环境变量
+	if err := w.addToPath(); err != nil {
+		return fmt.Errorf("添加到PATH失败: %v", err)
+	}
+
+	// 创建PowerShell配置文件
+	if err := w.createPowerShellProfile(); err != nil {
+		fmt.Printf("⚠️ 创建PowerShell配置文件失败: %v\n", err)
+		fmt.Println("   您可能需要手动配置PowerShell别名")
+	}
+
+	fmt.Println("✅ DelGuard安装完成！")
+	fmt.Println("📝 安装信息:")
+	fmt.Printf("   安装路径: %s\n", w.config.InstallPath)
+	fmt.Printf("   备份路径: %s\n", w.config.BackupPath)
+	fmt.Println("🔄 请重新启动终端或运行以下命令刷新环境:")
+	fmt.Println("   refreshenv  # 或重新打开PowerShell")
+
+	return nil
+}
+
+// Uninstall 卸载DelGuard
+func (w *WindowsInstaller) Uninstall() error {
+	fmt.Println("🗑️ 开始卸载DelGuard...")
+
+	// 从PATH中移除
+	if err := w.removeFromPath(); err != nil {
+		fmt.Printf("⚠️ 从PATH移除失败: %v\n", err)
+	}
+
+	// 删除PowerShell配置
+	if err := w.removePowerShellProfile(); err != nil {
+		fmt.Printf("⚠️ 删除PowerShell配置失败: %v\n", err)
+	}
+
+	// 删除安装目录
+	if err := os.RemoveAll(w.config.InstallPath); err != nil {
+		return fmt.Errorf("删除安装目录失败: %v", err)
+	}
+
+	fmt.Println("✅ DelGuard卸载完成！")
+	fmt.Println("🔄 请重新启动终端以完全清除环境变量")
+
+	return nil
+}
+
+// IsInstalled 检查是否已安装
+func (w *WindowsInstaller) IsInstalled() bool {
+	targetExe := filepath.Join(w.config.InstallPath, "delguard.exe")
+	_, err := os.Stat(targetExe)
+	return err == nil
+}
+
+// GetInstallPath 获取安装路径
+func (w *WindowsInstaller) GetInstallPath() string {
+	return w.config.InstallPath
+}
+
+// BackupOriginalCommands 备份原始命令（Windows通常不需要）
+func (w *WindowsInstaller) BackupOriginalCommands() error {
+	// Windows的内置命令不需要备份
+	return nil
+}
+
+// RestoreOriginalCommands 恢复原始命令
+func (w *WindowsInstaller) RestoreOriginalCommands() error {
+	// Windows的内置命令不需要恢复
+	return nil
+}
+
+// createCommandAliases 创建命令别名脚本
+func (w *WindowsInstaller) createCommandAliases(delguardPath string) error {
+	// 创建del.bat脚本
+	delScript := fmt.Sprintf(`@echo off
+REM DelGuard safe delete wrapper for 'del' command
+"%s" delete %%*
+`, delguardPath)
+
+	delBat := filepath.Join(w.config.InstallPath, "del.bat")
+	if err := os.WriteFile(delBat, []byte(delScript), 0755); err != nil {
+		return fmt.Errorf("创建del.bat失败: %v", err)
+	}
+
+	// 创建rmdir.bat脚本
+	rmdirScript := fmt.Sprintf(`@echo off
+REM DelGuard safe delete wrapper for 'rmdir' command
+"%s" delete %%* -r
+`, delguardPath)
+
+	rmdirBat := filepath.Join(w.config.InstallPath, "rmdir.bat")
+	if err := os.WriteFile(rmdirBat, []byte(rmdirScript), 0755); err != nil {
+		return fmt.Errorf("创建rmdir.bat失败: %v", err)
+	}
+
+	return nil
+}
+
+// createPowerShellProfile 创建PowerShell配置文件
+func (w *WindowsInstaller) createPowerShellProfile() error {
+	// 获取PowerShell配置文件路径
+	profilePath, err := w.getPowerShellProfilePath()
+	if err != nil {
+		return err
+	}
+
+	// 确保配置文件目录存在
+	profileDir := filepath.Dir(profilePath)
+	if err := os.MkdirAll(profileDir, 0755); err != nil {
+		return fmt.Errorf("创建PowerShell配置目录失败: %v", err)
+	}
+
+	// DelGuard配置内容
+	delguardPath := filepath.Join(w.config.InstallPath, "delguard.exe")
+	configContent := fmt.Sprintf(`
+# DelGuard Safe Delete Tool Configuration
+# Auto-generated by DelGuard installer
+
+# DelGuard安全删除工具别名
+function del {
+    & "%s" delete $args
+}
+
+function rm {
+    & "%s" delete $args
+}
+
+function rmdir {
+    & "%s" delete $args -r
+}
+
+# DelGuard工具别名
+function delguard {
+    & "%s" $args
+}
+
+Write-Host "DelGuard Safe Delete Tool Loaded" -ForegroundColor Green
+Write-Host "Commands: del, rm, cp, copy, delguard" -ForegroundColor Cyan
+Write-Host "Use 'delguard --help' for detailed help" -ForegroundColor Yellow
+`, delguardPath, delguardPath, delguardPath, delguardPath)
+
+	// 读取现有配置文件
+	var existingContent string
+	if content, err := os.ReadFile(profilePath); err == nil {
+		existingContent = string(content)
+	}
+
+	// 检查是否已经包含DelGuard配置
+	if strings.Contains(existingContent, "DelGuard Safe Delete Tool Configuration") {
+		// 替换现有配置
+		lines := strings.Split(existingContent, "\n")
+		var newLines []string
+		skipMode := false
+
+		for _, line := range lines {
+			if strings.Contains(line, "DelGuard Safe Delete Tool Configuration") {
+				skipMode = true
+				continue
+			}
+			if skipMode && strings.TrimSpace(line) == "" && len(newLines) > 0 && strings.TrimSpace(newLines[len(newLines)-1]) == "" {
+				skipMode = false
+			}
+			if !skipMode {
+				newLines = append(newLines, line)
+			}
+		}
+
+		existingContent = strings.Join(newLines, "\n")
+	}
+
+	// 写入新配置
+	finalContent := existingContent + configContent
+	if err := os.WriteFile(profilePath, []byte(finalContent), 0644); err != nil {
+		return fmt.Errorf("写入PowerShell配置文件失败: %v", err)
+	}
+
+	return nil
+}
+
+// removePowerShellProfile 删除PowerShell配置
+func (w *WindowsInstaller) removePowerShellProfile() error {
+	profilePath, err := w.getPowerShellProfilePath()
+	if err != nil {
+		return err
+	}
+
+	// 读取现有配置文件
+	content, err := os.ReadFile(profilePath)
+	if err != nil {
+		return nil // 文件不存在，无需删除
+	}
+
+	existingContent := string(content)
+
+	// 移除DelGuard配置
+	if strings.Contains(existingContent, "DelGuard Safe Delete Tool Configuration") {
+		lines := strings.Split(existingContent, "\n")
+		var newLines []string
+		skipMode := false
+
+		for _, line := range lines {
+			if strings.Contains(line, "DelGuard Safe Delete Tool Configuration") {
+				skipMode = true
+				continue
+			}
+			if skipMode && strings.TrimSpace(line) == "" && len(newLines) > 0 && strings.TrimSpace(newLines[len(newLines)-1]) == "" {
+				skipMode = false
+				continue
+			}
+			if !skipMode {
+				newLines = append(newLines, line)
+			}
+		}
+
+		finalContent := strings.Join(newLines, "\n")
+		return os.WriteFile(profilePath, []byte(finalContent), 0644)
+	}
+
+	return nil
+}
+
+// getPowerShellProfilePath 获取PowerShell配置文件路径
+func (w *WindowsInstaller) getPowerShellProfilePath() (string, error) {
+	// 尝试获取PowerShell 7的配置文件路径
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+
+	// PowerShell 7 配置文件路径
+	ps7Profile := filepath.Join(homeDir, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1")
+
+	// 检查PowerShell 7是否存在
+	if _, err := exec.LookPath("pwsh"); err == nil {
+		return ps7Profile, nil
+	}
+
+	// 回退到Windows PowerShell 5.x
+	ps5Profile := filepath.Join(homeDir, "Documents", "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1")
+	return ps5Profile, nil
+}
+
+// addToPath 添加到PATH环境变量
+func (w *WindowsInstaller) addToPath() error {
+	if w.config.SystemWide {
+		return w.addToSystemPath()
+	}
+	return w.addToUserPath()
+}
+
+// removeFromPath 从PATH环境变量移除
+func (w *WindowsInstaller) removeFromPath() error {
+	if w.config.SystemWide {
+		return w.removeFromSystemPath()
+	}
+	return w.removeFromUserPath()
+}
+
+// addToUserPath 添加到用户PATH
+func (w *WindowsInstaller) addToUserPath() error {
+	return w.modifyUserPath(true)
+}
+
+// removeFromUserPath 从用户PATH移除
+func (w *WindowsInstaller) removeFromUserPath() error {
+	return w.modifyUserPath(false)
+}
+
+// modifyUserPath 修改用户PATH
+func (w *WindowsInstaller) modifyUserPath(add bool) error {
+	// 使用PowerShell修改用户环境变量
+	var script string
+	if add {
+		script = fmt.Sprintf(`
+$path = [Environment]::GetEnvironmentVariable("PATH", "User")
+if ($path -notlike "*%s*") {
+    $newPath = $path + ";%s"
+    [Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
+    Write-Host "Added to user PATH"
+} else {
+    Write-Host "Already in user PATH"
+}
+`, w.config.InstallPath, w.config.InstallPath)
+	} else {
+		script = fmt.Sprintf(`
+$path = [Environment]::GetEnvironmentVariable("PATH", "User")
+$newPath = $path -replace ";?%s;?", ""
+$newPath = $newPath -replace "^;|;$", ""
+[Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
+Write-Host "Removed from user PATH"
+`, strings.ReplaceAll(w.config.InstallPath, `\`, `\\`))
+	}
+
+	cmd := exec.Command("powershell", "-Command", script)
+	return cmd.Run()
+}
+
+// addToSystemPath 添加到系统PATH（需要管理员权限）
+func (w *WindowsInstaller) addToSystemPath() error {
+	return w.modifySystemPath(true)
+}
+
+// removeFromSystemPath 从系统PATH移除（需要管理员权限）
+func (w *WindowsInstaller) removeFromSystemPath() error {
+	return w.modifySystemPath(false)
+}
+
+// modifySystemPath 修改系统PATH
+func (w *WindowsInstaller) modifySystemPath(add bool) error {
+	// 使用PowerShell修改系统环境变量（需要管理员权限）
+	var script string
+	if add {
+		script = fmt.Sprintf(`
+$path = [Environment]::GetEnvironmentVariable("PATH", "Machine")
+if ($path -notlike "*%s*") {
+    $newPath = $path + ";%s"
+    [Environment]::SetEnvironmentVariable("PATH", $newPath, "Machine")
+    Write-Host "Added to system PATH"
+} else {
+    Write-Host "Already in system PATH"
+}
+`, w.config.InstallPath, w.config.InstallPath)
+	} else {
+		script = fmt.Sprintf(`
+$path = [Environment]::GetEnvironmentVariable("PATH", "Machine")
+$newPath = $path -replace ";?%s;?", ""
+$newPath = $newPath -replace "^;|;$", ""
+[Environment]::SetEnvironmentVariable("PATH", $newPath, "Machine")
+Write-Host "Removed from system PATH"
+`, strings.ReplaceAll(w.config.InstallPath, `\`, `\\`))
+	}
+
+	cmd := exec.Command("powershell", "-Command", script)
+	return cmd.Run()
+}
+
+// copyFile 复制文件
+func (w *WindowsInstaller) copyFile(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	_, err = destFile.ReadFrom(sourceFile)
+	return err
+}
+
+// isWindowsAdmin 检查是否以管理员权限运行
+func isWindowsAdmin() bool {
+	// 简化的管理员权限检查
+	// 尝试在系统目录创建临时文件来检测权限
+	tempFile := filepath.Join(os.Getenv("WINDIR"), "temp", "delguard_admin_test.tmp")
+	file, err := os.Create(tempFile)
+	if err != nil {
+		return false
+	}
+	file.Close()
+	os.Remove(tempFile)
+	return true
+}
