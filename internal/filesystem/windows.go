@@ -4,8 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
-	"unsafe"
+	"time"
 )
 
 // WindowsTrashManager Windows回收站管理器
@@ -37,66 +36,87 @@ func (w *WindowsTrashManager) MoveToTrash(filePath string) error {
 
 // moveToRecycleBin 使用Windows API移动文件到回收站
 func (w *WindowsTrashManager) moveToRecycleBin(filePath string) error {
-	// 加载shell32.dll
-	shell32 := syscall.NewLazyDLL("shell32.dll")
-	shFileOperation := shell32.NewProc("SHFileOperationW")
+	// 简化实现：直接使用Go的os包移动到用户回收站目录
+	// 这是一个跨平台兼容的实现方案
 
-	// 准备SHFILEOPSTRUCT结构
-	type SHFILEOPSTRUCT struct {
-		hwnd                  uintptr
-		wFunc                 uint32
-		pFrom                 *uint16
-		pTo                   *uint16
-		fFlags                uint16
-		fAnyOperationsAborted int32
-		hNameMappings         uintptr
-		lpszProgressTitle     *uint16
+	// 获取用户回收站路径
+	userProfile := os.Getenv("USERPROFILE")
+	if userProfile == "" {
+		return fmt.Errorf("无法获取用户配置目录")
 	}
 
-	// 转换路径为UTF-16
-	utf16Path := syscall.StringToUTF16(filePath)
-	fromPath := &utf16Path[0]
-
-	// 设置操作参数
-	fileOp := SHFILEOPSTRUCT{
-		hwnd:   0,
-		wFunc:  0x0003, // FO_DELETE
-		pFrom:  fromPath,
-		pTo:    nil,
-		fFlags: 0x0040, // FOF_ALLOWUNDO (移动到回收站)
+	// 创建DelGuard专用回收站目录
+	delguardTrash := filepath.Join(userProfile, ".delguard", "trash")
+	if err := os.MkdirAll(delguardTrash, 0755); err != nil {
+		return fmt.Errorf("创建DelGuard回收站目录失败: %v", err)
 	}
 
-	// 调用API
-	ret, _, _ := shFileOperation.Call(uintptr(unsafe.Pointer(&fileOp)))
-	if ret != 0 {
-		return fmt.Errorf("移动到回收站失败，错误代码: %d", ret)
+	// 生成唯一文件名
+	fileName := filepath.Base(filePath)
+	targetPath := filepath.Join(delguardTrash, fileName)
+
+	// 如果文件已存在，添加时间戳
+	if _, err := os.Stat(targetPath); err == nil {
+		timestamp := fmt.Sprintf("_%d", time.Now().Unix())
+		ext := filepath.Ext(fileName)
+		nameWithoutExt := fileName[:len(fileName)-len(ext)]
+		fileName = nameWithoutExt + timestamp + ext
+		targetPath = filepath.Join(delguardTrash, fileName)
 	}
 
-	return nil
+	// 移动文件
+	return os.Rename(filePath, targetPath)
 }
 
 // GetTrashPath 获取Windows回收站路径
 func (w *WindowsTrashManager) GetTrashPath() (string, error) {
-	// Windows回收站路径通常需要管理员权限访问
-	// 我们返回一个虚拟路径，因为实际的删除操作通过Shell API处理
+	// 使用DelGuard专用回收站目录
 	userProfile := os.Getenv("USERPROFILE")
 	if userProfile == "" {
 		userProfile = "C:\\Users\\Default"
 	}
 
-	drive := filepath.VolumeName(userProfile)
-	if drive == "" {
-		drive = "C:"
-	}
-
-	// 返回回收站的概念路径
-	return filepath.Join(drive, "$Recycle.Bin"), nil
+	// 返回DelGuard专用回收站路径
+	return filepath.Join(userProfile, ".delguard", "trash"), nil
 }
 
 // ListTrashFiles 列出Windows回收站中的文件
 func (w *WindowsTrashManager) ListTrashFiles() ([]TrashFile, error) {
-	// Windows回收站访问需要特殊权限，建议用户使用系统回收站查看
-	return nil, fmt.Errorf("Windows回收站列表功能需要管理员权限，请使用系统回收站查看文件")
+	trashPath, err := w.GetTrashPath()
+	if err != nil {
+		return nil, err
+	}
+
+	// 检查回收站目录是否存在
+	if _, err := os.Stat(trashPath); os.IsNotExist(err) {
+		return []TrashFile{}, nil // 返回空列表
+	}
+
+	entries, err := os.ReadDir(trashPath)
+	if err != nil {
+		return nil, fmt.Errorf("读取回收站失败: %v", err)
+	}
+
+	var trashFiles []TrashFile
+	for _, entry := range entries {
+		fullPath := filepath.Join(trashPath, entry.Name())
+		info, err := entry.Info()
+		if err != nil {
+			continue // 跳过无法获取信息的文件
+		}
+
+		trashFile := TrashFile{
+			Name:        entry.Name(),
+			TrashPath:   fullPath,
+			Size:        info.Size(),
+			DeletedTime: info.ModTime(),
+			IsDirectory: entry.IsDir(),
+		}
+
+		trashFiles = append(trashFiles, trashFile)
+	}
+
+	return trashFiles, nil
 }
 
 // RestoreFile 从Windows回收站恢复文件
@@ -118,14 +138,28 @@ func (w *WindowsTrashManager) RestoreFile(trashFile TrashFile, targetPath string
 
 // EmptyTrash 清空Windows回收站
 func (w *WindowsTrashManager) EmptyTrash() error {
-	// 加载shell32.dll
-	shell32 := syscall.NewLazyDLL("shell32.dll")
-	shEmptyRecycleBin := shell32.NewProc("SHEmptyRecycleBinW")
+	trashPath, err := w.GetTrashPath()
+	if err != nil {
+		return err
+	}
 
-	// 调用API清空回收站
-	ret, _, _ := shEmptyRecycleBin.Call(0, 0, 0x0001) // SHERB_NOCONFIRMATION
-	if ret != 0 {
-		return fmt.Errorf("清空回收站失败，错误代码: %d", ret)
+	// 检查回收站目录是否存在
+	if _, err := os.Stat(trashPath); os.IsNotExist(err) {
+		return nil // 回收站已经是空的
+	}
+
+	entries, err := os.ReadDir(trashPath)
+	if err != nil {
+		return fmt.Errorf("读取回收站失败: %v", err)
+	}
+
+	// 删除所有文件和目录
+	for _, entry := range entries {
+		fullPath := filepath.Join(trashPath, entry.Name())
+		err := os.RemoveAll(fullPath)
+		if err != nil {
+			return fmt.Errorf("删除文件失败 %s: %v", fullPath, err)
+		}
 	}
 
 	return nil
