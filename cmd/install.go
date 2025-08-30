@@ -83,7 +83,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	if !forceInstall {
 		fmt.Print("是否继续安装？ (y/N): ")
 		var response string
-		fmt.Scanln(&response)
+		_, _ = fmt.Scanln(&response)
 		if response != "y" && response != "Y" && response != "yes" && response != "YES" {
 			fmt.Println("❌ 安装已取消")
 			return nil

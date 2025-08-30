@@ -11,27 +11,49 @@ var (
 	infoLogger  *log.Logger
 	errorLogger *log.Logger
 	debugLogger *log.Logger
+	logFilePtr  *os.File
 )
 
 // Init 初始化日志系统
-func Init(logFile, level string, maxSize, maxAge int, compress bool) error {
+func Init(logFilePath, level string, maxSize, maxAge int, compress bool) error {
 	// 确保日志目录存在
-	logDir := filepath.Dir(logFile)
+	logDir := filepath.Dir(logFilePath)
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		return fmt.Errorf("创建日志目录失败: %v", err)
 	}
 
+	// 先关闭已存在的日志文件
+	Close()
+
 	// 打开日志文件
-	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	var err error
+	logFilePtr, err = os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		return fmt.Errorf("打开日志文件失败: %v", err)
 	}
 
 	// 创建不同级别的日志记录器
-	infoLogger = log.New(file, "[INFO] ", log.Ldate|log.Ltime|log.Lshortfile)
-	errorLogger = log.New(file, "[ERROR] ", log.Ldate|log.Ltime|log.Lshortfile)
-	debugLogger = log.New(file, "[DEBUG] ", log.Ldate|log.Ltime|log.Lshortfile)
+	infoLogger = log.New(logFilePtr, "[INFO] ", log.Ldate|log.Ltime|log.Lshortfile)
+	errorLogger = log.New(logFilePtr, "[ERROR] ", log.Ldate|log.Ltime|log.Lshortfile)
+	debugLogger = log.New(logFilePtr, "[DEBUG] ", log.Ldate|log.Ltime|log.Lshortfile)
 
+	// 记录初始化信息
+	Info("日志系统初始化成功")
+	Debugf("日志文件: %s, 级别: %s", logFilePath, level)
+
+	return nil
+}
+
+// Close 关闭日志文件
+func Close() error {
+	if logFilePtr != nil {
+		err := logFilePtr.Close()
+		logFilePtr = nil
+		infoLogger = nil
+		errorLogger = nil
+		debugLogger = nil
+		return err
+	}
 	return nil
 }
 

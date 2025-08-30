@@ -94,14 +94,14 @@ cross-compile: deps fmt vet
 	@echo "交叉编译所有平台..."
 	@mkdir -p $(DIST_DIR)
 	@for platform in $(PLATFORMS); do \
-		GOOS=$${platform%/*} GARCH=$${platform#*/} $(MAKE) build-platform PLATFORM=$$platform; \
+		GOOS=$${platform%/*} GOARCH=$${platform#*/} $(MAKE) build-platform PLATFORM=$$platform; \
 	done
 
 # 构建特定平台
 build-platform:
 	@echo "构建 $(PLATFORM)..."
 	@GOOS=$(word 1,$(subst /, ,$(PLATFORM))) \
-	 GARCH=$(word 2,$(subst /, ,$(PLATFORM))) \
+	 GOARCH=$(word 2,$(subst /, ,$(PLATFORM))) \
 	 OUTPUT_NAME=$(PROJECT_NAME)-$(VERSION)-$(PLATFORM) \
 	 $(MAKE) build-single-platform
 
@@ -109,8 +109,8 @@ build-single-platform:
 	@if [ "$(GOOS)" = "windows" ]; then \
 		OUTPUT_NAME="$(OUTPUT_NAME).exe"; \
 	fi; \
-	echo "  -> $(GOOS)/$(GARCH): $$OUTPUT_NAME"; \
-	CGO_ENABLED=0 GOOS=$(GOOS) GARCH=$(GARCH) \
+	echo "  -> $(GOOS)/$(GOARCH): $$OUTPUT_NAME"; \
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \
 	go build $(LDFLAGS) $(GCFLAGS) $(ASMFLAGS) \
 	-o $(DIST_DIR)/$$OUTPUT_NAME .
 

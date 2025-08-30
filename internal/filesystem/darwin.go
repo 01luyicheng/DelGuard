@@ -1,9 +1,12 @@
 package filesystem
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -40,29 +43,62 @@ func (d *DarwinTrashManager) MoveToTrash(filePath string) error {
 		return fmt.Errorf("创建Trash目录失败: %v", err)
 	}
 
+	// 创建元数据目录
+	metadataDir := filepath.Join(d.trashPath, ".delguard_metadata")
+	if err := os.MkdirAll(metadataDir, 0755); err != nil {
+		return fmt.Errorf("创建元数据目录失败: %v", err)
+	}
+
+	// 获取文件信息
+	fileInfo, err := os.Stat(absPath)
+	if err != nil {
+		return fmt.Errorf("获取文件信息失败: %v", err)
+	}
+
 	// 生成唯一的文件名
 	fileName := filepath.Base(absPath)
-	targetPath := filepath.Join(d.trashPath, fileName)
+	baseName := fileName[:len(fileName)-len(filepath.Ext(fileName))]
+	ext := filepath.Ext(fileName)
+	timestamp := time.Now().Format("20060102_150405")
+	uniqueName := fmt.Sprintf("%s_%s%s", baseName, timestamp, ext)
+	targetPath := filepath.Join(d.trashPath, uniqueName)
 
-	// 如果目标文件已存在，添加时间戳
+	// 如果目标文件已存在，添加更多随机字符
 	counter := 1
-	originalFileName := fileName
 	for {
 		if _, err := os.Stat(targetPath); os.IsNotExist(err) {
 			break
 		}
-
-		ext := filepath.Ext(originalFileName)
-		nameWithoutExt := originalFileName[:len(originalFileName)-len(ext)]
-		fileName = fmt.Sprintf("%s_%d%s", nameWithoutExt, counter, ext)
-		targetPath = filepath.Join(d.trashPath, fileName)
+		uniqueName = fmt.Sprintf("%s_%s_%d%s", baseName, timestamp, counter, ext)
+		targetPath = filepath.Join(d.trashPath, uniqueName)
 		counter++
+	}
+
+	// 创建元数据
+	metadata := TrashMetadata{
+		OriginalPath: absPath,
+		DeletedTime:  time.Now(),
+		FileName:     fileName,
+		Size:         fileInfo.Size(),
+		IsDirectory:  fileInfo.IsDir(),
+		Permissions:  fileInfo.Mode().String(),
+		SystemTrash:  false,
+	}
+	
+	metadataFile := filepath.Join(metadataDir, uniqueName+".json")
+	if err := d.writeJSONMetadata(metadataFile, metadata); err != nil {
+		return fmt.Errorf("创建元数据文件失败: %v", err)
 	}
 
 	// 移动文件到Trash
 	err = os.Rename(absPath, targetPath)
 	if err != nil {
-		return fmt.Errorf("移动到Trash失败: %v", err)
+		// 如果重命名失败，尝试复制后删除
+		if copyErr := d.copyAndRemove(absPath, targetPath); copyErr != nil {
+			// 清理元数据文件
+			os.Remove(metadataFile)
+			return fmt.Errorf("移动到Trash失败: %v", copyErr)
+		}
 	}
 
 	return nil
@@ -85,20 +121,35 @@ func (d *DarwinTrashManager) ListTrashContents() ([]TrashItem, error) {
 		return nil, fmt.Errorf("读取Trash失败: %v", err)
 	}
 
+	metadataDir := filepath.Join(d.trashPath, ".delguard_metadata")
 	var trashItems []TrashItem
+	
 	for _, entry := range entries {
+		// 跳过元数据目录和隐藏文件
+		if entry.Name() == ".delguard_metadata" || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		
 		fullPath := filepath.Join(d.trashPath, entry.Name())
 		info, err := entry.Info()
 		if err != nil {
 			continue // 跳过无法获取信息的文件
 		}
 
+		// 尝试读取对应的元数据文件获取原始路径
+		metadataFile := filepath.Join(metadataDir, entry.Name()+".json")
+		originalPath, deletedTime := d.readJSONMetadata(metadataFile)
+		
+		if deletedTime.IsZero() {
+			deletedTime = info.ModTime() // 使用修改时间作为回退
+		}
+
 		trashItem := TrashItem{
 			Name:         entry.Name(),
-			OriginalPath: "", // macOS Trash不保存原始路径信息
+			OriginalPath: originalPath,
 			Path:         fullPath,
 			Size:         info.Size(),
-			DeletedTime:  info.ModTime(), // 使用修改时间作为删除时间
+			DeletedTime:  deletedTime,
 			IsDirectory:  entry.IsDir(),
 		}
 
@@ -240,6 +291,12 @@ func (d *DarwinTrashManager) ValidateTrash() error {
 		}
 	}
 
+	// 创建元数据目录
+	metadataDir := filepath.Join(d.trashPath, ".delguard_metadata")
+	if err := os.MkdirAll(metadataDir, 0755); err != nil {
+		return fmt.Errorf("创建元数据目录失败: %v", err)
+	}
+
 	// 检查目录权限
 	testFile := filepath.Join(d.trashPath, ".delguard_test")
 	file, err := os.Create(testFile)
@@ -250,6 +307,121 @@ func (d *DarwinTrashManager) ValidateTrash() error {
 	os.Remove(testFile)
 
 	return nil
+}
+
+// writeJSONMetadata 写入JSON格式的元数据文件
+func (d *DarwinTrashManager) writeJSONMetadata(metadataFile string, metadata TrashMetadata) error {
+	data, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化元数据失败: %v", err)
+	}
+	
+	return os.WriteFile(metadataFile, data, 0644)
+}
+
+// readJSONMetadata 读取JSON格式的元数据文件
+func (d *DarwinTrashManager) readJSONMetadata(metadataFile string) (string, time.Time) {
+	data, err := os.ReadFile(metadataFile)
+	if err != nil {
+		return "", time.Time{}
+	}
+	
+	var metadata TrashMetadata
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		return "", time.Time{}
+	}
+	
+	return metadata.OriginalPath, metadata.DeletedTime
+}
+
+// copyAndRemove 复制文件后删除源文件（用于跨设备移动）
+func (d *DarwinTrashManager) copyAndRemove(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	// 检查源文件类型
+	info, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+
+	if info.IsDir() {
+		// 复制目录
+		return d.copyDirectory(src, dst)
+	}
+
+	// 复制文件
+	return d.copyFile(src, dst)
+}
+
+// copyFile 复制单个文件
+func (d *DarwinTrashManager) copyFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	if err != nil {
+		return err
+	}
+
+	// 确保数据写入磁盘
+	dstFile.Sync()
+
+	// 删除源文件
+	return os.Remove(src)
+}
+
+// copyDirectory 递归复制目录
+func (d *DarwinTrashManager) copyDirectory(src, dst string) error {
+	// 获取源目录信息
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+
+	// 创建目标目录
+	if err := os.MkdirAll(dst, srcInfo.Mode()); err != nil {
+		return err
+	}
+
+	// 读取源目录内容
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+
+	// 递归复制每个条目
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		if entry.IsDir() {
+			// 递归复制子目录
+			if err := d.copyDirectory(srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			// 复制文件
+			if err := d.copyFile(srcPath, dstPath); err != nil {
+				return err
+			}
+		}
+	}
+
+	// 删除源目录
+	return os.RemoveAll(src)
 }
 
 // ListTrashFiles 列出回收站中的文件（兼容原有接口）

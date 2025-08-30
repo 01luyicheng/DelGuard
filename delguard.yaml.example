@@ -1,0 +1,55 @@
+# DelGuard 配置文件示例
+# 将此文件复制为 ~/.delguard/config.yaml 或 %USERPROFILE%\.delguard\config.yaml 以自定义设置
+
+# 全局配置
+verbose: false          # 是否显示详细信息
+force: false            # 是否强制操作，跳过确认
+quiet: false            # 静默模式，减少输出
+
+# 日志配置
+logging:
+  level: "info"         # 日志级别: debug, info, warn, error, fatal
+  file: ""              # 日志文件路径，默认为系统默认位置
+  max_size: 10          # 单个日志文件最大大小(MB)
+  max_age: 7            # 日志文件保留天数
+  compress: true        # 是否压缩旧日志文件
+
+# UI配置
+ui:
+  language: "zh-CN"     # 界面语言: zh-CN, en-US
+  color: true           # 是否使用彩色输出
+  unicode: true         # 是否使用Unicode符号
+  progress_bar: true    # 是否显示进度条
+
+# 安装配置
+install:
+  system_wide: true     # 是否为系统范围安装
+  install_dir: ""       # 安装目录，默认为 ~/.local/bin 或 %USERPROFILE%\bin
+  create_alias: true    # 是否创建别名 (dg)
+  backup_original: true # 是否备份原始删除命令
+
+# 回收站配置
+trash:
+  max_size: "1GB"       # 回收站最大容量(支持单位: KB, MB, GB, TB)
+  max_age: 30           # 文件在回收站中的最大保留天数
+  auto_cleanup: true    # 是否自动清理过期文件
+  confirm_delete: true  # 删除前是否确认
+  use_system_trash: true # 是否优先使用系统回收站
+  
+# 安全设置
+security:
+  strict_mode: false    # 是否启用严格模式（禁止删除系统文件）
+  max_path_length: 4096 # 最大路径长度限制
+  allowed_extensions:   # 允许删除的文件扩展名（空列表表示允许所有）
+    - "*"
+  blocked_extensions:   # 禁止删除的文件扩展名
+    - ".sys"
+    - ".dll"
+    - ".exe"
+    - ".msi"
+
+# 性能设置
+performance:
+  batch_size: 10        # 批量操作大小
+  buffer_size: 8192     # 文件复制缓冲区大小(KB)
+  max_concurrent: 5     # 最大并发操作数

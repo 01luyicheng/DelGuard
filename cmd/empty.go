@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
 	"delguard/internal/filesystem"
 
@@ -59,16 +60,33 @@ func runEmpty(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// 计算总大小
+	// 计算统计信息
 	totalSize := int64(0)
+	fileCount := 0
+	dirCount := 0
+	oldestFile := time.Now()
+	
 	for _, file := range trashFiles {
 		totalSize += file.Size
+		if file.IsDirectory {
+			dirCount++
+		} else {
+			fileCount++
+		}
+		if file.DeletedTime.Before(oldestFile) {
+			oldestFile = file.DeletedTime
+		}
 	}
 
 	// 预览模式
 	if dryRun {
-		fmt.Printf("🔍 预览模式 - 将要永久删除 %d 个项目 (%s):\n",
-			len(trashFiles), filesystem.FormatFileSize(totalSize))
+		fmt.Printf("🔍 预览模式 - 将要永久删除 %d 个项目:\n", len(trashFiles))
+		fmt.Printf("   📄 文件: %d个, 📁 目录: %d个, 总大小: %s\n", 
+			fileCount, dirCount, filesystem.FormatFileSize(totalSize))
+		
+		if !oldestFile.IsZero() {
+			fmt.Printf("   📅 最早删除时间: %s\n", oldestFile.Format("2006-01-02 15:04:05"))
+		}
 
 		// 显示前10个文件
 		displayCount := len(trashFiles)
@@ -76,13 +94,16 @@ func runEmpty(cmd *cobra.Command, args []string) error {
 			displayCount = 10
 		}
 
+		fmt.Println("\n将要删除的文件:")
 		for i := 0; i < displayCount; i++ {
 			file := trashFiles[i]
 			typeIcon := "📄"
 			if file.IsDirectory {
 				typeIcon = "📁"
 			}
-			fmt.Printf("  %s %s (%s)\n", typeIcon, file.Name, filesystem.FormatFileSize(file.Size))
+			fmt.Printf("  %s %s (%s, 删除于: %s)\n", 
+				typeIcon, file.Name, filesystem.FormatFileSize(file.Size),
+				file.DeletedTime.Format("2006-01-02 15:04"))
 		}
 
 		if len(trashFiles) > 10 {
@@ -94,8 +115,12 @@ func runEmpty(cmd *cobra.Command, args []string) error {
 
 	// 显示警告信息
 	if !quiet {
-		fmt.Printf("⚠️  警告: 即将永久删除回收站中的 %d 个项目 (%s)\n",
-			len(trashFiles), filesystem.FormatFileSize(totalSize))
+		fmt.Printf("⚠️  警告: 即将永久删除回收站中的 %d 个项目\n", len(trashFiles))
+		fmt.Printf("   📄 文件: %d个, 📁 目录: %d个, 总大小: %s\n", 
+			fileCount, dirCount, filesystem.FormatFileSize(totalSize))
+		if !oldestFile.IsZero() {
+			fmt.Printf("   📅 最早删除时间: %s\n", oldestFile.Format("2006-01-02 15:04:05"))
+		}
 		fmt.Println("⚠️  此操作不可逆，删除后无法恢复！")
 	}
 
@@ -127,6 +152,9 @@ func runEmpty(cmd *cobra.Command, args []string) error {
 	if !quiet {
 		fmt.Printf("✅ 成功清空回收站，删除了 %d 个项目 (%s)\n",
 			len(trashFiles), filesystem.FormatFileSize(totalSize))
+		if len(trashFiles) > 0 {
+			fmt.Printf("   📄 文件: %d个, 📁 目录: %d个\n", fileCount, dirCount)
+		}
 	}
 
 	return nil

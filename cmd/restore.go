@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"delguard/internal/filesystem"
+	"delguard/internal/security"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -106,25 +107,62 @@ func runRestore(cmd *cobra.Command, args []string) error {
 	if !force && !interactive && len(filesToRestore) > 1 {
 		fmt.Printf("🔄 将要恢复 %d 个文件，确认吗? [y/N]: ", len(filesToRestore))
 		var response string
-		fmt.Scanln(&response)
-		if response != "y" && response != "Y" && response != "yes" && response != "YES" {
+		_, err := fmt.Scanln(&response)
+		if err != nil {
+			// 处理输入错误
+			fmt.Println("❌ 读取输入失败，操作已取消")
+			return nil
+		}
+		response = strings.ToLower(strings.TrimSpace(response))
+		if response != "y" && response != "yes" {
 			fmt.Println("❌ 操作已取消")
 			return nil
 		}
 	}
 
+	// 创建路径验证器
+	validator := security.NewPathValidator()
+	
 	// 执行恢复
 	successCount := 0
 	errorCount := 0
 
+	// 批量处理优化
+	batchSize := 10
+	if len(filesToRestore) > batchSize {
+		fmt.Printf("🔄 正在批量恢复 %d 个文件...\n", len(filesToRestore))
+	}
+
 	for i, file := range filesToRestore {
+		// 显示进度
+		if len(filesToRestore) > batchSize && !quiet {
+			fmt.Printf("进度: %d/%d\r", i+1, len(filesToRestore))
+		}
+
+		// 确定恢复路径
+		restorePath := getRestorePath(file, targetDir)
+		
+		// 验证恢复路径安全性
+		if err := validator.ValidateRestorePath(restorePath); err != nil {
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "⚠️  安全警告: %s - %v\n", file.Name, err)
+			}
+			continue
+		}
+
 		// 交互式确认
 		if interactive {
-			restorePath := getRestorePath(file, targetDir)
 			fmt.Printf("恢复 '%s' 到 '%s'? [y/N]: ", file.Name, restorePath)
 			var response string
-			fmt.Scanln(&response)
-			if response != "y" && response != "Y" {
+			_, err := fmt.Scanln(&response)
+			if err != nil {
+				if verbose {
+					fmt.Printf("⏭️  跳过: %s (输入错误)\n", file.Name)
+				}
+				continue
+			}
+			response = strings.ToLower(strings.TrimSpace(response))
+			if response != "y" && response != "yes" {
 				if verbose {
 					fmt.Printf("⏭️  跳过: %s\n", file.Name)
 				}
@@ -132,16 +170,24 @@ func runRestore(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		// 确定恢复路径
-		restorePath := getRestorePath(file, targetDir)
-
 		// 检查目标文件是否已存在
 		if !force {
 			if _, err := os.Stat(restorePath); err == nil {
-				if !quiet {
-					fmt.Fprintf(os.Stderr, "⚠️  文件已存在，跳过: %s\n", restorePath)
+				// 如果文件已存在，添加后缀
+				ext := filepath.Ext(restorePath)
+				base := restorePath[:len(restorePath)-len(ext)]
+				counter := 1
+				for {
+					newPath := fmt.Sprintf("%s_%d%s", base, counter, ext)
+					if _, err := os.Stat(newPath); os.IsNotExist(err) {
+						restorePath = newPath
+						break
+					}
+					counter++
 				}
-				continue
+				if !quiet {
+					fmt.Fprintf(os.Stderr, "⚠️  文件已存在，重命名为: %s\n", filepath.Base(restorePath))
+				}
 			}
 		}
 
@@ -160,15 +206,13 @@ func runRestore(cmd *cobra.Command, args []string) error {
 				fmt.Printf("✅ 已恢复: %s\n", file.Name)
 			}
 		}
-
-		// 显示进度
-		if !quiet && len(filesToRestore) > 5 {
-			fmt.Printf("进度: %d/%d\r", i+1, len(filesToRestore))
-		}
 	}
 
 	// 显示结果摘要
 	if !quiet {
+		if len(filesToRestore) > 10 {
+			fmt.Println() // 换行
+		}
 		fmt.Println() // 换行
 		if successCount > 0 {
 			fmt.Printf("✅ 成功恢复 %d 个文件\n", successCount)

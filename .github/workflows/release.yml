@@ -24,7 +24,7 @@ jobs:
           go-version: '1.21'
 
       - name: Run tests
-        run: go test -v ./...
+        run: go test -v -parallel=1 ./...
 
       - name: Build binaries
         run: |

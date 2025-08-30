@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/viper"
 
 	"delguard/internal/filesystem"
+	"delguard/internal/security"
 )
 
 var deleteCmd = &cobra.Command{
@@ -50,21 +51,40 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	// 展开所有文件路径（处理通配符）
 	var filesToDelete []string
 	for _, arg := range args {
-		matches, err := filepath.Glob(arg)
+		// 清理路径，防止路径遍历攻击
+		cleanArg := filepath.Clean(arg)
+		
+		// 验证路径长度
+		if len(cleanArg) > 4096 {
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "⚠️  警告: 路径过长 '%s'\n", cleanArg)
+			}
+			continue
+		}
+		
+		// 检查路径是否包含空字符
+		if strings.ContainsRune(cleanArg, 0) {
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "⚠️  警告: 路径包含非法字符 '%s'\n", cleanArg)
+			}
+			continue
+		}
+		
+		matches, err := filepath.Glob(cleanArg)
 		if err != nil {
 			if !quiet {
-				fmt.Fprintf(os.Stderr, "⚠️  警告: 无法处理路径 '%s': %v\n", arg, err)
+				fmt.Fprintf(os.Stderr, "⚠️  警告: 无法处理路径 '%s': %v\n", cleanArg, err)
 			}
 			continue
 		}
 
 		if len(matches) == 0 {
 			// 没有匹配的文件，检查是否是直接路径
-			if _, err := os.Stat(arg); err == nil {
-				filesToDelete = append(filesToDelete, arg)
+			if _, err := os.Stat(cleanArg); err == nil {
+				filesToDelete = append(filesToDelete, cleanArg)
 			} else {
 				if !quiet {
-					fmt.Fprintf(os.Stderr, "⚠️  警告: 文件不存在 '%s'\n", arg)
+					fmt.Fprintf(os.Stderr, "⚠️  警告: 文件不存在 '%s'\n", cleanArg)
 				}
 			}
 		} else {
@@ -76,6 +96,9 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("没有找到要删除的文件")
 	}
 
+	// 创建路径验证器
+	validator := security.NewPathValidator()
+	
 	// 验证文件并过滤
 	var validFiles []string
 	for _, file := range filesToDelete {
@@ -83,6 +106,14 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			if !quiet {
 				fmt.Fprintf(os.Stderr, "⚠️  警告: 无法获取绝对路径 '%s': %v\n", file, err)
+			}
+			continue
+		}
+
+		// 验证路径安全性
+		if err := validator.ValidateDeletePath(absPath); err != nil {
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "⚠️  安全警告: %v\n", err)
 			}
 			continue
 		}
@@ -101,6 +132,16 @@ func runDelete(cmd *cobra.Command, args []string) error {
 				fmt.Fprintf(os.Stderr, "⚠️  警告: '%s' 是目录，使用 -r 选项递归删除\n", file)
 			}
 			continue
+		}
+
+		// 检查是否为系统文件
+		if isSystemFile(absPath) {
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "⚠️  警告: '%s' 可能是系统文件，删除可能导致系统问题\n", file)
+			}
+			if !force {
+				continue
+			}
 		}
 
 		validFiles = append(validFiles, absPath)
@@ -145,7 +186,18 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	successCount := 0
 	errorCount := 0
 
-	for _, file := range validFiles {
+	// 批量处理优化
+	batchSize := 10
+	if len(validFiles) > batchSize {
+		fmt.Printf("🔄 正在批量处理 %d 个文件...\n", len(validFiles))
+	}
+
+	for i, file := range validFiles {
+		// 显示进度
+		if len(validFiles) > batchSize && !quiet {
+			fmt.Printf("进度: %d/%d\r", i+1, len(validFiles))
+		}
+
 		// 交互式确认
 		if interactive {
 			fmt.Printf("删除 '%s'? [y/N]: ", file)
@@ -182,6 +234,9 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 	// 显示结果摘要
 	if !quiet {
+		if len(validFiles) > 10 {
+			fmt.Println() // 添加换行
+		}
 		if successCount > 0 {
 			fmt.Printf("✅ 成功删除 %d 个项目到回收站\n", successCount)
 		}
@@ -195,4 +250,41 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// isSystemFile 检查是否为系统文件
+func isSystemFile(path string) bool {
+	// 检查文件属性
+	_, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	
+	// 检查文件名
+	name := strings.ToLower(filepath.Base(path))
+	systemFiles := []string{
+		"ntldr", "boot.ini", "bootmgr", "pagefile.sys", "hiberfil.sys",
+		"swapfile.sys", "desktop.ini", "thumbs.db", ".DS_Store",
+	}
+	
+	for _, sysFile := range systemFiles {
+		if name == sysFile {
+			return true
+		}
+	}
+	
+	// 检查目录名
+	dir := strings.ToLower(filepath.Dir(path))
+	systemDirs := []string{
+		"windows", "system32", "syswow64", "program files", "program files (x86)",
+		"programdata", "recovery", "boot", "msocache", "perflogs",
+	}
+	
+	for _, sysDir := range systemDirs {
+		if strings.Contains(dir, sysDir) {
+			return true
+		}
+	}
+	
+	return false
 }

@@ -1,6 +1,7 @@
 package filesystem
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -195,6 +196,7 @@ func (l *LinuxTrashManager) ValidateTrash() error {
 	// 创建必要的子目录
 	filesDir := filepath.Join(l.trashPath, "files")
 	infoDir := filepath.Join(l.trashPath, "info")
+	metadataDir := filepath.Join(l.trashPath, ".delguard_metadata")
 
 	if err := os.MkdirAll(filesDir, 0755); err != nil {
 		return fmt.Errorf("创建files目录失败: %v", err)
@@ -204,7 +206,47 @@ func (l *LinuxTrashManager) ValidateTrash() error {
 		return fmt.Errorf("创建info目录失败: %v", err)
 	}
 
+	if err := os.MkdirAll(metadataDir, 0755); err != nil {
+		return fmt.Errorf("创建元数据目录失败: %v", err)
+	}
+
 	return nil
+}
+
+// writeJSONMetadata 写入JSON格式的元数据文件
+func (l *LinuxTrashManager) writeJSONMetadata(metadataFile string, metadata TrashMetadata) error {
+	data, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化元数据失败: %v", err)
+	}
+	
+	return os.WriteFile(metadataFile, data, 0644)
+}
+
+// readJSONMetadata 读取JSON格式的元数据文件
+func (l *LinuxTrashManager) readJSONMetadata(metadataFile string) (string, time.Time) {
+	data, err := os.ReadFile(metadataFile)
+	if err != nil {
+		return "", time.Time{}
+	}
+	
+	var metadata TrashMetadata
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		return "", time.Time{}
+	}
+	
+	return metadata.OriginalPath, metadata.DeletedTime
+}
+
+// createJSONMetadata 创建JSON格式的元数据文件
+func (l *LinuxTrashManager) createJSONMetadata(metadataFile, originalPath string) error {
+	metadata := TrashMetadata{
+		OriginalPath: originalPath,
+		DeletedTime:  time.Now(),
+		Size:         0, // 将在MoveToTrash中更新
+	}
+	
+	return l.writeJSONMetadata(metadataFile, metadata)
 }
 
 // Clear 清空回收站
@@ -280,6 +322,11 @@ func (l *LinuxTrashManager) ListTrashFiles() ([]TrashFile, error) {
 
 	var trashFiles []TrashFile
 	for _, entry := range entries {
+		// 跳过隐藏文件和元数据目录
+		if entry.Name() == ".delguard_metadata" || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		
 		fullPath := filepath.Join(l.trashPath, entry.Name())
 		info, err := entry.Info()
 		if err != nil {
@@ -289,6 +336,12 @@ func (l *LinuxTrashManager) ListTrashFiles() ([]TrashFile, error) {
 		// 尝试读取对应的.trashinfo文件获取原始路径
 		infoFilePath := filepath.Join(l.infoPath, entry.Name()+".trashinfo")
 		originalPath, deletionTime := l.readTrashInfo(infoFilePath)
+		
+		// 如果.trashinfo文件不存在，尝试读取JSON元数据
+		if originalPath == "" {
+			metadataFile := filepath.Join(l.trashPath, ".delguard_metadata", entry.Name()+".json")
+			originalPath, deletionTime = l.readJSONMetadata(metadataFile)
+		}
 
 		trashFile := TrashFile{
 			Name:         entry.Name(),
