@@ -3,7 +3,7 @@
 Write-Host "🔨 DelGuard 跨平台构建开始..." -ForegroundColor Green
 
 # 设置版本信息
-$VERSION = "1.6.1"
+$VERSION = "1.6.3"
 $BUILD_TIME = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 $GIT_COMMIT = try { (git rev-parse --short HEAD 2>$null) } catch { "unknown" }
 

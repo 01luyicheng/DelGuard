@@ -13,7 +13,7 @@ fi
 # 设置参数
 OWNER="01luyicheng"  # GitHub用户名
 REPO="DelGuard"
-VERSION="v1.6.1"
+VERSION="v1.6.3"
 
 # 颜色定义
 RED='\033[0;31m'

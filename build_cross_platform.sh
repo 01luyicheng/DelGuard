@@ -5,7 +5,7 @@
 echo "🔨 DelGuard 跨平台构建开始..."
 
 # 设置版本信息
-VERSION="1.6.1"
+VERSION="1.6.3"
 BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 

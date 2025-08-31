@@ -361,8 +361,44 @@ function Show-CompletionInfo {
     Write-Warning "请重新打开 PowerShell 以使 PATH 和别名生效"
 }
 
+# 显示帮助信息
+function Show-Help {
+    Write-Host @"
+🛡️  DelGuard Windows 安装脚本
+
+使用方法: .\install.ps1 [选项]
+
+选项:
+    -Version <string>      指定要安装的版本 (默认: latest)
+    -InstallDir <string>   指定安装目录 (默认: `$env:ProgramFiles\DelGuard)
+    -Force                 强制重新安装，覆盖现有版本
+    -NoAlias               不配置PowerShell别名
+    -Help                  显示此帮助信息
+
+示例:
+    .\install.ps1                        # 安装最新版本
+    .\install.ps1 -Version v1.6.3       # 安装指定版本
+    .\install.ps1 -InstallDir C:\Tools   # 安装到指定目录
+    .\install.ps1 -Force -NoAlias       # 强制安装，不配置别名
+
+"@
+}
+
 # 主函数
 function Main {
+    param(
+        [string]$Version = "latest",
+        [string]$InstallDir = "$env:ProgramFiles\DelGuard",
+        [switch]$Force,
+        [switch]$NoAlias,
+        [switch]$Help
+    )
+
+    if ($Help) {
+        Show-Help
+        return
+    }
+
     Write-Host "🛡️  DelGuard Windows 智能安装脚本" -ForegroundColor Cyan
     Write-Host "====================================" -ForegroundColor Cyan
     Write-Host ""
@@ -371,6 +407,13 @@ function Main {
         # 检查系统环境
         Test-Dependencies
         Test-Permissions
+        
+        # 检查现有安装
+        $binaryPath = Join-Path $InstallDir "delguard.exe"
+        if (Test-Path $binaryPath -and -not $Force) {
+            Write-Warning "DelGuard 已安装，使用 -Force 强制重新安装"
+            return
+        }
         
         # 下载和安装
         Get-LatestVersion
@@ -397,4 +440,4 @@ function Main {
 }
 
 # 运行主函数
-Main
+Main @args

@@ -1,42 +1,22 @@
-# DelGuard 安装脚本
+# DelGuard 安装脚本文档
 
-本目录包含 DelGuard 的智能安装脚本，支持跨平台自动检测和安装。
+这个目录包含了 DelGuard 的完整跨平台安装脚本套件。
 
-## 🚀 快速安装
+## 🚀 快速开始
 
-### 一键安装（推荐）
-
+### Linux/macOS
 ```bash
-# Unix/Linux/macOS
-curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.sh | bash
-
-# Windows PowerShell
-iwr -useb https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/install.ps1 | iex
+curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/install.sh | bash
 ```
 
-### 手动安装
-
-#### Linux/macOS
-
-```bash
-# 下载安装脚本
-curl -O https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/install.sh
-
-# 添加执行权限
-chmod +x install.sh
-
-# 运行安装
-sudo ./install.sh
-```
-
-#### Windows
-
+### Windows
 ```powershell
-# 下载安装脚本
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/install.ps1" -OutFile "install.ps1"
+iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/install-oneline.ps1'))
+```
 
-# 以管理员身份运行
-.\install.ps1
+### 跨平台快速安装
+```bash
+curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.sh | bash
 ```
 
 ## 📋 脚本功能
