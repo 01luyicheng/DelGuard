@@ -84,7 +84,7 @@ func (d *DarwinTrashManager) MoveToTrash(filePath string) error {
 		Permissions:  fileInfo.Mode().String(),
 		SystemTrash:  false,
 	}
-	
+
 	metadataFile := filepath.Join(metadataDir, uniqueName+".json")
 	if err := d.writeJSONMetadata(metadataFile, metadata); err != nil {
 		return fmt.Errorf("创建元数据文件失败: %v", err)
@@ -123,13 +123,13 @@ func (d *DarwinTrashManager) ListTrashContents() ([]TrashItem, error) {
 
 	metadataDir := filepath.Join(d.trashPath, ".delguard_metadata")
 	var trashItems []TrashItem
-	
+
 	for _, entry := range entries {
 		// 跳过元数据目录和隐藏文件
 		if entry.Name() == ".delguard_metadata" || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
-		
+
 		fullPath := filepath.Join(d.trashPath, entry.Name())
 		info, err := entry.Info()
 		if err != nil {
@@ -139,7 +139,7 @@ func (d *DarwinTrashManager) ListTrashContents() ([]TrashItem, error) {
 		// 尝试读取对应的元数据文件获取原始路径
 		metadataFile := filepath.Join(metadataDir, entry.Name()+".json")
 		originalPath, deletedTime := d.readJSONMetadata(metadataFile)
-		
+
 		if deletedTime.IsZero() {
 			deletedTime = info.ModTime() // 使用修改时间作为回退
 		}
@@ -314,7 +314,7 @@ func (d *DarwinTrashManager) writeJSONMetadata(metadataFile string, metadata Tra
 	if err != nil {
 		return fmt.Errorf("序列化元数据失败: %v", err)
 	}
-	
+
 	return os.WriteFile(metadataFile, data, 0644)
 }
 
@@ -324,12 +324,12 @@ func (d *DarwinTrashManager) readJSONMetadata(metadataFile string) (string, time
 	if err != nil {
 		return "", time.Time{}
 	}
-	
+
 	var metadata TrashMetadata
 	if err := json.Unmarshal(data, &metadata); err != nil {
 		return "", time.Time{}
 	}
-	
+
 	return metadata.OriginalPath, metadata.DeletedTime
 }
 

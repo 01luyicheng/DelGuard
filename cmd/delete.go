@@ -53,7 +53,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	for _, arg := range args {
 		// 清理路径，防止路径遍历攻击
 		cleanArg := filepath.Clean(arg)
-		
+
 		// 验证路径长度
 		if len(cleanArg) > 4096 {
 			if !quiet {
@@ -61,7 +61,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 			}
 			continue
 		}
-		
+
 		// 检查路径是否包含空字符
 		if strings.ContainsRune(cleanArg, 0) {
 			if !quiet {
@@ -69,7 +69,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 			}
 			continue
 		}
-		
+
 		matches, err := filepath.Glob(cleanArg)
 		if err != nil {
 			if !quiet {
@@ -98,7 +98,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 	// 创建路径验证器
 	validator := security.NewPathValidator()
-	
+
 	// 验证文件并过滤
 	var validFiles []string
 	for _, file := range filesToDelete {
@@ -259,29 +259,29 @@ func isSystemFile(path string) bool {
 	if err != nil {
 		return false
 	}
-	
+
 	// 检查文件名
 	name := strings.ToLower(filepath.Base(path))
 	systemFiles := []string{
 		"ntldr", "boot.ini", "bootmgr", "pagefile.sys", "hiberfil.sys",
 		"swapfile.sys", "desktop.ini", "thumbs.db", ".DS_Store",
 	}
-	
+
 	for _, sysFile := range systemFiles {
 		if name == sysFile {
 			return true
 		}
 	}
-	
+
 	// 检查目录名 - 使用动态系统盘符检测
 	dir := strings.ToLower(filepath.Dir(path))
-	
+
 	// 动态获取系统盘符
 	systemDrive := os.Getenv("SystemDrive")
 	if systemDrive == "" {
 		systemDrive = "C:"
 	}
-	
+
 	systemDirs := []string{
 		"windows", "system32", "syswow64", "program files", "program files (x86)",
 		"programdata", "recovery", "boot", "msocache", "perflogs",
@@ -293,13 +293,13 @@ func isSystemFile(path string) bool {
 		if strings.Contains(dir, sysDir) {
 			return true
 		}
-		
+
 		// 检查绝对路径
 		absSysDir := filepath.Join(strings.ToLower(systemDrive), sysDir)
 		if strings.Contains(dir, absSysDir) {
 			return true
 		}
 	}
-	
+
 	return false
 }

@@ -14,10 +14,6 @@ import (
 	"time"
 )
 
-const (
-	CREATE_NO_WINDOW = 0x08000000 // Windows创建进程时隐藏窗口的标志
-)
-
 // TrashMetadata 回收站元数据结构
 type TrashMetadata struct {
 	OriginalPath string    `json:"original_path"`
@@ -121,12 +117,12 @@ func (w *WindowsTrashManager) MoveToTrash(filePath string) error {
 func (w *WindowsTrashManager) moveToRecycleBin(filePath string) error {
 	// 使用Windows系统回收站API
 	// 首先尝试使用系统回收站，失败则回退到DelGuard专用回收站
-	
+
 	// 尝试使用系统回收站
 	if err := w.moveToSystemRecycleBin(filePath); err == nil {
 		return nil
 	}
-	
+
 	// 系统回收站失败，使用DelGuard专用回收站
 	return w.moveToDelGuardTrash(filePath)
 }
@@ -136,12 +132,12 @@ func (w *WindowsTrashManager) moveToSystemRecycleBin(filePath string) error {
 	// 在Windows上使用SHFileOperationW API来移动到系统回收站
 	// 由于Go的限制，我们使用go-winio库来调用Windows API
 	// 这里我们实现一个更可靠的系统回收站移动
-	
+
 	// 首先检查文件是否存在
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return fmt.Errorf("文件不存在: %s", filePath)
 	}
-	
+
 	// 尝试使用系统回收站 - 使用cmd.exe的move命令作为临时解决方案
 	// 在实际生产环境中应该使用Windows API
 	return w.moveToSystemRecycleBinViaCmd(filePath)
@@ -150,17 +146,17 @@ func (w *WindowsTrashManager) moveToSystemRecycleBin(filePath string) error {
 // moveToSystemRecycleBinViaCmd 通过cmd命令移动到系统回收站
 func (w *WindowsTrashManager) moveToSystemRecycleBinViaCmd(filePath string) error {
 	// 使用多种方法尝试将文件移动到系统回收站
-	
+
 	// 方法1: 使用PowerShell（最可靠的方法）
 	if err := w.moveToRecycleBinWithPowerShell(filePath); err == nil {
 		return nil
 	}
-	
+
 	// 方法2: 使用Windows Shell API（备用方案）
 	if err := w.moveToRecycleBinWithShellAPI(filePath); err == nil {
 		return nil
 	}
-	
+
 	// 方法3: 使用DelGuard专用回收站（最终回退）
 	return w.moveToDelGuardTrash(filePath)
 }
@@ -171,17 +167,17 @@ func (w *WindowsTrashManager) moveToRecycleBinWithShellAPI(filePath string) erro
 	if err := w.validatePath(filePath); err != nil {
 		return fmt.Errorf("路径验证失败: %v", err)
 	}
-	
+
 	// 检查文件是否存在
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return fmt.Errorf("文件不存在: %s", filePath)
 	}
-	
+
 	// 检查文件权限
 	if _, err := os.Stat(filePath); err != nil {
 		return fmt.Errorf("无法访问文件: %v", err)
 	}
-	
+
 	// 获取绝对路径
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
@@ -240,27 +236,27 @@ End If
 
 WScript.Quit 0
 `, dirPath, fileName, dirPath, fileName, dirPath, fileName)
-	
+
 	// 创建安全的临时VBS文件
 	tempDir := os.TempDir()
 	if err := os.MkdirAll(tempDir, 0700); err != nil {
 		return fmt.Errorf("无法创建临时目录: %v", err)
 	}
-	
+
 	tempVBS := filepath.Join(tempDir, fmt.Sprintf("delguard_trash_%d_%d.vbs", time.Now().UnixNano(), os.Getpid()))
-	
+
 	// 使用原子写入避免竞争条件
 	tempFile := tempVBS + ".tmp"
 	if err := os.WriteFile(tempFile, []byte(vbsScript), 0600); err != nil {
 		return fmt.Errorf("创建VBS脚本失败: %v", err)
 	}
-	
+
 	// 原子重命名
 	if err := os.Rename(tempFile, tempVBS); err != nil {
 		os.Remove(tempFile)
 		return fmt.Errorf("创建VBS脚本失败: %v", err)
 	}
-	
+
 	defer func() {
 		// 确保临时文件被清理，即使出错也尝试清理
 		if err := os.Remove(tempVBS); err != nil {
@@ -272,16 +268,15 @@ WScript.Quit 0
 			// 静默清理，避免干扰用户界面
 		}
 	}()
-	
+
 	// 执行VBS脚本，增加超时和错误处理
 	cmd := exec.Command("wscript", "//Nologo", "//T:30", tempVBS)
-	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: CREATE_NO_WINDOW}
-	
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("Shell API移动失败: %v, 输出: %s", err, string(output))
 	}
-	
+
 	// 验证文件是否已被删除
 	if _, err := os.Stat(absPath); err == nil {
 		return fmt.Errorf("文件未被移动到回收站")
@@ -299,18 +294,18 @@ func (w *WindowsTrashManager) moveToRecycleBinWithPowerShell(filePath string) er
 	if err := w.validatePath(filePath); err != nil {
 		return fmt.Errorf("路径验证失败: %v", err)
 	}
-	
+
 	// 获取绝对路径并验证
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
 		return fmt.Errorf("无法获取绝对路径: %v", err)
 	}
-	
+
 	// 检查文件是否存在
 	if _, err := os.Stat(absPath); os.IsNotExist(err) {
 		return fmt.Errorf("文件不存在: %s", absPath)
 	}
-	
+
 	// 使用更安全的方式构建PowerShell命令参数
 	// 使用Base64编码防止命令注入
 	psScript := `
@@ -377,19 +372,19 @@ try {
     exit 1
 }
 `
-	
+
 	// 执行PowerShell命令，使用参数传递避免命令注入
 	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psScript, "-FilePath", absPath)
-	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: CREATE_NO_WINDOW}
-	
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
 	// 设置超时防止进程挂起
 	cmd.Env = append(os.Environ(), "COMSPEC=cmd.exe")
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("PowerShell移动失败: %v, 输出: %s", err, string(output))
 	}
-	
+
 	// 验证文件是否已被删除
 	if _, err := os.Stat(absPath); err == nil {
 		return fmt.Errorf("文件未被移动到回收站")
@@ -397,7 +392,7 @@ try {
 		// 处理其他错误情况
 		return fmt.Errorf("检查文件状态时发生错误: %v", err)
 	}
-	
+
 	return nil
 }
 
@@ -413,7 +408,7 @@ func (w *WindowsTrashManager) moveToDelGuardTrash(filePath string) error {
 	if userProfile == "" {
 		return fmt.Errorf("无法获取用户配置目录")
 	}
-	
+
 	// 确保源文件可访问
 	if _, err := os.Stat(filePath); err != nil {
 		return fmt.Errorf("无法访问源文件: %v", err)
@@ -442,7 +437,7 @@ func (w *WindowsTrashManager) moveToDelGuardTrash(filePath string) error {
 	if fileName == "" || fileName == "." || fileName == ".." {
 		return fmt.Errorf("无效的文件名: %s", fileName)
 	}
-	
+
 	targetPath := filepath.Join(delguardTrash, fileName)
 
 	// 如果目标文件已存在，添加时间戳
@@ -452,7 +447,7 @@ func (w *WindowsTrashManager) moveToDelGuardTrash(filePath string) error {
 			break
 		}
 		timestamp := time.Now().Format("20060102_150405")
-		
+
 		// 安全地处理文件名和扩展名
 		ext := filepath.Ext(fileName)
 		nameWithoutExt := strings.TrimSuffix(fileName, ext)
@@ -460,8 +455,8 @@ func (w *WindowsTrashManager) moveToDelGuardTrash(filePath string) error {
 			nameWithoutExt = "file"
 			ext = ".tmp"
 		}
-		
-		targetPath = filepath.Join(delguardTrash, fmt.Sprintf("%s_%s_%d%s", 
+
+		targetPath = filepath.Join(delguardTrash, fmt.Sprintf("%s_%s_%d%s",
 			nameWithoutExt, timestamp, counter, ext))
 		counter++
 	}
@@ -483,7 +478,7 @@ func (w *WindowsTrashManager) moveToDelGuardTrash(filePath string) error {
 		Hash:         fileHash,
 		SystemTrash:  false, // 标记为DelGuard专用回收站
 	}
-	
+
 	metadataFile := filepath.Join(metadataDir, filepath.Base(targetPath)+".json")
 	if err := w.writeJSONMetadata(metadataFile, metadata); err != nil {
 		return fmt.Errorf("创建元数据文件失败: %v", err)
@@ -496,7 +491,7 @@ func (w *WindowsTrashManager) moveToDelGuardTrash(filePath string) error {
 // GetTrashPath 获取Windows回收站路径
 func (w *WindowsTrashManager) GetTrashPath() (string, error) {
 	// 优先使用DelGuard专用回收站目录
-// 获取用户回收站路径
+	// 获取用户回收站路径
 	userProfile := os.Getenv("USERPROFILE")
 	if userProfile == "" {
 		// 尝试获取HOMEDRIVE和HOMEPATH
@@ -577,7 +572,7 @@ func (w *WindowsTrashManager) ListTrashFiles() ([]TrashFile, error) {
 		metadataFile := filepath.Join(metadataDir, entry.Name()+".json")
 		var originalPath string
 		var deletedTime time.Time
-		
+
 		if metadata, err := w.readJSONMetadata(metadataFile); err == nil {
 			originalPath = metadata.OriginalPath
 			deletedTime = metadata.DeletedTime
@@ -586,7 +581,7 @@ func (w *WindowsTrashManager) ListTrashFiles() ([]TrashFile, error) {
 			deletedTime = info.ModTime()
 			originalPath = fullPath // 如果没有元数据，使用当前路径
 		}
-		
+
 		// 标准化路径，确保Windows路径分隔符一致
 		originalPath = filepath.Clean(originalPath)
 
@@ -613,7 +608,7 @@ func (w *WindowsTrashManager) RestoreFile(trashFile TrashFile, targetPath string
 	if err := w.validatePath(trashFile.TrashPath); err != nil {
 		return fmt.Errorf("回收站文件路径验证失败: %v", err)
 	}
-	
+
 	// 检查文件是否存在
 	if _, err := os.Stat(trashFile.TrashPath); os.IsNotExist(err) {
 		return fmt.Errorf("回收站文件不存在: %s", trashFile.TrashPath)
@@ -623,7 +618,7 @@ func (w *WindowsTrashManager) RestoreFile(trashFile TrashFile, targetPath string
 	if targetPath == "" && trashFile.OriginalPath != "" {
 		targetPath = trashFile.OriginalPath
 	}
-	
+
 	// 确保使用绝对路径
 	var err error
 	targetPath, err = filepath.Abs(targetPath)
@@ -719,19 +714,19 @@ func (w *WindowsTrashManager) EmptyTrash() error {
 	// 删除所有文件和目录，但跳过隐藏目录和元数据目录
 	for _, entry := range entries {
 		name := entry.Name()
-		
+
 		// 跳过元数据目录和隐藏文件
 		if name == ".metadata" || strings.HasPrefix(name, ".") {
 			continue
 		}
-		
+
 		fullPath := filepath.Join(trashPath, name)
-		
+
 		// 验证要删除的文件路径
 		if err := w.validatePath(fullPath); err != nil {
 			return fmt.Errorf("要删除的文件路径验证失败: %v", err)
 		}
-		
+
 		err := os.RemoveAll(fullPath)
 		if err != nil {
 			return fmt.Errorf("删除文件失败 %s: %v", fullPath, err)
@@ -815,7 +810,7 @@ func (w *WindowsTrashManager) Clear() error {
 			return nil
 		}
 	}
-	
+
 	// 回退到DelGuard专用回收站
 	return w.EmptyTrash()
 }
@@ -850,13 +845,13 @@ try {
 }
 `
 	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psScript)
-	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: CREATE_NO_WINDOW}
-	
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("清空系统回收站失败: %v, 输出: %s", err, string(output))
 	}
-	
+
 	return nil
 }
 
@@ -899,7 +894,7 @@ func (w *WindowsTrashManager) CleanOldFiles(maxDays int) error {
 	if maxDays < 0 {
 		return fmt.Errorf("清理天数不能为负数")
 	}
-	
+
 	files, err := w.ListTrashFiles()
 	if err != nil {
 		return err
@@ -913,11 +908,11 @@ func (w *WindowsTrashManager) CleanOldFiles(maxDays int) error {
 			if err := w.validatePath(file.TrashPath); err != nil {
 				return fmt.Errorf("要清理的文件路径验证失败: %v", err)
 			}
-			
+
 			if err := os.RemoveAll(file.TrashPath); err != nil {
 				return fmt.Errorf("清理过期文件失败 %s: %v", file.TrashPath, err)
 			}
-			
+
 			// 清理对应的元数据文件
 			userProfile := os.Getenv("USERPROFILE")
 			if userProfile != "" {
@@ -936,23 +931,23 @@ func (w *WindowsTrashManager) writeJSONMetadata(metadataFile string, metadata Tr
 	if err := w.validateMetadataPath(metadataFile); err != nil {
 		return fmt.Errorf("元数据文件路径验证失败: %v", err)
 	}
-	
+
 	data, err := json.MarshalIndent(metadata, "", "  ")
 	if err != nil {
 		return fmt.Errorf("序列化元数据失败: %v", err)
 	}
-	
+
 	// 确保目录存在
 	if err := os.MkdirAll(filepath.Dir(metadataFile), 0755); err != nil {
 		return fmt.Errorf("创建元数据目录失败: %v", err)
 	}
-	
+
 	// 使用临时文件和原子写入，防止数据损坏
 	tempFile := metadataFile + ".tmp"
 	if err := os.WriteFile(tempFile, data, 0644); err != nil {
 		return fmt.Errorf("写入临时元数据文件失败: %v", err)
 	}
-	
+
 	return os.Rename(tempFile, metadataFile)
 }
 
@@ -962,32 +957,32 @@ func (w *WindowsTrashManager) readJSONMetadata(metadataFile string) (*TrashMetad
 	if err := w.validateMetadataPath(metadataFile); err != nil {
 		return nil, fmt.Errorf("元数据文件路径验证失败: %v", err)
 	}
-	
+
 	// 检查文件是否存在且可读
 	if _, err := os.Stat(metadataFile); os.IsNotExist(err) {
 		return nil, fmt.Errorf("元数据文件不存在: %v", err)
 	}
-	
+
 	data, err := os.ReadFile(metadataFile)
 	if err != nil {
 		return nil, fmt.Errorf("读取元数据文件失败: %v", err)
 	}
-	
+
 	// 验证JSON数据大小，防止内存耗尽
 	if len(data) > 10*1024*1024 { // 限制为10MB
 		return nil, fmt.Errorf("元数据文件过大")
 	}
-	
+
 	var metadata TrashMetadata
 	if err := json.Unmarshal(data, &metadata); err != nil {
 		return nil, fmt.Errorf("解析元数据失败: %v", err)
 	}
-	
+
 	// 验证元数据内容
 	if err := w.validateMetadataContent(&metadata); err != nil {
 		return nil, fmt.Errorf("元数据内容验证失败: %v", err)
 	}
-	
+
 	return &metadata, nil
 }
 
@@ -1012,12 +1007,12 @@ func (w *WindowsTrashManager) verifyFileIntegrity(filePath string, expectedHash 
 	if expectedHash == "" {
 		return true // 如果没有哈希值，跳过验证
 	}
-	
+
 	actualHash, err := w.calculateFileHash(filePath)
 	if err != nil {
 		return false
 	}
-	
+
 	return actualHash == expectedHash
 }
 
@@ -1083,7 +1078,7 @@ func (w *WindowsTrashManager) validateMetadataPath(metadataFile string) error {
 	if err != nil {
 		return fmt.Errorf("无法获取期望目录的绝对路径: %v", err)
 	}
-	
+
 	absMetadataFile, err := filepath.Abs(metadataFile)
 	if err != nil {
 		return fmt.Errorf("无法获取元数据文件的绝对路径: %v", err)
@@ -1094,7 +1089,7 @@ func (w *WindowsTrashManager) validateMetadataPath(metadataFile string) error {
 	if err != nil {
 		return fmt.Errorf("无法计算相对路径: %v", err)
 	}
-	
+
 	// 检查相对路径是否包含".."，防止目录遍历
 	if strings.Contains(relPath, "..") {
 		return fmt.Errorf("元数据文件路径不在允许的目录内")
@@ -1113,32 +1108,32 @@ func (w *WindowsTrashManager) validateMetadataContent(metadata *TrashMetadata) e
 	if metadata == nil {
 		return fmt.Errorf("元数据不能为空")
 	}
-	
+
 	// 验证原始路径
 	if metadata.OriginalPath == "" {
 		return fmt.Errorf("原始路径不能为空")
 	}
-	
+
 	// 验证文件名
 	if metadata.FileName == "" {
 		return fmt.Errorf("文件名不能为空")
 	}
-	
+
 	// 验证文件大小
 	if metadata.Size < 0 {
 		return fmt.Errorf("文件大小不能为负数")
 	}
-	
+
 	// 验证时间
 	if metadata.DeletedTime.IsZero() {
 		return fmt.Errorf("删除时间无效")
 	}
-	
+
 	// 验证文件权限格式
 	if metadata.Permissions == "" {
 		return fmt.Errorf("文件权限不能为空")
 	}
-	
+
 	return nil
 }
 
@@ -1163,7 +1158,7 @@ func (w *WindowsTrashManager) validatePath(path string) error {
 	// 使用filepath.Clean进行严格路径清理
 	cleanPath := filepath.Clean(absPath)
 	// 检查清理后的路径是否仍然包含..
-	if strings.Contains(filepath.ToSlash(cleanPath), "../") || 
+	if strings.Contains(filepath.ToSlash(cleanPath), "../") ||
 		strings.Contains(filepath.ToSlash(cleanPath), "..\\") {
 		return fmt.Errorf("路径包含目录遍历字符")
 	}
@@ -1228,7 +1223,7 @@ func (w *WindowsTrashManager) validatePath(path string) error {
 		blockedExts := []string{
 			".sys",
 		}
-		
+
 		for _, blocked := range blockedExts {
 			if ext == blocked {
 				return fmt.Errorf("不允许操作系统文件类型: %s", ext)
@@ -1256,7 +1251,7 @@ func (w *WindowsTrashManager) moveFileWithProgress(src, dst string) error {
 	// 如果源和目标在同一驱动器，直接重命名
 	srcDrive := filepath.VolumeName(src)
 	dstDrive := filepath.VolumeName(dst)
-	
+
 	if srcDrive == dstDrive {
 		// 先尝试重命名
 		if err := os.Rename(src, dst); err == nil {

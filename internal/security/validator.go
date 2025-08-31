@@ -34,13 +34,13 @@ func (pv *PathValidator) ValidateDeletePath(path string) error {
 
 	// 检查路径长度
 	if len(path) > 4096 {
-		return errors.NewError(errors.ErrTypeInvalidPath, 
+		return errors.NewError(errors.ErrTypeInvalidPath,
 			"路径过长", nil)
 	}
 
 	// 检查路径是否包含空字符
 	if strings.ContainsRune(path, 0) {
-		return errors.NewError(errors.ErrTypeInvalidPath, 
+		return errors.NewError(errors.ErrTypeInvalidPath,
 			"路径包含非法字符", nil)
 	}
 
@@ -52,13 +52,13 @@ func (pv *PathValidator) ValidateDeletePath(path string) error {
 
 	// 清理路径，防止路径遍历攻击
 	cleanPath := filepath.Clean(absPath)
-	
+
 	// 检查清理后的路径是否有效
 	if strings.Contains(cleanPath, "..") {
-		return errors.NewError(errors.ErrTypeInvalidPath, 
+		return errors.NewError(errors.ErrTypeInvalidPath,
 			"路径包含目录遍历字符", nil)
 	}
-	
+
 	// 检查是否为符号链接
 	if info, err := os.Lstat(cleanPath); err == nil && info.Mode()&os.ModeSymlink != 0 {
 		// 获取符号链接的目标路径
@@ -78,13 +78,13 @@ func (pv *PathValidator) ValidateDeletePath(path string) error {
 
 	// 检查是否为受保护路径
 	if pv.isProtectedPath(cleanPath) {
-		return errors.NewError(errors.ErrTypePermissionDenied, 
+		return errors.NewError(errors.ErrTypePermissionDenied,
 			fmt.Sprintf("不能删除受保护的路径: %s", cleanPath), nil)
 	}
 
 	// 检查是否为系统关键路径
 	if pv.isSystemPath(cleanPath) {
-		return errors.NewError(errors.ErrTypePermissionDenied, 
+		return errors.NewError(errors.ErrTypePermissionDenied,
 			fmt.Sprintf("不能删除系统关键路径: %s", cleanPath), nil)
 	}
 
@@ -94,10 +94,10 @@ func (pv *PathValidator) ValidateDeletePath(path string) error {
 		".sys", ".dll", ".exe", ".msi", ".com", ".bat", ".cmd",
 		".drv", ".vxd", ".386", ".cpl", ".scr", ".pif",
 	}
-	
+
 	for _, blocked := range blockedExts {
 		if ext == blocked {
-			return errors.NewError(errors.ErrTypePermissionDenied, 
+			return errors.NewError(errors.ErrTypePermissionDenied,
 				fmt.Sprintf("不能删除系统文件类型: %s", ext), nil)
 		}
 	}
@@ -128,10 +128,10 @@ func (pv *PathValidator) isSystemPath(path string) bool {
 // getProtectedPaths 获取受保护路径列表
 func getProtectedPaths() []string {
 	var paths []string
-	
+
 	// 添加用户主目录的重要子目录
 	if homeDir, err := os.UserHomeDir(); err == nil {
-		paths = append(paths, 
+		paths = append(paths,
 			filepath.Join(homeDir, "Desktop"),
 			filepath.Join(homeDir, "Documents"),
 			filepath.Join(homeDir, "Downloads"),
@@ -147,7 +147,7 @@ func getProtectedPaths() []string {
 			filepath.Join(homeDir, "Searches"),
 		)
 	}
-	
+
 	// 添加常见的敏感目录
 	if homeDir, err := os.UserHomeDir(); err == nil {
 		paths = append(paths,
@@ -162,14 +162,14 @@ func getProtectedPaths() []string {
 			filepath.Join(homeDir, ".git-credentials"),
 		)
 	}
-	
+
 	return paths
 }
 
 // getSystemPaths 获取系统关键路径列表
 func getSystemPaths() []string {
 	var paths []string
-	
+
 	switch filepath.Separator {
 	case '\\': // Windows
 		// 动态获取系统盘符
@@ -177,7 +177,7 @@ func getSystemPaths() []string {
 		if systemDrive == "" {
 			systemDrive = "C:"
 		}
-		
+
 		// 获取用户配置目录
 		userProfile := os.Getenv("USERPROFILE")
 		var userDrive string
@@ -186,7 +186,7 @@ func getSystemPaths() []string {
 		} else {
 			userDrive = systemDrive
 		}
-		
+
 		paths = []string{
 			filepath.Join(systemDrive, "Windows"),
 			filepath.Join(systemDrive, "Program Files"),
@@ -224,13 +224,13 @@ func getSystemPaths() []string {
 			"/var",
 			"/tmp",
 			"/root",
-			"/snap", // Ubuntu Snap目录
+			"/snap",         // Ubuntu Snap目录
 			"/Applications", // macOS
-			"/System", // macOS
-			"/Library", // macOS
+			"/System",       // macOS
+			"/Library",      // macOS
 		}
 	}
-	
+
 	return paths
 }
 
@@ -249,17 +249,17 @@ func (pv *PathValidator) ValidateRestorePath(targetPath string) error {
 
 	// 清理路径，防止路径遍历攻击
 	absPath = filepath.Clean(absPath)
-	
+
 	// 检查路径遍历攻击
 	if strings.Contains(absPath, "..") {
-		return errors.NewError(errors.ErrTypeInvalidPath, 
+		return errors.NewError(errors.ErrTypeInvalidPath,
 			"路径包含非法字符", nil)
 	}
 
 	// 检查目标目录是否存在
 	targetDir := filepath.Dir(absPath)
 	if _, err := os.Stat(targetDir); os.IsNotExist(err) {
-		return errors.NewError(errors.ErrTypeInvalidPath, 
+		return errors.NewError(errors.ErrTypeInvalidPath,
 			fmt.Sprintf("目标目录不存在: %s", targetDir), nil)
 	}
 

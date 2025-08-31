@@ -22,10 +22,10 @@ type Config struct {
 
 // TrashConfig 回收站配置
 type TrashConfig struct {
-	AutoClean     bool   `yaml:"auto_clean" mapstructure:"auto_clean"`
-	MaxDays       int    `yaml:"max_days" mapstructure:"max_days"`
-	ConfirmDelete bool   `yaml:"confirm_delete" mapstructure:"confirm_delete"`
-	MaxSize       string `yaml:"max_size" mapstructure:"max_size"`
+	AutoClean      bool   `yaml:"auto_clean" mapstructure:"auto_clean"`
+	MaxDays        int    `yaml:"max_days" mapstructure:"max_days"`
+	ConfirmDelete  bool   `yaml:"confirm_delete" mapstructure:"confirm_delete"`
+	MaxSize        string `yaml:"max_size" mapstructure:"max_size"`
 	UseSystemTrash bool   `yaml:"use_system_trash" mapstructure:"use_system_trash"`
 }
 
@@ -48,16 +48,16 @@ type UIConfig struct {
 
 // InstallConfig 安装配置
 type InstallConfig struct {
-	SystemWide    bool   `yaml:"system_wide" mapstructure:"system_wide"`
-	InstallDir    string `yaml:"install_dir" mapstructure:"install_dir"`
-	CreateAlias   bool   `yaml:"create_alias" mapstructure:"create_alias"`
+	SystemWide     bool   `yaml:"system_wide" mapstructure:"system_wide"`
+	InstallDir     string `yaml:"install_dir" mapstructure:"install_dir"`
+	CreateAlias    bool   `yaml:"create_alias" mapstructure:"create_alias"`
 	BackupOriginal bool   `yaml:"backup_original" mapstructure:"backup_original"`
 }
 
 // SecurityConfig 安全设置
 type SecurityConfig struct {
-	StrictMode       bool     `yaml:"strict_mode" mapstructure:"strict_mode"`
-	MaxPathLength    int      `yaml:"max_path_length" mapstructure:"max_path_length"`
+	StrictMode        bool     `yaml:"strict_mode" mapstructure:"strict_mode"`
+	MaxPathLength     int      `yaml:"max_path_length" mapstructure:"max_path_length"`
 	AllowedExtensions []string `yaml:"allowed_extensions" mapstructure:"allowed_extensions"`
 	BlockedExtensions []string `yaml:"blocked_extensions" mapstructure:"blocked_extensions"`
 }
@@ -145,7 +145,7 @@ func setDefaults() {
 	viper.SetDefault("performance.batch_size", 10)
 	viper.SetDefault("performance.buffer_size", 8192)
 	viper.SetDefault("performance.max_concurrent", 5)
-	
+
 	// 其他全局配置
 	viper.SetDefault("verbose", false)
 	viper.SetDefault("force", false)

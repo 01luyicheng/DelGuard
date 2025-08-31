@@ -122,7 +122,7 @@ func runRestore(cmd *cobra.Command, args []string) error {
 
 	// 创建路径验证器
 	validator := security.NewPathValidator()
-	
+
 	// 执行恢复
 	successCount := 0
 	errorCount := 0
@@ -141,7 +141,7 @@ func runRestore(cmd *cobra.Command, args []string) error {
 
 		// 确定恢复路径
 		restorePath := getRestorePath(file, targetDir)
-		
+
 		// 验证恢复路径安全性
 		if err := validator.ValidateRestorePath(restorePath); err != nil {
 			if !quiet {

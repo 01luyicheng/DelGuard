@@ -20,7 +20,7 @@ func ParseSize(sizeStr string) (int64, error) {
 	// 正则匹配数字和单位
 	re := regexp.MustCompile(`^(\d+(?:\.\d+)?)\s*([KMGT]?B?)$`)
 	matches := re.FindStringSubmatch(strings.ToUpper(sizeStr))
-	
+
 	if len(matches) != 3 {
 		return 0, fmt.Errorf("无效的大小格式: %s", sizeStr)
 	}
@@ -34,7 +34,7 @@ func ParseSize(sizeStr string) (int64, error) {
 	// 解析单位
 	unit := matches[2]
 	var multiplier float64
-	
+
 	switch unit {
 	case "B", "":
 		multiplier = 1

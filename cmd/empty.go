@@ -65,7 +65,7 @@ func runEmpty(cmd *cobra.Command, args []string) error {
 	fileCount := 0
 	dirCount := 0
 	oldestFile := time.Now()
-	
+
 	for _, file := range trashFiles {
 		totalSize += file.Size
 		if file.IsDirectory {
@@ -81,9 +81,9 @@ func runEmpty(cmd *cobra.Command, args []string) error {
 	// 预览模式
 	if dryRun {
 		fmt.Printf("🔍 预览模式 - 将要永久删除 %d 个项目:\n", len(trashFiles))
-		fmt.Printf("   📄 文件: %d个, 📁 目录: %d个, 总大小: %s\n", 
+		fmt.Printf("   📄 文件: %d个, 📁 目录: %d个, 总大小: %s\n",
 			fileCount, dirCount, filesystem.FormatFileSize(totalSize))
-		
+
 		if !oldestFile.IsZero() {
 			fmt.Printf("   📅 最早删除时间: %s\n", oldestFile.Format("2006-01-02 15:04:05"))
 		}
@@ -101,7 +101,7 @@ func runEmpty(cmd *cobra.Command, args []string) error {
 			if file.IsDirectory {
 				typeIcon = "📁"
 			}
-			fmt.Printf("  %s %s (%s, 删除于: %s)\n", 
+			fmt.Printf("  %s %s (%s, 删除于: %s)\n",
 				typeIcon, file.Name, filesystem.FormatFileSize(file.Size),
 				file.DeletedTime.Format("2006-01-02 15:04"))
 		}
@@ -116,7 +116,7 @@ func runEmpty(cmd *cobra.Command, args []string) error {
 	// 显示警告信息
 	if !quiet {
 		fmt.Printf("⚠️  警告: 即将永久删除回收站中的 %d 个项目\n", len(trashFiles))
-		fmt.Printf("   📄 文件: %d个, 📁 目录: %d个, 总大小: %s\n", 
+		fmt.Printf("   📄 文件: %d个, 📁 目录: %d个, 总大小: %s\n",
 			fileCount, dirCount, filesystem.FormatFileSize(totalSize))
 		if !oldestFile.IsZero() {
 			fmt.Printf("   📅 最早删除时间: %s\n", oldestFile.Format("2006-01-02 15:04:05"))

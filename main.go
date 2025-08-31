@@ -10,6 +10,13 @@ import (
 	"delguard/internal/logger"
 )
 
+// 版本信息，由构建脚本注入
+var (
+	Version   = "dev"
+	BuildTime = "unknown"
+	GitCommit = "unknown"
+)
+
 func main() {
 	// 初始化配置
 	if err := config.Init(); err != nil {
@@ -39,7 +46,7 @@ func main() {
 		if err := logger.Close(); err != nil {
 			fmt.Fprintf(os.Stderr, "关闭日志文件失败: %v\n", err)
 		}
-		
+
 		if r := recover(); r != nil {
 			fmt.Fprintf(os.Stderr, "程序发生严重错误: %v\n", r)
 			os.Exit(1)
