@@ -12,7 +12,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 # 设置参数
 $Owner = "01luyicheng"  # GitHub用户名
 $Repo = "DelGuard"
-$Version = "v1.5.5"
+$Version = "v1.5.7"
 
 # 检测系统架构
 $arch = "amd64"
