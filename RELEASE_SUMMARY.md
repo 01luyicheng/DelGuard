@@ -1,7 +1,7 @@
-# DelGuard v1.5.7 发布摘要
+# DelGuard v1.5.8 发布摘要
 
 ## 🎯 发布概述
-DelGuard v1.5.7 是一个专注于系统兼容性和安全增强的维护版本，重点解决了Windows平台的路径验证硬编码问题，提升了跨平台兼容性。
+DelGuard v1.5.8 是一个专注于代码清理和版本管理的维护版本，重点清理了项目中的测试文件，统一了所有硬编码的版本号，为后续版本发布做好准备。
 
 ## 🔧 主要改进
 
@@ -26,7 +26,7 @@ DelGuard v1.5.7 是一个专注于系统兼容性和安全增强的维护版本�
 - ✅ **系统文件保护**：验证系统关键文件和目录的保护机制有效
 
 ## 🎯 升级建议
-建议所有用户升级到v1.5.7版本，特别是：
+建议所有用户升级到v1.5.8版本，特别是：
 - 使用非C盘作为系统盘的用户
 - 需要跨平台部署的企业用户
 - 对系统安全性有较高要求的用户
@@ -34,14 +34,14 @@ DelGuard v1.5.7 是一个专注于系统兼容性和安全增强的维护版本�
 ## 📦 获取方式
 ```bash
 # Windows
-powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.ps1' -OutFile 'quick-install.ps1'; .\quick-install.ps1 -Version v1.5.7 }"
+powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.ps1' -OutFile 'quick-install.ps1'; .\quick-install.ps1 -Version v1.5.8 }"
 
 # Linux/macOS
-curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.sh | sudo bash -s -- --version v1.5.7
+curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.sh | sudo bash -s -- --version v1.5.8
 ```
 
 ## 📝 技术细节
-- **版本号**：v1.5.7
+- **版本号**：v1.5.8
 - **发布日期**：2024-12-19
 - **Go版本要求**：1.21+
 - **支持平台**：Windows 10/11, macOS 10.15+, Ubuntu 18.04+, CentOS 7+
