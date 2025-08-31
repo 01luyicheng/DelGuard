@@ -210,6 +210,14 @@ func (l *LinuxTrashManager) ValidateTrash() error {
 		return fmt.Errorf("创建元数据目录失败: %v", err)
 	}
 
+	// 检查目录权限
+	testFile := filepath.Join(l.trashPath, ".delguard_test")
+	file, err := os.Create(testFile)
+	if err != nil {
+		return fmt.Errorf("回收站目录无写权限: %s", l.trashPath)
+	}
+	defer file.Close()
+	defer os.Remove(testFile)
 	return nil
 }
 

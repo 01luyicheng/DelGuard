@@ -271,7 +271,7 @@ func (pv *PathValidator) ValidateRestorePath(targetPath string) error {
 	return nil
 }
 
-// hasWritePermission 检查是否有写权限
+// hasWritePermission 检查写权限
 func (pv *PathValidator) hasWritePermission(path string) bool {
 	// 尝试在目录中创建临时文件来测试写权限
 	tempFile := filepath.Join(path, ".delguard_test")

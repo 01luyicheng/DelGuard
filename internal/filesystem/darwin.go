@@ -303,9 +303,8 @@ func (d *DarwinTrashManager) ValidateTrash() error {
 	if err != nil {
 		return fmt.Errorf("回收站目录无写权限: %s", d.trashPath)
 	}
-	file.Close()
-	os.Remove(testFile)
-
+	defer file.Close()
+	defer os.Remove(testFile)
 	return nil
 }
 

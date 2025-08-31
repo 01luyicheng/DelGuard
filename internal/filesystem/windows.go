@@ -14,6 +14,10 @@ import (
 	"time"
 )
 
+const (
+	CREATE_NO_WINDOW = 0x08000000 // Windows创建进程时隐藏窗口的标志
+)
+
 // TrashMetadata 回收站元数据结构
 type TrashMetadata struct {
 	OriginalPath string    `json:"original_path"`
@@ -271,7 +275,7 @@ WScript.Quit 0
 	
 	// 执行VBS脚本，增加超时和错误处理
 	cmd := exec.Command("wscript", "//Nologo", "//T:30", tempVBS)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: CREATE_NO_WINDOW}
 	
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -376,7 +380,7 @@ try {
 	
 	// 执行PowerShell命令，使用参数传递避免命令注入
 	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psScript, "-FilePath", absPath)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: CREATE_NO_WINDOW}
 	
 	// 设置超时防止进程挂起
 	cmd.Env = append(os.Environ(), "COMSPEC=cmd.exe")
@@ -846,7 +850,7 @@ try {
 }
 `
 	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psScript)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: CREATE_NO_WINDOW}
 	
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -1061,8 +1065,8 @@ func (w *WindowsTrashManager) hasWritePermission(path string) bool {
 	if err != nil {
 		return false
 	}
-	file.Close()
-	os.Remove(testFile)
+	defer file.Close()
+	defer os.Remove(testFile)
 	return true
 }
 
