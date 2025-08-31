@@ -172,17 +172,23 @@ func getSystemPaths() []string {
 	
 	switch filepath.Separator {
 	case '\\': // Windows
+		// 动态获取系统盘符
+		systemDrive := os.Getenv("SystemDrive")
+		if systemDrive == "" {
+			systemDrive = "C:"
+		}
+		
 		paths = []string{
-			"C:\\Windows",
-			"C:\\Program Files",
-			"C:\\Program Files (x86)",
-			"C:\\ProgramData",
-			"C:\\System Volume Information",
-			"C:\\Recovery",
-			"C:\\Boot",
-			"C:\\MSOCache",
-			"C:\\PerfLogs",
-			"C:\\Users\\Public",
+			filepath.Join(systemDrive, "Windows"),
+			filepath.Join(systemDrive, "Program Files"),
+			filepath.Join(systemDrive, "Program Files (x86)"),
+			filepath.Join(systemDrive, "ProgramData"),
+			filepath.Join(systemDrive, "System Volume Information"),
+			filepath.Join(systemDrive, "Recovery"),
+			filepath.Join(systemDrive, "Boot"),
+			filepath.Join(systemDrive, "MSOCache"),
+			filepath.Join(systemDrive, "PerfLogs"),
+			"C:\\Users\\Public", // 保持C:因为Public可能在任何盘
 			"C:\\Users\\Default",
 			"C:\\Users\\All Users",
 		}

@@ -57,8 +57,8 @@ func (d *DarwinTrashManager) MoveToTrash(filePath string) error {
 
 	// 生成唯一的文件名
 	fileName := filepath.Base(absPath)
-	baseName := fileName[:len(fileName)-len(filepath.Ext(fileName))]
 	ext := filepath.Ext(fileName)
+	baseName := strings.TrimSuffix(fileName, ext)
 	timestamp := time.Now().Format("20060102_150405")
 	uniqueName := fmt.Sprintf("%s_%s%s", baseName, timestamp, ext)
 	targetPath := filepath.Join(d.trashPath, uniqueName)

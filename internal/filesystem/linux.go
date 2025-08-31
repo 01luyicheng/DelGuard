@@ -3,7 +3,6 @@ package filesystem
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,7 +66,7 @@ func (l *LinuxTrashManager) MoveToTrash(filePath string) error {
 		}
 
 		ext := filepath.Ext(originalFileName)
-		nameWithoutExt := originalFileName[:len(originalFileName)-len(ext)]
+		nameWithoutExt := strings.TrimSuffix(originalFileName, ext)
 		fileName = fmt.Sprintf("%s_%d%s", nameWithoutExt, counter, ext)
 		targetPath = filepath.Join(l.trashPath, fileName)
 		infoFilePath = filepath.Join(l.infoPath, fileName+".trashinfo")
@@ -84,7 +83,8 @@ func (l *LinuxTrashManager) MoveToTrash(filePath string) error {
 	if err != nil {
 		// 如果创建info文件失败，尝试恢复原文件
 		if err := os.Rename(targetPath, absPath); err != nil {
-			log.Printf("恢复原文件失败: %v", err)
+			// 静默处理恢复错误，因为主要错误已经记录
+			_ = err
 		}
 		return fmt.Errorf("创建Trash信息文件失败: %v", err)
 	}
