@@ -271,7 +271,7 @@ WScript.Quit 0
 
 	// 执行VBS脚本，增加超时和错误处理
 	cmd := exec.Command("wscript", "//Nologo", "//T:30", tempVBS)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000} // CREATE_NO_WINDOW
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("Shell API移动失败: %v, 输出: %s", err, string(output))
@@ -375,7 +375,7 @@ try {
 
 	// 执行PowerShell命令，使用参数传递避免命令注入
 	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psScript, "-FilePath", absPath)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000} // CREATE_NO_WINDOW
 
 	// 设置超时防止进程挂起
 	cmd.Env = append(os.Environ(), "COMSPEC=cmd.exe")
@@ -845,7 +845,7 @@ try {
 }
 `
 	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psScript)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000} // CREATE_NO_WINDOW
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {

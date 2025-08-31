@@ -2,7 +2,7 @@
 # 从GitHub下载最新版本并自动安装
 
 param(
-    [string]$Version = "v1.5.8",
+    [string]$Version = "v1.5.9",
     [string]$Repo = "DelGuard",
     [string]$Owner = "01luyicheng",  # GitHub用户名
     [switch]$Force

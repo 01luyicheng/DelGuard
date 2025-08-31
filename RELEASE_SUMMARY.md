@@ -1,47 +1,34 @@
-# DelGuard v1.5.8 发布摘要
+# DelGuard v1.5.9 发布摘要
 
-## 🎯 发布概述
-DelGuard v1.5.8 是一个专注于代码清理和版本管理的维护版本，重点清理了项目中的测试文件，统一了所有硬编码的版本号，为后续版本发布做好准备。
+DelGuard v1.5.9 是一个专注于代码质量改进的维护版本，重点修复了delete.go文件中的语法错误和冗余代码，确保项目能够正常编译和发布。
 
-## 🔧 主要改进
+## 🎯 主要更新内容
 
-### 🛡️ 安全增强
-- **动态系统路径检测**：完全移除了硬编码的C盘路径依赖，支持任意系统盘符配置
-- **增强路径验证**：扩展了系统关键路径检测，覆盖更多Windows系统目录
-- **跨平台兼容性**：优化了Unix-like系统的路径验证逻辑，支持macOS和Linux特有目录
+### 🐛 Bug修复
+- **修复delete.go语法错误**：移除了文件末尾的重复和错误代码，解决了编译错误
+- **清理冗余代码**：删除了delete.go中多余的runDelete函数定义和错误逻辑
+- **语法错误修复**：修复了导致编译失败的语法错误
 
-### 🐛 关键修复
-- **修复日志系统双重关闭**：解决了main.go中的重复日志关闭调用问题
-- **改进临时文件清理**：优化了Windows VBS脚本和临时文件的清理机制
-- **错误处理统一**：标准化了错误输出格式，减少对用户界面的干扰
+### 🔧 版本更新
+- **版本号升级**：将版本号从1.5.8升级到1.5.9
+- **构建验证**：确保所有平台编译成功
+- **功能验证**：验证所有核心功能正常工作
 
-### 🔧 代码质量提升
-- **路径验证重构**：将所有硬编码路径改为动态检测，显著提高跨平台兼容性
-- **系统检测增强**：根据实际系统环境动态调整保护路径列表
-- **日志记录优化**：减少不必要的标准错误输出，使用更合适的日志级别
+## 🚀 快速开始
 
-## 📊 兼容性验证
-- ✅ **多系统盘测试**：验证在不同系统盘配置下的正常运行
-- ✅ **跨平台验证**：确保在Windows、Linux、macOS上的路径验证准确
-- ✅ **系统文件保护**：验证系统关键文件和目录的保护机制有效
+### Windows
+```powershell
+# 使用快速安装脚本
+powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.ps1' -OutFile 'quick-install.ps1'; .\quick-install.ps1 -Version v1.5.9 }"
 
-## 🎯 升级建议
-建议所有用户升级到v1.5.8版本，特别是：
-- 使用非C盘作为系统盘的用户
-- 需要跨平台部署的企业用户
-- 对系统安全性有较高要求的用户
-
-## 📦 获取方式
+### Linux/macOS
 ```bash
-# Windows
-powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.ps1' -OutFile 'quick-install.ps1'; .\quick-install.ps1 -Version v1.5.8 }"
-
-# Linux/macOS
-curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.sh | sudo bash -s -- --version v1.5.8
+# 使用一行命令安装
+curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.sh | sudo bash -s -- --version v1.5.9
 ```
 
-## 📝 技术细节
-- **版本号**：v1.5.8
+## 📋 版本信息
+- **版本号**：v1.5.9
 - **发布日期**：2024-12-19
-- **Go版本要求**：1.21+
-- **支持平台**：Windows 10/11, macOS 10.15+, Ubuntu 18.04+, CentOS 7+
+- **支持平台**：Windows、Linux、macOS
+- **Go版本**：1.21+
