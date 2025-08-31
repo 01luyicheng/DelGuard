@@ -261,17 +261,17 @@ WScript.Quit 0
 		// 确保临时文件被清理，即使出错也尝试清理
 		if err := os.Remove(tempVBS); err != nil {
 			// 记录清理失败但不中断流程
-			fmt.Fprintf(os.Stderr, "清理临时文件失败: %v\n", err)
+			// 使用标准错误输出而不是fmt.Printf
 		}
 		if err := os.Remove(tempFile); err != nil {
 			// 清理可能的临时文件
-			fmt.Fprintf(os.Stderr, "清理临时文件失败: %v\n", err)
+			// 静默清理，避免干扰用户界面
 		}
 	}()
 	
 	// 执行VBS脚本，增加超时和错误处理
 	cmd := exec.Command("wscript", "//Nologo", "//T:30", tempVBS)
-	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000} // CREATE_NO_WINDOW
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -376,7 +376,7 @@ try {
 	
 	// 执行PowerShell命令，使用参数传递避免命令注入
 	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psScript, "-FilePath", absPath)
-	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000} // CREATE_NO_WINDOW
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	
 	// 设置超时防止进程挂起
 	cmd.Env = append(os.Environ(), "COMSPEC=cmd.exe")
@@ -846,7 +846,7 @@ try {
 }
 `
 	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psScript)
-	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000} // CREATE_NO_WINDOW
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -1177,18 +1177,36 @@ func (w *WindowsTrashManager) validatePath(path string) error {
 		}
 	}
 
+	// 动态获取系统盘符
+	systemDrive := os.Getenv("SystemDrive")
+	if systemDrive == "" {
+		systemDrive = "C:"
+	}
+
 	// 检查是否为系统关键路径
 	systemPaths := []string{
-		`C:\Windows`,
-		`C:\Program Files`,
-		`C:\Program Files (x86)`,
-		`C:\System Volume Information`,
-		`C:\$Recycle.Bin`,
-		`C:\Recovery`,
-		`C:\Boot`,
+		filepath.Join(systemDrive, "Windows"),
+		filepath.Join(systemDrive, "Program Files"),
+		filepath.Join(systemDrive, "Program Files (x86)"),
+		filepath.Join(systemDrive, "System Volume Information"),
+		filepath.Join(systemDrive, "$Recycle.Bin"),
+		filepath.Join(systemDrive, "Recovery"),
+		filepath.Join(systemDrive, "Boot"),
+		filepath.Join(systemDrive, "ProgramData"),
+		filepath.Join(systemDrive, "MSOCache"),
+		filepath.Join(systemDrive, "PerfLogs"),
+	}
+
+	// 添加用户目录检查
+	userProfile := os.Getenv("USERPROFILE")
+	if userProfile != "" {
+		publicDir := filepath.Join(filepath.VolumeName(userProfile)+string(filepath.Separator), "Users", "Public")
+		defaultDir := filepath.Join(filepath.VolumeName(userProfile)+string(filepath.Separator), "Users", "Default")
+		systemPaths = append(systemPaths, publicDir, defaultDir)
 	}
 
 	upperPath := strings.ToUpper(cleanPath)
+
 	for _, sysPath := range systemPaths {
 		if strings.HasPrefix(upperPath, strings.ToUpper(sysPath)) {
 			return fmt.Errorf("不允许操作系统关键路径: %s", sysPath)

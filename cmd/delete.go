@@ -273,15 +273,30 @@ func isSystemFile(path string) bool {
 		}
 	}
 	
-	// 检查目录名
+	// 检查目录名 - 使用动态系统盘符检测
 	dir := strings.ToLower(filepath.Dir(path))
+	
+	// 动态获取系统盘符
+	systemDrive := os.Getenv("SystemDrive")
+	if systemDrive == "" {
+		systemDrive = "C:"
+	}
+	
 	systemDirs := []string{
 		"windows", "system32", "syswow64", "program files", "program files (x86)",
 		"programdata", "recovery", "boot", "msocache", "perflogs",
 	}
-	
+
+	// 检查相对路径和绝对路径
 	for _, sysDir := range systemDirs {
+		// 检查相对路径
 		if strings.Contains(dir, sysDir) {
+			return true
+		}
+		
+		// 检查绝对路径
+		absSysDir := filepath.Join(strings.ToLower(systemDrive), sysDir)
+		if strings.Contains(dir, absSysDir) {
 			return true
 		}
 	}

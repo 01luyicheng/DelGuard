@@ -178,6 +178,15 @@ func getSystemPaths() []string {
 			systemDrive = "C:"
 		}
 		
+		// 获取用户配置目录
+		userProfile := os.Getenv("USERPROFILE")
+		var userDrive string
+		if userProfile != "" {
+			userDrive = filepath.VolumeName(userProfile)
+		} else {
+			userDrive = systemDrive
+		}
+		
 		paths = []string{
 			filepath.Join(systemDrive, "Windows"),
 			filepath.Join(systemDrive, "Program Files"),
@@ -188,9 +197,11 @@ func getSystemPaths() []string {
 			filepath.Join(systemDrive, "Boot"),
 			filepath.Join(systemDrive, "MSOCache"),
 			filepath.Join(systemDrive, "PerfLogs"),
-			"C:\\Users\\Public", // 保持C:因为Public可能在任何盘
-			"C:\\Users\\Default",
-			"C:\\Users\\All Users",
+			filepath.Join(systemDrive, "inetpub"),
+			filepath.Join(systemDrive, "Temp"),
+			filepath.Join(userDrive, "Users", "Public"),
+			filepath.Join(userDrive, "Users", "Default"),
+			filepath.Join(userDrive, "Users", "All Users"),
 		}
 	case '/': // Unix-like
 		paths = []string{
@@ -213,6 +224,10 @@ func getSystemPaths() []string {
 			"/var",
 			"/tmp",
 			"/root",
+			"/snap", // Ubuntu Snap目录
+			"/Applications", // macOS
+			"/System", // macOS
+			"/Library", // macOS
 		}
 	}
 	

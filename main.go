@@ -17,12 +17,6 @@ func main() {
 	}
 
 	// 初始化日志
-	defer func() {
-		if err := logger.Close(); err != nil {
-			log.Printf("关闭日志失败: %v", err)
-		}
-	}()
-
 	if config.GlobalConfig != nil && config.GlobalConfig.Logging.File != "" {
 		cfg := config.GlobalConfig.Logging
 		if err := logger.Init(cfg.File, cfg.Level, cfg.MaxSize, cfg.MaxAge, cfg.Compress); err != nil {

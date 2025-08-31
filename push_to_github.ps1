@@ -4,7 +4,7 @@
 param(
     [string]$Owner = "01luyicheng",  # GitHub用户名
     [string]$Repo = "DelGuard",
-    [string]$Version = "v1.4.1",
+    [string]$Version = "v1.5.5",
     [switch]$Force
 )
 

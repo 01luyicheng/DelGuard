@@ -14,7 +14,7 @@ NC='\033[0m'
 # 参数设置
 OWNER="01luyicheng"  # GitHub用户名
 REPO="DelGuard"
-VERSION="v1.4.1"
+VERSION="v1.5.5"
 
 # 帮助信息
 show_help() {

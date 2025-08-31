@@ -1,80 +1,47 @@
-# DelGuard v1.5.4 发布总结
+# DelGuard v1.5.5 发布摘要
 
-## 🚀 版本信息
-- **版本号**: v1.5.4
-- **发布日期**: 2024年12月19日
-- **标签**: `v1.5.4`
+## 🎯 发布概述
+DelGuard v1.5.5 是一个专注于系统兼容性和安全增强的维护版本，重点解决了Windows平台的路径验证硬编码问题，提升了跨平台兼容性。
 
-## 🛡️ 主要改进
+## 🔧 主要改进
 
-### 系统兼容性改进
-1. **Windows平台优化**
-   - **动态系统盘符支持**：修复了硬编码C盘路径的问题，现在支持任意系统盘符
-   - **增强环境变量检测**：改进用户目录检测逻辑，支持HOMEDRIVE/HOMEPATH环境变量
-   - **路径验证增强**：优化系统关键路径检测，适应不同Windows配置
+### 🛡️ 安全增强
+- **动态系统路径检测**：完全移除了硬编码的C盘路径依赖，支持任意系统盘符配置
+- **增强路径验证**：扩展了系统关键路径检测，覆盖更多Windows系统目录
+- **跨平台兼容性**：优化了Unix-like系统的路径验证逻辑，支持macOS和Linux特有目录
 
-2. **资源管理改进**
-   - **完善临时文件清理**：增强临时文件清理机制，增加错误处理和日志记录
-   - **错误处理优化**：改进错误消息的清晰度和准确性
+### 🐛 关键修复
+- **修复日志系统双重关闭**：解决了main.go中的重复日志关闭调用问题
+- **改进临时文件清理**：优化了Windows VBS脚本和临时文件的清理机制
+- **错误处理统一**：标准化了错误输出格式，减少对用户界面的干扰
 
-### Bug修复
-- **路径验证修复**：修复Windows系统路径验证中的硬编码问题
-- **资源清理改进**：完善临时文件清理机制，确保资源正确释放
-- **兼容性增强**：确保在不同Windows配置下的正常运行
+### 🔧 代码质量提升
+- **路径验证重构**：将所有硬编码路径改为动态检测，显著提高跨平台兼容性
+- **系统检测增强**：根据实际系统环境动态调整保护路径列表
+- **日志记录优化**：减少不必要的标准错误输出，使用更合适的日志级别
 
-### 代码质量提升
-- **安全性增强**：加强路径验证，防止潜在的路径遍历攻击
-- **代码清理**：移除冗余代码，提高代码可维护性
-- **日志改进**：增强错误日志记录，便于问题排查
+## 📊 兼容性验证
+- ✅ **多系统盘测试**：验证在不同系统盘配置下的正常运行
+- ✅ **跨平台验证**：确保在Windows、Linux、macOS上的路径验证准确
+- ✅ **系统文件保护**：验证系统关键文件和目录的保护机制有效
 
-## 📦 构建验证
-- ✅ Windows (x64, ARM64) - 编译成功
-- ✅ Linux (x64, ARM64, ARM) - 编译成功
-- ✅ macOS (Intel, Apple Silicon) - 编译成功
+## 🎯 升级建议
+建议所有用户升级到v1.5.5版本，特别是：
+- 使用非C盘作为系统盘的用户
+- 需要跨平台部署的企业用户
+- 对系统安全性有较高要求的用户
 
-## 🔧 安装方式
-
-### Windows (PowerShell)
-```powershell
-powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.ps1' -OutFile 'quick-install.ps1'; .\quick-install.ps1 }"
-```
-
-### Linux/macOS (Bash)
+## 📦 获取方式
 ```bash
-curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.sh | sudo bash
+# Windows
+powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.ps1' -OutFile 'quick-install.ps1'; .\quick-install.ps1 -Version v1.5.5 }"
+
+# Linux/macOS
+curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.sh | sudo bash -s -- --version v1.5.5
 ```
 
-## 📋 系统支持
-- **Windows**: Windows 10/11 (x64, ARM64)
-- **Linux**: Ubuntu 18.04+, CentOS 7+, etc. (x64, ARM64, ARM)
-- **macOS**: macOS 10.14+ (Intel, Apple Silicon)
-
-## 🔗 快速开始
-```bash
-# 安全删除文件
-rm file.txt  # 或 del file.txt (Windows)
-
-# 查看回收站
-delguard list
-
-# 恢复文件
-delguard restore file.txt
-
-# 查看帮助
-delguard --help
-```
-
-## 📖 文档更新
-- 更新了CHANGELOG.md
-- 完善了安全说明文档
-- 优化了安装指南
-
-## 🎯 后续计划
-- 图形界面支持
-- 网络同步功能
-- 文件版本管理
-- 更多平台支持
-
----
-
-**发布地址**: https://github.com/01luyicheng/DelGuard/releases/tag/v1.5.3
+## 📝 技术细节
+- **版本号**：v1.5.5
+- **发布日期**：2024-12-19
+- **Go版本要求**：1.21+
+- **支持平台**：Windows 10/11, macOS 10.15+, Ubuntu 18.04+, CentOS 7+
