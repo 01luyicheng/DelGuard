@@ -150,7 +150,7 @@ function Get-Binary {
     Write-Info "下载 DelGuard 二进制文件..."
     
     $arch = Get-SystemArchitecture
-    $binaryName = "delguard-windows-$arch.zip"
+    $binaryName = "delguard-windows-$arch.exe"
     $downloadUrl = "https://github.com/$GitHubRepo/releases/download/$Version/$binaryName"
     
     # 创建临时目录
@@ -159,26 +159,15 @@ function Get-Binary {
     }
     New-Item -Path $TempDir -ItemType Directory -Force | Out-Null
     
-    $zipPath = Join-Path $TempDir $binaryName
+    $binaryPath = Join-Path $TempDir "delguard.exe"
     
     Write-Info "下载地址: $downloadUrl"
     
     try {
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath -UseBasicParsing
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $binaryPath -UseBasicParsing
     }
     catch {
         Write-Error "下载失败: $_"
-        Remove-TempFiles
-        exit 1
-    }
-    
-    # 解压文件
-    Write-Info "解压文件..."
-    try {
-        Expand-Archive -Path $zipPath -DestinationPath $TempDir -Force
-    }
-    catch {
-        Write-Error "解压失败: $_"
         Remove-TempFiles
         exit 1
     }
@@ -190,21 +179,10 @@ function Get-Binary {
 function Install-Binary {
     Write-Info "安装 DelGuard..."
     
-    # 查找解压后的二进制文件
-    $binaryPath = $null
-    $possiblePaths = @(
-        (Join-Path $TempDir "delguard.exe"),
-        (Join-Path $TempDir "bin\delguard.exe")
-    )
+    # 直接使用下载的二进制文件
+    $binaryPath = Join-Path $TempDir "delguard.exe"
     
-    foreach ($path in $possiblePaths) {
-        if (Test-Path $path) {
-            $binaryPath = $path
-            break
-        }
-    }
-    
-    if (-not $binaryPath) {
+    if (-not (Test-Path $binaryPath)) {
         Write-Error "找不到二进制文件"
         Remove-TempFiles
         exit 1

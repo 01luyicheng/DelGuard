@@ -89,6 +89,12 @@ build: deps fmt vet
 	@mkdir -p $(BUILD_DIR)
 	CGO_ENABLED=0 go build $(LDFLAGS) $(GCFLAGS) $(ASMFLAGS) -o $(BUILD_DIR)/$(PROJECT_NAME) .
 
+# 构建当前平台（带竞态检测）
+build-race: deps fmt vet
+	@echo "构建 $(PROJECT_NAME) $(VERSION) 带竞态检测..."
+	@mkdir -p $(BUILD_DIR)
+	CGO_ENABLED=1 go build -race $(LDFLAGS) $(GCFLAGS) $(ASMFLAGS) -o $(BUILD_DIR)/$(PROJECT_NAME)-race .
+
 # 交叉编译所有平台
 cross-compile: deps fmt vet
 	@echo "交叉编译所有平台..."

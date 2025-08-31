@@ -121,14 +121,8 @@ get_latest_version() {
 download_binary() {
     print_info "下载 DelGuard 二进制文件..."
     
-    # 构建下载URL
+    # 构建下载URL - 直接使用裸二进制文件
     local binary_name="delguard-${OS}-${ARCH}"
-    if [[ "$OS" == "linux" ]]; then
-        binary_name="${binary_name}.tar.gz"
-    else
-        binary_name="${binary_name}.tar.gz"
-    fi
-    
     local download_url="https://github.com/$GITHUB_REPO/releases/download/$DELGUARD_VERSION/$binary_name"
     
     # 创建临时目录
@@ -138,19 +132,14 @@ download_binary() {
     print_info "下载地址: $download_url"
     
     # 下载文件
-    if ! curl -L -o "$binary_name" "$download_url"; then
+    if ! curl -L -o "delguard" "$download_url"; then
         print_error "下载失败"
         cleanup
         exit 1
     fi
     
-    # 解压文件
-    print_info "解压文件..."
-    if ! tar -xzf "$binary_name"; then
-        print_error "解压失败"
-        cleanup
-        exit 1
-    fi
+    # 设置执行权限
+    chmod +x "delguard"
     
     print_success "下载完成"
 }
@@ -159,20 +148,15 @@ download_binary() {
 install_binary() {
     print_info "安装 DelGuard..."
     
-    # 查找解压后的二进制文件
-    local binary_path
-    if [[ -f "delguard" ]]; then
-        binary_path="delguard"
-    elif [[ -f "bin/delguard" ]]; then
-        binary_path="bin/delguard"
-    else
+    # 直接使用下载的二进制文件
+    if [[ ! -f "delguard" ]]; then
         print_error "找不到二进制文件"
         cleanup
         exit 1
     fi
     
     # 复制到安装目录
-    if ! cp "$binary_path" "$INSTALL_DIR/delguard"; then
+    if ! cp "delguard" "$INSTALL_DIR/delguard"; then
         print_error "安装失败"
         cleanup
         exit 1
