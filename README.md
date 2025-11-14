@@ -1,32 +1,38 @@
 # DelGuard - Windows文件删除工具
 
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/01luyicheng/DelGuard)](https://github.com/01luyicheng/DelGuard/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub stars](https://img.shields.io/github/stars/01luyicheng/DelGuard?style=social)](https://github.com/01luyicheng/DelGuard)
+
 ## 项目简介
 
 DelGuard是一个强大的Windows文件删除工具，用于安全的删除文件和文件夹，将它们移动到回收站而不是直接彻底删除。它支持强制删除、预览模式、递归删除等多种功能，是系统维护和文件管理的得力助手。
 
 ## 功能特性
 
+- **安全删除**：将文件和文件夹移动到回收站，而不是永久删除
 - **强制删除**：绕过系统限制删除被占用的文件
 - **预览模式**：先显示将要删除的文件，确认后再执行删除
 - **递归删除**：支持删除文件夹及其所有子内容
 - **静默模式**：无提示删除，适合批处理脚本
 - **详细日志**：显示详细的删除过程和结果
+- **通配符支持**：支持使用通配符批量删除文件
 - **安全保护**：防止删除系统关键目录
 
-## 安装方法
+## 快速安装
 
-### 方法一：MSI安装程序（推荐）
+### 方法一：下载安装包（推荐）
 
-1. 下载 `DelGuard.msi` 安装包
-2. 双击运行安装程序
-3. 按照安装向导完成安装
-4. 安装完成后，DelGuard将自动添加到系统PATH环境变量
+1. 访问 [GitHub Releases](https://github.com/01luyicheng/DelGuard/releases/latest) 下载最新版本
+2. 以管理员身份运行 `install.bat`
+3. 按照提示完成安装
+4. 重新打开命令提示符即可使用 `delguard` 命令
 
 ### 方法二：手动安装
 
 1. 下载 `delguard.exe` 可执行文件
 2. 将文件放置在合适的目录（如 `C:\Program Files\DelGuard`）
-3. 手动将目录添加到系统PATH环境变量（可选）
+3. 手动将目录添加到系统PATH环境变量
 
 ## 使用方法
 
@@ -107,18 +113,18 @@ DelGuard使用JSON配置文件来管理设置，配置文件位于安装目录�
   - `warning`：警告级别
   - `error`：错误级别，最少输出
 
+## 系统要求
+
+- 操作系统：Windows 10/11 (x64)
+- 运行时：.NET 8.0 或更高版本
+- 权限：普通用户权限（某些操作需要管理员权限）
+
 ## 安全注意事项
 
 1. **谨慎使用强制删除**：强制删除可能会影响正在运行的程序
 2. **系统目录保护**：DelGuard会阻止删除关键的系统目录
 3. **预览模式建议**：对于不熟悉的删除操作，建议先使用预览模式
 4. **权限要求**：某些删除操作可能需要管理员权限
-
-## 系统要求
-
-- 操作系统：Windows 10/11 (x64)
-- 运行时：.NET 8.0 或更高版本
-- 权限：普通用户权限（某些操作需要管理员权限）
 
 ## 卸载方法
 
@@ -131,7 +137,11 @@ DelGuard使用JSON配置文件来管理设置，配置文件位于安装目录�
 ### 通过命令行卸载
 
 ```bash
-msiexec /x {YOUR-PRODUCT-CODE}
+# 使用安装提供的卸载脚本
+uninstall.bat
+
+# 或手动删除
+rmdir /S /Q "%ProgramFiles%\DelGuard"
 ```
 
 ## 故障排除
@@ -158,16 +168,14 @@ DelGuard在安装目录下生成日志文件，可用于故障排除：
 
 ## 开发信息
 
-- 项目地址：[DelGuard Repository]
+- 项目地址：[GitHub Repository](https://github.com/01luyicheng/DelGuard)
 - 许可证：MIT License
-- 作者：TREA
 - 版本：1.0.0
 
 ## 技术支持
 
 如遇到问题或有功能建议，请通过以下方式联系：
-- 提交Issue：[项目Issues页面]
-- 发送邮件：[技术支持邮箱]
+- 提交Issue：[GitHub Issues](https://github.com/01luyicheng/DelGuard/issues)
 
 ---
 

@@ -14,6 +14,38 @@ bld/
 [Ll]og/
 [Ll]ogs/
 
+# 构建产物
+*.exe
+*.app
+delguard
+delguard-*
+
+# 测试文件
+test.txt
+*.test
+
+# 日志文件
+*.log
+logs/
+
+# 临时文件
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
+
+# IDE文件
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统文件
+Program Files/
+
+# 构建缓存
+.cache/
+
 # Visual Studio 2015/2017 cache/options directory
 .vs/
 # Uncomment if you have tasks that create the project's static files in wwwroot
@@ -335,24 +367,10 @@ MigrationBackup/
 .ionide/
 
 # Installer specific
-installer/output/
 installer/*.wixobj
 installer/*.msi
 installer/*.wixpdb
 
-# Logs
-*.log
-logs/
-
 # Test results
 TestResults/
 tests/TestResults/
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db

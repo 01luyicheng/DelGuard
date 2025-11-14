@@ -1,0 +1,127 @@
+# DelGuard GoReleaser 配置
+
+project_name: delguard
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: delguard
+    main: ./
+    binary: delguard
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+      - 386
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.GitCommit={{.ShortCommit}}
+      - -X main.BuildTime={{.Date}}
+    flags:
+      - -trimpath
+
+archives:
+  - id: delguard
+    builds:
+      - delguard
+    name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE
+      - configs/**/*
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - '^chore:'
+      - '^style:'
+      - '^refactor:'
+  groups:
+    - title: 'New Features'
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: 'Bug Fixes'
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: 'Performance Improvements'
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: 'Others'
+      order: 999
+
+release:
+  github:
+    owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
+    name: "{{ .ProjectName }}"
+  name_template: "{{ .ProjectName }} {{ .Version }}"
+  draft: false
+  prerelease: auto
+  mode: replace
+
+brews:
+  - name: delguard
+    repository:
+      owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
+      name: homebrew-tap
+    folder: Formula
+    homepage: "https://github.com/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}"
+    description: "跨平台安全删除工具"
+    license: "MIT"
+    test: |
+      system "#{bin}/delguard version"
+    install: |
+      bin.install "delguard"
+
+nfpms:
+  - id: delguard
+    package_name: delguard
+    file_name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Arch }}"
+    builds:
+      - delguard
+    homepage: "https://github.com/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}"
+    description: "跨平台安全删除工具"
+    maintainer: "DelGuard Team <team@delguard.dev>"
+    license: "MIT"
+    vendor: "DelGuard"
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/bin
+    contents:
+      - src: ./configs/
+        dst: /etc/delguard/
+        type: config
+      - src: ./README.md
+        dst: /usr/share/doc/delguard/README.md
+      - src: ./LICENSE
+        dst: /usr/share/doc/delguard/LICENSE
+
+
+
+announce:
+  skip: '{{ .Env.SKIP_ANNOUNCE }}'

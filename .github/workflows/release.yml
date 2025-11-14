@@ -1,0 +1,124 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Run tests
+        run: go test -v -parallel=1 ./...
+
+      - name: Build binaries
+        run: |
+          mkdir -p dist
+          
+          # Windows
+          GOOS=windows GOARCH=amd64 go build -ldflags="-X 'github.com/spf13/cobra.version=1.6.3'" -o dist/delguard-windows-amd64.exe .
+          GOOS=windows GOARCH=arm64 go build -ldflags="-X 'github.com/spf13/cobra.version=1.6.3'" -o dist/delguard-windows-arm64.exe .
+          GOOS=windows GOARCH=386 go build -ldflags="-X 'github.com/spf13/cobra.version=1.6.3'" -o dist/delguard-windows-386.exe .
+
+          # Linux
+          GOOS=linux GOARCH=amd64 go build -ldflags="-X 'github.com/spf13/cobra.version=1.6.3'" -o dist/delguard-linux-amd64 .
+          GOOS=linux GOARCH=arm64 go build -ldflags="-X 'github.com/spf13/cobra.version=1.6.3'" -o dist/delguard-linux-arm64 .
+          GOOS=linux GOARCH=arm go build -ldflags="-X 'github.com/spf13/cobra.version=1.6.3'" -o dist/delguard-linux-arm .
+          GOOS=linux GOARCH=386 go build -ldflags="-X 'github.com/spf13/cobra.version=1.6.3'" -o dist/delguard-linux-386 .
+
+          # macOS
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-X 'github.com/spf13/cobra.version=1.6.3'" -o dist/delguard-macos-amd64 .
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-X 'github.com/spf13/cobra.version=1.6.3'" -o dist/delguard-macos-arm64 .
+
+      - name: Create checksums
+        run: |
+          cd dist
+          sha256sum * > checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: DelGuard ${{ github.ref_name }}
+          body: |
+            ## 🚀 DelGuard ${{ github.ref_name }}
+            
+            跨平台安全删除工具，一键安装，保护您的文件安全。
+            
+            ### ✨ 新功能
+            - **一行命令安装**：支持Windows、Linux、macOS的一行命令安装
+            - **自动检测平台**：智能检测操作系统和架构
+            - **版本选择**：支持指定版本安装
+            - **强制重装**：支持强制重新安装
+            
+            ### 📦 安装方法
+            
+            #### Windows (PowerShell)
+            ```powershell
+            powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/quick-install.ps1' -OutFile 'quick-install.ps1'; .\quick-install.ps1 }"
+            ```
+            
+            #### Linux/macOS (Bash)
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/quick-install.sh | sudo bash
+            ```
+            
+            #### 手动下载
+            从下方下载对应平台的二进制文件，解压后运行：
+            ```bash
+            delguard install
+            ```
+            
+            ### 📋 系统支持
+            - **Windows**: Windows 10/11 (x64, ARM64)
+            - **Linux**: Ubuntu 18.04+, CentOS 7+, 等 (x64, ARM64, ARM)
+            - **macOS**: macOS 10.14+ (Intel, Apple Silicon)
+            
+            ### 🔗 快速开始
+            ```bash
+            # 安全删除文件
+            rm file.txt  # 或 del file.txt (Windows)
+            
+            # 查看回收站
+            delguard list
+            
+            # 恢复文件
+            delguard restore file.txt
+            
+            # 查看帮助
+            delguard --help
+            ```
+            
+            ### 🛡️ 安全特性
+            - 文件误删保护
+            - 管理员权限验证
+            - 原始命令备份
+            - 详细操作日志
+            
+            ### 📖 文档
+            - [完整文档](README.md)
+            - [安装指南](INSTALL.md)
+            - [使用教程](https://github.com/${{ github.repository }}/wiki)
+          files: |
+            dist/*
+            scripts/quick-install.ps1
+            scripts/quick-install.sh
+            INSTALL.md
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
