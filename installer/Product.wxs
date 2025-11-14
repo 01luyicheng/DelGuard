@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 
+  DelGuard Windows 安装程序
+  功能：创建MSI安装包，支持程序安装、卸载、开始菜单快捷方式
+  依赖：WiX Toolset 3.x
+  输出：DelGuard.msi
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="*" 
+           Name="DelGuard" 
+           Language="1033" 
+           Version="1.0.0.0" 
+           Manufacturer="TREA" 
+           UpgradeCode="{8A4A9289-F5F3-4292-B6CA-E818D3F4C2DA}">
+    
+    <Package InstallerVersion="200" 
+             Compressed="yes" 
+             InstallScope="perMachine" 
+             Platform="x64"
+             Description="安全删除工具 - 将文件移动到回收站而非永久删除"
+             Comments="保护您的数据安全，支持通配符和批量操作"/>
+
+    <MajorUpgrade DowngradeErrorMessage="已安装较新版本。" />
+    <MediaTemplate EmbedCab="yes"/>
+
+    <!-- 安装条件检查 -->
+    <Condition Message="此应用程序需要Windows 10或更高版本。">
+      <![CDATA[Installed OR (VersionNT >= 603)]]>
+    </Condition>
+
+    <!-- 功能定义 -->
+    <Feature Id="ProductFeature" Title="DelGuard" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+      <ComponentRef Id="ApplicationShortcut" />
+      <ComponentRef Id="ApplicationShortcutDesktop" />
+    </Feature>
+
+    <!-- 安装目录结构 -->
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="DelGuard">
+          <Directory Id="CONFIGFOLDER" Name="config"/>
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="DelGuard"/>
+      </Directory>
+      <Directory Id="DesktopFolder" Name="Desktop"/>
+    </Directory>
+
+    <!-- 组件组定义 -->
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <Component Id="MainExecutable" Guid="{6ED5B55E-8934-4F8B-AF11-E6E5BBF78835}">
+        <File Id="DelGuardExe" 
+              Source="..\src\DelGuard\bin\Release
+et8.0\win-x64\publish\delguard.exe" 
+              KeyPath="yes"/>
+        <Environment Id="PATH" Name="PATH" Value="[INSTALLFOLDER]" Permanent="no" Part="last" Action="set" System="yes" />
+      </Component>
+      
+      <Component Id="ConfigFile" Guid="{9B68C3D3-8A8B-4D3E-9EF2-7EBD34CCD18C}" Directory="CONFIGFOLDER">
+        <File Id="WindowsConfig" 
+              Source="..\config\windows.json" 
+              KeyPath="yes"/>
+      </Component>
+
+      <Component Id="Documentation" Guid="{D4A74290-F743-4B4B-BB8E-27E285F7C912}">
+        <File Id="ReadmeFile" 
+              Source="..\README.md" 
+              Name="README.md"/>
+      </Component>
+    </ComponentGroup>
+
+    <!-- 开始菜单快捷方式 -->
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="ApplicationShortcut" Guid="{F83AEB78-2A4A-4A7B-8EEA-329393A67664}">
+        <Shortcut Id="ApplicationStartMenuShortcut"
+                  Name="DelGuard"
+                  Description="安全删除工具"
+                  Target="[INSTALLFOLDER]delguard.exe"
+                  WorkingDirectory="INSTALLFOLDER"/>
+        <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
+        <RegistryValue Root="HKCU" 
+                       Key="Software\TREA\DelGuard" 
+                       Name="installed" 
+                       Type="integer" 
+                       Value="1" 
+                       KeyPath="yes"/>
+      </Component>
+    </DirectoryRef>
+
+    <!-- 图标定义 -->
+    <Icon Id="DelGuardIcon.exe" SourceFile="..\src\DelGuard\bin\Release
+et8.0\win-x64\publish\delguard.exe"/>
+
+    <!-- 自定义操作 -->
+    <Binary Id="CustomActionsDLL" SourceFile="bin\Release\DelGuard.CustomActions.dll" />
+    
+    <CustomAction Id="ConfigureDelGuard" 
+                  BinaryKey="CustomActionsDLL" 
+                  DllEntry="ConfigureDelGuardSession" 
+                  Execute="deferred" 
+                  Return="check" 
+                  Impersonate="no" />
+    
+    <CustomAction Id="UninstallDelGuard" 
+                  BinaryKey="CustomActionsDLL" 
+                  DllEntry="UninstallDelGuardSession" 
+                  Execute="deferred" 
+                  Return="check" 
+                  Impersonate="no" />
+
+    <!-- 安装序列 -->
+    <InstallExecuteSequence>
+      <Custom Action="ConfigureDelGuard" After="InstallFiles">NOT Installed</Custom>
+      <Custom Action="UninstallDelGuard" After="InstallInitialize">Installed AND NOT UPGRADINGPRODUCTCODE</Custom>
+    </InstallExecuteSequence>
+
+    <!-- 安装界面配置 -->
+    <UIRef Id="WixUI_InstallDir" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="license.rtf"/>
+
+  </Product>
+</Wix>

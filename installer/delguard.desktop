@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=DelGuard
+Comment=Safe file deletion tool
+Exec=/usr/bin/delguard %U
+Icon=delguard
+Terminal=true
+Type=Application
+Categories=Utility;FileManager;
