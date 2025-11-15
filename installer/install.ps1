@@ -51,7 +51,7 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
 # 配置变量
-$GitHubRepo = "trea/DelGuard"
+$GitHubRepo = "01luyicheng/DelGuard"
 $ProductName = "DelGuard"
 $TempDir = $env:TEMP
 $LogFile = Join-Path $TempDir "DelGuard_Install_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"

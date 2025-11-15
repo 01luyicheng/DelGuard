@@ -8,19 +8,7 @@
 powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/install-oneline.ps1' -UseBasicParsing | Invoke-Expression }"
 
 # 或者使用完整脚本（可自定义参数）
-powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.ps1' -OutFile 'quick-install.ps1'; .\quick-install.ps1 }"
-```
-
-### Linux/macOS
-```bash
-# 一行命令安装（最简单）
-curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/install-oneline.sh | sudo bash
-
-# 或者使用完整脚本（可自定义参数）
-curl -fsSL https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.sh | sudo bash
-
-# 备用wget命令
-wget -qO- https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.sh | sudo bash
+powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/quick-install.ps1' -OutFile 'quick-install.ps1'; .\\quick-install.ps1 }"
 ```
 
 ## ✅ 安装验证
@@ -28,6 +16,9 @@ wget -qO- https://raw.githubusercontent.com/01luyicheng/DelGuard/main/scripts/qu
 安装完成后，运行以下命令验证：
 
 ```bash
+# 查看帮助信息
+delguard --help
+
 # 查看版本信息
 delguard --version
 # 应该显示：delguard version 1.4.1
@@ -35,9 +26,6 @@ delguard --version
 # 查看系统状态
 delguard status
 # 应该显示系统信息和回收站状态
-
-# 查看帮助
-delguard --help
 ```
 
 ## 📖 基本使用
@@ -45,170 +33,170 @@ delguard --help
 ### 1. 安全删除文件
 ```bash
 # 删除文件（移动到回收站）
-rm important_file.txt      # Linux/macOS
 del important_file.txt     # Windows
 
-# 删除目录
-rm -r my_folder/         # Linux/macOS
-rmdir my_folder          # Windows
-
 # 删除多个文件
-rm file1.txt file2.txt
+del *.tmp *.log
+
+# 使用通配符删除
+del temp_*
 ```
 
-### 2. 查看回收站
+### 2. 删除文件夹
 ```bash
-# 查看回收站内容
-delguard list
+# 删除空文件夹
+del empty_folder
 
-# 详细查看
-delguard list -l
+# 递归删除文件夹及其内容
+del -r my_folder/
 
-# 按时间排序
-delguard list --sort=time
-
-# 按大小排序
-delguard list --sort=size
-
-# 限制显示数量
-delguard list --limit=10
+# 使用通配符删除多个文件夹
+del -r temp_*/
 ```
 
-### 3. 恢复文件
+### 3. 强制删除被占用的文件
 ```bash
-# 按名称恢复
-delguard restore important_file.txt
+# 强制删除文件（绕过系统限制）
+del -f locked_file.exe
 
-# 按索引恢复（查看list中的索引号）
-delguard restore --index 1
-
-# 恢复到指定位置
-delguard restore important_file.txt --target /path/to/restore/
-
-# 批量恢复
-delguard restore --all --filter="*.txt"
+# 强制删除文件夹
+del -f -r persistent_folder
 ```
 
-### 4. 清空回收站
+### 4. 预览模式（安全删除）
 ```bash
-# 清空回收站
-delguard empty
+# 预览将要删除的文件
+del -p *.tmp
 
-# 清空前确认
-delguard empty --confirm
+# 预览递归删除
+del -p -r backup_folder/
+
+# 预览模式不会实际删除，只是显示将要删除的内容
 ```
 
-## 🔧 高级功能
+## 🎯 常用场景
 
-### 预览删除
+### 清理临时文件
 ```bash
-# 预览将要删除的文件（不实际删除）
-delguard delete -n *.log
+# 清理Windows临时文件夹
+del -r -s "C:\Windows\Temp\*"
+
+# 清理用户临时文件夹
+del -r -s "%TEMP%\*"
 ```
 
-### 强制删除
+### 清理日志文件
 ```bash
-# 跳过确认直接删除
-delguard delete -f large_file.zip
+# 删除应用程序日志
+del -f "C:\ProgramData\App\Logs\*.log"
+
+# 清理事件日志备份
+del -f -r "C:\Windows\System32\winevt\Logs\Archive-*.evtx"
 ```
 
-### 交互式删除
+### 清理浏览器缓存
 ```bash
-# 逐个确认删除
-delguard delete -i *.tmp
+# Chrome缓存
+del -r -s "%LOCALAPPDATA%\Google\Chrome\User Data\Default\Cache\*"
+
+# Edge缓存
+del -r -s "%LOCALAPPDATA%\Microsoft\Edge\User Data\Default\Cache\*"
 ```
 
-## 🛠️ 配置管理
-
-### 查看配置
+### 卸载软件后清理
 ```bash
-# 查看当前配置
-delguard config
+# 删除应用程序残留
+del -r -f "C:\Program Files\UninstalledApp\"
 
-# 编辑配置文件
-# 配置文件位置：
-# Windows: %USERPROFILE%\.delguard\config.yaml
-# Linux/macOS: ~/.delguard/config.yaml
+# 删除用户配置
+del -r -f "%APPDATA%\UninstalledApp\"
 ```
 
-### 示例配置
-```yaml
-# ~/.delguard/config.yaml
-trash:
-  auto_empty_days: 30    # 30天后自动清理
-  confirm_delete: true # 删除前确认
-  
-display:
-  color: true          # 彩色输出
-  unicode: true        # Unicode图标
-  
-logging:
-  level: info          # 日志级别
-  file: ~/.delguard/delguard.log
-```
+## 🛡️ 安全特性
 
-## 🗑️ 卸载
+### 回收站保护
+- 所有删除的文件/文件夹默认移动到回收站
+- 可从回收站恢复误删的文件
+- 支持回收站大小限制和自动清理
 
-### Windows
-```powershell
-# 运行卸载脚本
-delguard-uninstall
-
-# 或者
-c:\Program Files\DelGuard\uninstall.bat
-```
-
-### Linux/macOS
+### 系统保护
 ```bash
-# 运行卸载脚本
-sudo delguard-uninstall
+# DelGuard会阻止删除以下关键系统目录
+# C:\Windows
+# C:\Program Files
+# C:\Program Files (x86)
+# C:\ProgramData
 ```
 
-## 🐛 常见问题
-
-### 安装问题
-**Q: 安装失败怎么办？**
-A: 检查网络连接，确保有管理员权限，查看错误提示。
-
-**Q: 安装后命令不可用？**
-A: 重启终端或运行 `refreshenv` (Windows) / `source ~/.bashrc` (Linux/macOS)。
-
-### 使用问题
-**Q: 删除的文件在哪里？**
-A: 文件被移动到系统回收站：
-- Windows: 回收站
-- macOS: 废纸篓
-- Linux: ~/.local/share/Trash
-
-**Q: 如何永久删除文件？**
-A: 使用 `--permanent` 参数：
+### 错误处理
 ```bash
-delguard delete --permanent file.txt
+# 详细的错误报告
+del -v problematic_file
+# 会显示具体的错误信息和解决建议
+
+# 静默模式（适合脚本）
+del -s unwanted_files
+# 减少输出，适合批处理脚本
 ```
 
-**Q: 如何恢复误删的文件？**
-A: 使用恢复命令：
+## ⚙️ 高级配置
+
+### 1. 配置文件
+DelGuard使用JSON配置文件，默认位置：
+- Windows: `C:\Program Files\DelGuard\config\windows.json`
+
+### 2. 配置示例
+```json
+{
+  "uiOption": "OnlyErrorDialogs",
+  "logLevel": "info"
+}
+```
+
+### 3. 环境变量
 ```bash
-delguard list                    # 查看回收站
-delguard restore filename.txt    # 恢复文件
+# 设置默认删除模式
+set DELGUARD_DEFAULT_MODE=recycle
+
+# 设置默认日志级别
+set DELGUARD_LOG_LEVEL=warning
 ```
 
-## 📞 获取帮助
+## 🔧 故障排除
 
-### 文档资源
-- 📖 [完整文档](README.md)
-- 🔧 [安装指南](INSTALL.md)
-- 🐛 [问题反馈](https://github.com/01luyicheng/DelGuard/issues)
-- 💬 [GitHub Discussions](https://github.com/01luyicheng/DelGuard/discussions)
-- 📧 邮件支持：等待设置
+### 常见问题
+```bash
+# Q: 删除操作失败，提示"访问被拒绝"
+# A: 使用管理员权限运行命令提示符
 
-## 🎯 下一步
+# Q: 文件被其他程序占用，无法删除
+# A: 使用 -f 参数强制删除，或先关闭占用该文件的程序
 
-1. **立即安装**：使用上方的一行命令安装
-2. **测试功能**：删除和恢复几个测试文件
-3. **配置优化**：根据需求调整配置文件
-4. **日常使用**：开始在日常工作中使用DelGuard保护您的文件
+# Q: 删除大文件夹时程序无响应
+# A: 使用 -v 参数查看详细进度，耐心等待操作完成
+```
+
+### 日志文件位置
+```bash
+# Windows
+C:\Program Files\DelGuard\logs\delguard_YYYY-MM-DD.log
+```
+
+## 🎉 最佳实践
+
+1. **预览模式优先**：对不熟悉的删除操作，先使用 `-p` 参数预览
+2. **定期清理回收站**：定期清空回收站以释放磁盘空间
+3. **使用详细模式**：对于复杂操作，使用 `-v` 参数查看详细日志
+4. **备份重要数据**：删除重要文件前先备份
+5. **批量处理**：结合通配符和递归参数高效处理大量文件
+
+## 📚 更多资源
+
+- [完整文档](README.md)
+- [安装指南](INSTALL.md)
+- [GitHub仓库](https://github.com/01luyicheng/DelGuard)
+- [问题反馈](https://github.com/01luyicheng/DelGuard/issues)
 
 ---
 
-**享受安全删除的便捷体验！** 🛡️✨
+💡 **提示**: DelGuard将文件移动到回收站而非永久删除，提供了额外的安全保障。但请注意，回收站空间有限，建议定期清理。

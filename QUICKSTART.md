@@ -16,7 +16,7 @@
 ```powershell
 # 以管理员身份运行PowerShell
 Set-ExecutionPolicy Bypass -Scope Process -Force
-iwr -useb https://raw.githubusercontent.com/trea/DelGuard/main/installer/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/01luyicheng/DelGuard/main/installer/install.ps1 | iex
 ```
 
 ### 方法2：手动下载安装
@@ -39,7 +39,7 @@ msiexec /i DelGuard.msi /quiet /norestart
 ### 构建步骤
 ```cmd
 # 1. 克隆项目
-git clone https://github.com/trea/DelGuard.git
+git clone https://github.com/01luyicheng/DelGuard.git
 cd DelGuard
 
 # 2. 构建主程序
@@ -106,8 +106,8 @@ Get-ChildItem C:\temp -Recurse | Where-Object {$_.Length -gt 1GB} | ForEach-Obje
 ## 📞 支持
 
 - 📧 邮件支持：support@delguard.com
-- 🐛 问题反馈：[GitHub Issues](https://github.com/trea/DelGuard/issues)
-- 📚 详细文档：[Wiki](https://github.com/trea/DelGuard/wiki)
+- 🐛 问题反馈：[GitHub Issues](https://github.com/01luyicheng/DelGuard/issues)
+- 📚 详细文档：[Wiki](https://github.com/01luyicheng/DelGuard/wiki)
 
 ## 📄 许可证
 
